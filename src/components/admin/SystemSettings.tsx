@@ -163,7 +163,7 @@ const SystemSettings: React.FC = () => {
         {/* Time Tracking Settings */}
         <div className="bg-gray-50 rounded-lg p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Time Tracking Settings</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-1 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Pay Buffer (minutes)
@@ -177,27 +177,82 @@ const SystemSettings: React.FC = () => {
               />
               <p className="text-xs text-gray-500 mt-1">Grace period for early/late clock in/out</p>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Default Shift Start
-              </label>
-              <input
-                type="time"
-                value={settings.default_shift_start}
-                onChange={(e) => handleInputChange('default_shift_start', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Default Shift End
-              </label>
-              <input
-                type="time"
-                value={settings.default_shift_end}
-                onChange={(e) => handleInputChange('default_shift_end', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+          </div>
+        </div>
+
+        {/* Daily Shift Settings */}
+        <div className="bg-gray-50 rounded-lg p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Daily Shift Hours</h3>
+          <div className="space-y-4">
+            {Object.entries(settings.daily_shifts).map(([day, shift]) => (
+              <div key={day} className="flex items-center space-x-4 p-4 bg-white rounded-lg border">
+                <div className="flex items-center space-x-3 w-32">
+                  <input
+                    type="checkbox"
+                    checked={shift.enabled}
+                    onChange={(e) => handleDailyShiftChange(day as keyof SystemSettings['daily_shifts'], 'enabled', e.target.checked)}
+                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                  />
+                  <label className="text-sm font-medium text-gray-900">
+                    {getDayLabel(day)}
+                  </label>
+                </div>
+                
+                <div className="flex items-center space-x-4 flex-1">
+                  <div className="flex-1">
+                    <label className="block text-xs text-gray-500 mb-1">Start Time</label>
+                    <input
+                      type="time"
+                      value={shift.start}
+                      onChange={(e) => handleDailyShiftChange(day as keyof SystemSettings['daily_shifts'], 'start', e.target.value)}
+                      disabled={!shift.enabled}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-400"
+                    />
+                  </div>
+                  
+                  <div className="flex-1">
+                    <label className="block text-xs text-gray-500 mb-1">End Time</label>
+                    <input
+                      type="time"
+                      value={shift.end}
+                      onChange={(e) => handleDailyShiftChange(day as keyof SystemSettings['daily_shifts'], 'end', e.target.value)}
+                      disabled={!shift.enabled}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-400"
+                    />
+                  </div>
+                  
+                  <div className="w-20 text-right">
+                    {shift.enabled && (
+                      <div className="text-sm text-gray-600">
+                        <span className="text-xs text-gray-500">Hours:</span>
+                        <div className="font-medium">
+                          {(() => {
+                            const start = new Date(`2000-01-01T${shift.start}:00`);
+                            const end = new Date(`2000-01-01T${shift.end}:00`);
+                            const hours = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
+                            return hours > 0 ? hours.toFixed(1) : '0.0';
+                          })()}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          
+          <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div className="flex items-start space-x-3">
+              <Clock className="h-5 w-5 text-blue-600 mt-0.5" />
+              <div>
+                <h4 className="text-sm font-semibold text-blue-900 mb-2">Daily Shift Information</h4>
+                <div className="text-sm text-blue-800 space-y-1">
+                  <p>• Configure different start and end times for each day of the week</p>
+                  <p>• Uncheck days when your business is closed</p>
+                  <p>• These settings will be used for scheduling and payroll calculations</p>
+                  <p>• Hours shown are the total shift length for each day</p>
+                </div>
+              </div>
             </div>
           </div>
         </div>
