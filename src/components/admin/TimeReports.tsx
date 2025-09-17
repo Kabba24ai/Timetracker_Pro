@@ -5,9 +5,9 @@ interface TimeReportData {
   employee_name: string;
   employee_id: string;
   total_hours: number;
-  clock_ins: number;
-  lunch_breaks: number;
-  unpaid_breaks: number;
+  lunch_hours: number;
+  unpaid_hours: number;
+  paid_hours: number;
 }
 
 // Mock report data for demo
@@ -16,25 +16,25 @@ const mockReportData: TimeReportData[] = [
     employee_name: 'John Doe',
     employee_id: '1',
     total_hours: 38.5,
-    clock_ins: 5,
-    lunch_breaks: 4,
-    unpaid_breaks: 2,
+    lunch_hours: 4.0,
+    unpaid_hours: 1.5,
+    paid_hours: 33.0,
   },
   {
     employee_name: 'Jane Smith',
     employee_id: '3',
     total_hours: 42.0,
-    clock_ins: 5,
-    lunch_breaks: 5,
-    unpaid_breaks: 1,
+    lunch_hours: 5.0,
+    unpaid_hours: 0.5,
+    paid_hours: 36.5,
   },
   {
     employee_name: 'Admin User',
     employee_id: '2',
     total_hours: 35.0,
-    clock_ins: 4,
-    lunch_breaks: 3,
-    unpaid_breaks: 0,
+    lunch_hours: 3.0,
+    unpaid_hours: 0.0,
+    paid_hours: 32.0,
   }
 ];
 
@@ -160,9 +160,9 @@ const TimeReports: React.FC = () => {
                 <tr className="border-b border-gray-200">
                   <th className="text-left py-3 px-4 font-medium text-gray-900">Employee</th>
                   <th className="text-left py-3 px-4 font-medium text-gray-900">Total Hours</th>
-                  <th className="text-left py-3 px-4 font-medium text-gray-900">Clock Ins</th>
-                  <th className="text-left py-3 px-4 font-medium text-gray-900">Lunch Breaks</th>
-                  <th className="text-left py-3 px-4 font-medium text-gray-900">Unpaid Breaks</th>
+                  <th className="text-left py-3 px-4 font-medium text-gray-900">Lunch Hours</th>
+                  <th className="text-left py-3 px-4 font-medium text-gray-900">Unpaid Hours</th>
+                  <th className="text-left py-3 px-4 font-medium text-gray-900">Paid Hours</th>
                 </tr>
               </thead>
               <tbody>
@@ -172,9 +172,15 @@ const TimeReports: React.FC = () => {
                     <td className="py-3 px-4 text-blue-600 font-semibold">
                       {report.total_hours.toFixed(2)}
                     </td>
-                    <td className="py-3 px-4 text-gray-600">{report.clock_ins}</td>
-                    <td className="py-3 px-4 text-gray-600">{report.lunch_breaks}</td>
-                    <td className="py-3 px-4 text-gray-600">{report.unpaid_breaks}</td>
+                    <td className="py-3 px-4 text-orange-600 font-medium">
+                      {report.lunch_hours.toFixed(2)}
+                    </td>
+                    <td className="py-3 px-4 text-red-600 font-medium">
+                      {report.unpaid_hours.toFixed(2)}
+                    </td>
+                    <td className="py-3 px-4 text-green-600 font-semibold">
+                      {report.paid_hours.toFixed(2)}
+                    </td>
                   </tr>
                 ))}
               </tbody>
