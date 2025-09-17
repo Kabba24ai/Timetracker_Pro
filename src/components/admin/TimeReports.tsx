@@ -341,7 +341,15 @@ const TimeReports: React.FC = () => {
           unpaid_end: null,
           clock_out_actual: null,
           clock_out_adjusted: null,
+          total_hours: 0,
+          total_unpaid_hours: 0,
+          total_paid_hours: 0,
         };
+
+        let clockInTime: Date | null = null;
+        let clockOutTime: Date | null = null;
+        let lunchHours = 0;
+        let unpaidHours = 0;
 
         dayEntries.forEach(entry => {
           const time = entry.timestamp.split('T')[1].substring(0, 5);
@@ -351,25 +359,45 @@ const TimeReports: React.FC = () => {
             case 'clock_in':
               dayData.clock_in_actual = time;
               dayData.clock_in_adjusted = adjustedTime;
+              clockInTime = new Date(`${date}T${adjustedTime}:00`);
               break;
             case 'clock_out':
               dayData.clock_out_actual = time;
               dayData.clock_out_adjusted = adjustedTime;
+              clockOutTime = new Date(`${date}T${adjustedTime}:00`);
               break;
             case 'lunch_out':
               dayData.lunch_start = time;
+              dayData.lunch_out_time = new Date(entry.timestamp);
               break;
             case 'lunch_in':
               dayData.lunch_end = time;
+              if (dayData.lunch_out_time) {
+                const lunchInTime = new Date(entry.timestamp);
+                lunchHours += (lunchInTime.getTime() - dayData.lunch_out_time.getTime()) / (1000 * 60 * 60);
+              }
               break;
             case 'unpaid_out':
               dayData.unpaid_start = time;
+              dayData.unpaid_out_time = new Date(entry.timestamp);
               break;
             case 'unpaid_in':
               dayData.unpaid_end = time;
+              if (dayData.unpaid_out_time) {
+                const unpaidInTime = new Date(entry.timestamp);
+                unpaidHours += (unpaidInTime.getTime() - dayData.unpaid_out_time.getTime()) / (1000 * 60 * 60);
+              }
               break;
           }
         });
+
+        // Calculate daily totals
+        if (clockInTime && clockOutTime) {
+          const totalHours = (clockOutTime.getTime() - clockInTime.getTime()) / (1000 * 60 * 60);
+          dayData.total_hours = Math.max(0, totalHours);
+          dayData.total_unpaid_hours = lunchHours + unpaidHours;
+          dayData.total_paid_hours = Math.max(0, totalHours - lunchHours - unpaidHours);
+        }
 
         return dayData;
       });
@@ -557,6 +585,9 @@ const TimeReports: React.FC = () => {
                   <th className="text-left py-3 px-2 font-medium text-gray-900">Unpaid<br/><span className="text-xs text-gray-500">Start</span></th>
                   <th className="text-left py-3 px-2 font-medium text-gray-900">Unpaid<br/><span className="text-xs text-gray-500">End</span></th>
                   <th className="text-left py-3 px-2 font-medium text-gray-900">Clock Out</th>
+                  <th className="text-left py-3 px-2 font-medium text-gray-900">Total Hours</th>
+                  <th className="text-left py-3 px-2 font-medium text-gray-900">Total Unpaid</th>
+                  <th className="text-left py-3 px-2 font-medium text-gray-900">Total Paid</th>
                 </tr>
               </thead>
               <tbody>
@@ -592,6 +623,15 @@ const TimeReports: React.FC = () => {
                       ) : (
                         <span className="text-gray-400">-</span>
                       )}
+                    </td>
+                    <td className="py-3 px-2 font-mono text-blue-600 font-semibold">
+                      {day.total_hours ? day.total_hours.toFixed(2) : '-'}
+                    </td>
+                    <td className="py-3 px-2 font-mono text-red-600 font-semibold">
+                      {day.total_unpaid_hours ? day.total_unpaid_hours.toFixed(2) : '-'}
+                    </td>
+                    <td className="py-3 px-2 font-mono text-green-600 font-semibold">
+                      {day.total_paid_hours ? day.total_paid_hours.toFixed(2) : '-'}
                     </td>
                   </tr>
                 ))}
