@@ -83,7 +83,7 @@ const TimeReports: React.FC = () => {
     const savedSettings = localStorage.getItem('demo_system_settings');
     const settings = savedSettings ? JSON.parse(savedSettings) : {
       pay_period_type: 'biweekly',
-      pay_period_start_date: '2024-01-01'
+      pay_period_start_date: '2025-01-05'
     };
 
     const startDate = new Date(settings.pay_period_start_date);
@@ -129,13 +129,127 @@ const TimeReports: React.FC = () => {
   const fetchTimeReports = async () => {
     setLoading(true);
     try {
-      // Use mock data for demo
-      setReportData(mockReportData);
+      // Calculate actual report data from time entries
+      const reportData: TimeReportData[] = [];
+      const employees = [
+        { id: '1', name: 'John Doe' },
+        { id: '2', name: 'Admin User' },
+        { id: '3', name: 'Jane Smith' }
+      ];
+
+      for (const employee of employees) {
+        const storageKey = `time_entries_${employee.id}`;
+        const savedEntries = localStorage.getItem(storageKey);
+        
+        let entries: any[] = [];
+        if (savedEntries) {
+          const allEntries = JSON.parse(savedEntries);
+          // Filter for selected pay period
+          entries = allEntries.filter((entry: any) => {
+            const entryDate = entry.timestamp.split('T')[0];
+            return selectedPayPeriod && 
+                   entryDate >= selectedPayPeriod.start_date && 
+                   entryDate <= selectedPayPeriod.end_date;
+          });
+        }
+
+        const hours = calculateEmployeeHours(entries);
+        reportData.push({
+          employee_name: employee.name,
+          employee_id: employee.id,
+          total_hours: hours.total,
+          lunch_hours: hours.lunch,
+          unpaid_hours: hours.unpaid,
+          paid_hours: hours.paid,
+        });
+      }
+
+      setReportData(reportData);
     } catch (error) {
       console.error('Error fetching time reports:', error);
     } finally {
       setLoading(false);
     }
+  };
+
+  const calculateEmployeeHours = (entries: any[]) => {
+    let totalHours = 0;
+    let lunchHours = 0;
+    let unpaidHours = 0;
+    
+    // Group entries by date
+    const entriesByDate: { [date: string]: any[] } = {};
+    entries.forEach(entry => {
+      const date = entry.timestamp.split('T')[0];
+      if (!entriesByDate[date]) {
+        entriesByDate[date] = [];
+      }
+      entriesByDate[date].push(entry);
+    });
+
+    // Calculate hours for each day
+    Object.values(entriesByDate).forEach(dayEntries => {
+      dayEntries.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+      
+      let clockInTime: Date | null = null;
+      let clockOutTime: Date | null = null;
+      let lunchStartTime: Date | null = null;
+      let lunchEndTime: Date | null = null;
+      let unpaidStartTime: Date | null = null;
+      let unpaidEndTime: Date | null = null;
+      let dayLunchHours = 0;
+      let dayUnpaidHours = 0;
+
+      dayEntries.forEach(entry => {
+        const entryTime = new Date(entry.timestamp);
+
+        switch (entry.entry_type) {
+          case 'clock_in':
+            clockInTime = entryTime;
+            break;
+          case 'clock_out':
+            clockOutTime = entryTime;
+            break;
+          case 'lunch_out':
+            lunchStartTime = entryTime;
+            break;
+          case 'lunch_in':
+            lunchEndTime = entryTime;
+            if (lunchStartTime) {
+              dayLunchHours += (lunchEndTime.getTime() - lunchStartTime.getTime()) / (1000 * 60 * 60);
+              lunchStartTime = null;
+            }
+            break;
+          case 'unpaid_out':
+            unpaidStartTime = entryTime;
+            break;
+          case 'unpaid_in':
+            unpaidEndTime = entryTime;
+            if (unpaidStartTime) {
+              dayUnpaidHours += (unpaidEndTime.getTime() - unpaidStartTime.getTime()) / (1000 * 60 * 60);
+              unpaidStartTime = null;
+            }
+            break;
+        }
+      });
+
+      // Calculate total hours for the day
+      if (clockInTime && clockOutTime) {
+        const dayTotalHours = (clockOutTime.getTime() - clockInTime.getTime()) / (1000 * 60 * 60);
+        totalHours += dayTotalHours;
+        lunchHours += dayLunchHours;
+        unpaidHours += dayUnpaidHours;
+      }
+    });
+
+    const paidHours = Math.max(0, totalHours - lunchHours - unpaidHours);
+
+    return {
+      total: Math.round(totalHours * 100) / 100,
+      lunch: Math.round(lunchHours * 100) / 100,
+      unpaid: Math.round(unpaidHours * 100) / 100,
+      paid: Math.round(paidHours * 100) / 100,
+    };
   };
 
   const fetchEmployeeEntries = async (employeeId: string) => {

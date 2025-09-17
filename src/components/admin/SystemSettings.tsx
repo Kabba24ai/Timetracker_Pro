@@ -19,7 +19,7 @@ const SystemSettings: React.FC = () => {
     default_shift_start: '08:00',
     default_shift_end: '17:00',
     pay_period_type: 'biweekly',
-    pay_period_start_date: '2024-01-01',
+    pay_period_start_date: '2025-01-05',
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
