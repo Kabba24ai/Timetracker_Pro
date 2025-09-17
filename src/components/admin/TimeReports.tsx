@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Clock, Calendar, Download, Edit, Plus, Save, X, Trash2, ChevronDown } from 'lucide-react';
+import { Clock, Calendar, Download, Edit, Plus, Save, X, Trash2, ChevronDown, Eye } from 'lucide-react';
 
 interface TimeEntry {
   id: string;
@@ -67,6 +67,14 @@ const TimeReports: React.FC = () => {
   const [selectedPayPeriod, setSelectedPayPeriod] = useState<PayPeriod | null>(null);
   const [payPeriods, setPayPeriods] = useState<PayPeriod[]>([]);
   const [showPayPeriodDropdown, setShowPayPeriodDropdown] = useState(false);
+  const [showDailyBreakdown, setShowDailyBreakdown] = useState<string | null>(null);
+  const [dailyBreakdownData, setDailyBreakdownData] = useState<any[]>([]);
+  const [editingEntry, setEditingEntry] = useState<string | null>(null);
+  const [editEntryValues, setEditEntryValues] = useState({
+    date: '',
+    time: '',
+    entry_type: 'clock_in' as TimeEntry['entry_type']
+  });
 
   useEffect(() => {
     generatePayPeriods();
@@ -283,7 +291,104 @@ const TimeReports: React.FC = () => {
 
   const handleEditEmployee = (employeeId: string) => {
     setEditingEmployee(employeeId);
+    setShowDailyBreakdown(null);
     fetchEmployeeEntries(employeeId);
+  };
+
+  const handleViewDailyBreakdown = async (employeeId: string) => {
+    setShowDailyBreakdown(employeeId);
+    await generateDailyBreakdown(employeeId);
+  };
+
+  const generateDailyBreakdown = async (employeeId: string) => {
+    if (!selectedPayPeriod) return;
+
+    try {
+      const storageKey = `time_entries_${employeeId}`;
+      const savedEntries = localStorage.getItem(storageKey);
+      
+      let entries: TimeEntry[] = [];
+      if (savedEntries) {
+        const allEntries = JSON.parse(savedEntries);
+        entries = allEntries.filter((entry: TimeEntry) => {
+          const entryDate = entry.timestamp.split('T')[0];
+          return entryDate >= selectedPayPeriod.start_date && 
+                 entryDate <= selectedPayPeriod.end_date;
+        });
+      }
+
+      // Group entries by date
+      const entriesByDate: { [date: string]: TimeEntry[] } = {};
+      entries.forEach(entry => {
+        const date = entry.timestamp.split('T')[0];
+        if (!entriesByDate[date]) {
+          entriesByDate[date] = [];
+        }
+        entriesByDate[date].push(entry);
+      });
+
+      // Generate daily breakdown
+      const breakdown = Object.entries(entriesByDate).map(([date, dayEntries]) => {
+        dayEntries.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+        
+        const dayData: any = {
+          date,
+          clock_in_actual: null,
+          clock_in_adjusted: null,
+          lunch_start: null,
+          lunch_end: null,
+          unpaid_start: null,
+          unpaid_end: null,
+          clock_out_actual: null,
+          clock_out_adjusted: null,
+        };
+
+        dayEntries.forEach(entry => {
+          const time = entry.timestamp.split('T')[1].substring(0, 5);
+          const adjustedTime = adjustTimeToIncrement(time, 15); // Use 15-minute increment
+
+          switch (entry.entry_type) {
+            case 'clock_in':
+              dayData.clock_in_actual = time;
+              dayData.clock_in_adjusted = adjustedTime;
+              break;
+            case 'clock_out':
+              dayData.clock_out_actual = time;
+              dayData.clock_out_adjusted = adjustedTime;
+              break;
+            case 'lunch_out':
+              dayData.lunch_start = time;
+              break;
+            case 'lunch_in':
+              dayData.lunch_end = time;
+              break;
+            case 'unpaid_out':
+              dayData.unpaid_start = time;
+              break;
+            case 'unpaid_in':
+              dayData.unpaid_end = time;
+              break;
+          }
+        });
+
+        return dayData;
+      });
+
+      // Sort by date
+      breakdown.sort((a, b) => a.date.localeCompare(b.date));
+      setDailyBreakdownData(breakdown);
+    } catch (error) {
+      console.error('Error generating daily breakdown:', error);
+    }
+  };
+
+  const adjustTimeToIncrement = (time: string, increment: number) => {
+    const [hours, minutes] = time.split(':').map(Number);
+    const totalMinutes = hours * 60 + minutes;
+    const adjustedMinutes = Math.round(totalMinutes / increment) * increment;
+    const adjustedHours = Math.floor(adjustedMinutes / 60);
+    const adjustedMins = adjustedMinutes % 60;
+    return `${adjustedHours.toString().padStart(2, '0')}:${adjustedMins.toString().padStart(2, '0')}`;
   };
 
   const handleAddEntry = async () => {
@@ -339,6 +444,47 @@ const TimeReports: React.FC = () => {
     }
   };
 
+  const handleEditEntry = (entry: TimeEntry) => {
+    setEditingEntry(entry.id);
+    const [date, timeWithSeconds] = entry.timestamp.split('T');
+    const time = timeWithSeconds.substring(0, 5);
+    setEditEntryValues({
+      date,
+      time,
+      entry_type: entry.entry_type
+    });
+  };
+
+  const handleSaveEditEntry = async () => {
+    if (!editingEmployee || !editingEntry) return;
+
+    try {
+      const timestamp = `${editEntryValues.date}T${editEntryValues.time}:00.000Z`;
+      
+      const storageKey = `time_entries_${editingEmployee}`;
+      const savedEntries = localStorage.getItem(storageKey);
+      if (savedEntries) {
+        const entries = JSON.parse(savedEntries);
+        const updatedEntries = entries.map((entry: TimeEntry) => 
+          entry.id === editingEntry 
+            ? { ...entry, entry_type: editEntryValues.entry_type, timestamp }
+            : entry
+        );
+        localStorage.setItem(storageKey, JSON.stringify(updatedEntries));
+      }
+
+      await fetchEmployeeEntries(editingEmployee);
+      setEditingEntry(null);
+    } catch (error) {
+      console.error('Error saving entry edit:', error);
+    }
+  };
+
+  const handleCancelEditEntry = () => {
+    setEditingEntry(null);
+    setEditEntryValues({ date: '', time: '', entry_type: 'clock_in' });
+  };
+
   const getEntryTypeLabel = (entryType: string) => {
     const labels: { [key: string]: string } = {
       clock_in: 'Clock In',
@@ -375,6 +521,90 @@ const TimeReports: React.FC = () => {
       time: date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }),
     };
   };
+
+  if (showDailyBreakdown) {
+    const employee = reportData.find(r => r.employee_id === showDailyBreakdown);
+    
+    return (
+      <div className="p-6">
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={() => setShowDailyBreakdown(null)}
+              className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg"
+            >
+              <X className="h-5 w-5" />
+            </button>
+            <Clock className="h-6 w-6 text-gray-600" />
+            <h2 className="text-2xl font-bold text-gray-900">
+              Daily Breakdown - {employee?.employee_name}
+            </h2>
+          </div>
+          <div className="text-sm text-gray-600">
+            {selectedPayPeriod?.label}
+          </div>
+        </div>
+
+        <div className="bg-gray-50 rounded-lg p-4">
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-200">
+                  <th className="text-left py-3 px-2 font-medium text-gray-900">Date</th>
+                  <th className="text-left py-3 px-2 font-medium text-gray-900">Clock In<br/><span className="text-xs text-gray-500">Actual</span></th>
+                  <th className="text-left py-3 px-2 font-medium text-gray-900">Clock In<br/><span className="text-xs text-gray-500">Adjusted</span></th>
+                  <th className="text-left py-3 px-2 font-medium text-gray-900">Lunch<br/><span className="text-xs text-gray-500">Start</span></th>
+                  <th className="text-left py-3 px-2 font-medium text-gray-900">Lunch<br/><span className="text-xs text-gray-500">End</span></th>
+                  <th className="text-left py-3 px-2 font-medium text-gray-900">Unpaid<br/><span className="text-xs text-gray-500">Start</span></th>
+                  <th className="text-left py-3 px-2 font-medium text-gray-900">Unpaid<br/><span className="text-xs text-gray-500">End</span></th>
+                  <th className="text-left py-3 px-2 font-medium text-gray-900">Clock Out<br/><span className="text-xs text-gray-500">Actual</span></th>
+                  <th className="text-left py-3 px-2 font-medium text-gray-900">Clock Out<br/><span className="text-xs text-gray-500">Adjusted</span></th>
+                </tr>
+              </thead>
+              <tbody>
+                {dailyBreakdownData.map((day) => (
+                  <tr key={day.date} className="border-b border-gray-100 hover:bg-white">
+                    <td className="py-3 px-2 font-medium text-gray-900">
+                      {new Date(day.date).toLocaleDateString('en-US', { 
+                        weekday: 'short', 
+                        month: 'short', 
+                        day: 'numeric' 
+                      })}
+                    </td>
+                    <td className="py-3 px-2 font-mono text-gray-900">{day.clock_in_actual || '-'}</td>
+                    <td className="py-3 px-2 font-mono text-blue-600 font-semibold">{day.clock_in_adjusted || '-'}</td>
+                    <td className="py-3 px-2 font-mono text-orange-600">{day.lunch_start || '-'}</td>
+                    <td className="py-3 px-2 font-mono text-orange-600">{day.lunch_end || '-'}</td>
+                    <td className="py-3 px-2 font-mono text-purple-600">{day.unpaid_start || '-'}</td>
+                    <td className="py-3 px-2 font-mono text-purple-600">{day.unpaid_end || '-'}</td>
+                    <td className="py-3 px-2 font-mono text-gray-900">{day.clock_out_actual || '-'}</td>
+                    <td className="py-3 px-2 font-mono text-red-600 font-semibold">{day.clock_out_adjusted || '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {dailyBreakdownData.length === 0 && (
+            <div className="text-center py-8">
+              <Clock className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+              <p className="text-gray-500">No time data found for the selected pay period.</p>
+            </div>
+          )}
+        </div>
+
+        <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <h4 className="text-sm font-semibold text-blue-900 mb-2">Time Adjustment Information</h4>
+          <div className="text-sm text-blue-800 space-y-1">
+            <p>• <strong>Actual Times:</strong> The exact time the employee clocked in/out</p>
+            <p>• <strong>Adjusted Times:</strong> Times rounded to the nearest 15-minute increment for payroll</p>
+            <p>• <strong>Color Coding:</strong> Blue = Clock In Adjusted, Red = Clock Out Adjusted</p>
+            <p>• Lunch and unpaid break times are recorded as-is (no adjustment needed)</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (editingEmployee) {
     const employee = reportData.find(r => r.employee_id === editingEmployee);
@@ -474,22 +704,86 @@ const TimeReports: React.FC = () => {
               <tbody>
                 {employeeEntries.map((entry) => {
                   const { date, time } = formatDateTime(entry.timestamp);
+                  const isEditing = editingEntry === entry.id;
+                  
                   return (
                     <tr key={entry.id} className="border-b border-gray-100 hover:bg-white">
                       <td className="py-3 px-4">
-                        <span className={`inline-flex px-3 py-1 text-sm font-medium rounded-full ${getEntryTypeColor(entry.entry_type)}`}>
-                          {getEntryTypeLabel(entry.entry_type)}
-                        </span>
+                        {isEditing ? (
+                          <select
+                            value={editEntryValues.entry_type}
+                            onChange={(e) => setEditEntryValues(prev => ({ ...prev, entry_type: e.target.value as TimeEntry['entry_type'] }))}
+                            className="px-2 py-1 border border-gray-300 rounded text-sm"
+                          >
+                            <option value="clock_in">Clock In</option>
+                            <option value="clock_out">Clock Out</option>
+                            <option value="lunch_out">Lunch Start</option>
+                            <option value="lunch_in">Lunch End</option>
+                            <option value="unpaid_out">Unpaid Start</option>
+                            <option value="unpaid_in">Unpaid End</option>
+                          </select>
+                        ) : (
+                          <span className={`inline-flex px-3 py-1 text-sm font-medium rounded-full ${getEntryTypeColor(entry.entry_type)}`}>
+                            {getEntryTypeLabel(entry.entry_type)}
+                          </span>
+                        )}
                       </td>
-                      <td className="py-3 px-4 text-gray-900">{date}</td>
-                      <td className="py-3 px-4 font-mono text-gray-900">{time}</td>
                       <td className="py-3 px-4">
-                        <button
-                          onClick={() => handleDeleteEntry(entry.id)}
-                          className="p-1 text-red-600 hover:bg-red-50 rounded"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                        {isEditing ? (
+                          <input
+                            type="date"
+                            value={editEntryValues.date}
+                            onChange={(e) => setEditEntryValues(prev => ({ ...prev, date: e.target.value }))}
+                            className="px-2 py-1 border border-gray-300 rounded text-sm"
+                          />
+                        ) : (
+                          <span className="text-gray-900">{date}</span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4">
+                        {isEditing ? (
+                          <input
+                            type="time"
+                            value={editEntryValues.time}
+                            onChange={(e) => setEditEntryValues(prev => ({ ...prev, time: e.target.value }))}
+                            className="px-2 py-1 border border-gray-300 rounded text-sm font-mono"
+                          />
+                        ) : (
+                          <span className="font-mono text-gray-900">{time}</span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4">
+                        {isEditing ? (
+                          <div className="flex items-center space-x-2">
+                            <button
+                              onClick={handleSaveEditEntry}
+                              className="p-1 text-green-600 hover:bg-green-50 rounded"
+                            >
+                              <Save className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={handleCancelEditEntry}
+                              className="p-1 text-gray-600 hover:bg-gray-50 rounded"
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center space-x-2">
+                            <button
+                              onClick={() => handleEditEntry(entry)}
+                              className="p-1 text-blue-600 hover:bg-blue-50 rounded"
+                            >
+                              <Edit className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteEntry(entry.id)}
+                              className="p-1 text-red-600 hover:bg-red-50 rounded"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                        )}
                       </td>
                     </tr>
                   );
@@ -604,10 +898,17 @@ const TimeReports: React.FC = () => {
                     <td className="py-3 px-4">
                       <button
                         onClick={() => handleEditEmployee(report.employee_id)}
-                        className="flex items-center space-x-1 text-blue-600 hover:bg-blue-50 px-2 py-1 rounded"
+                        className="flex items-center space-x-1 text-blue-600 hover:bg-blue-50 px-2 py-1 rounded mr-2"
                       >
                         <Edit className="h-4 w-4" />
                         <span className="text-sm">Edit</span>
+                      </button>
+                      <button
+                        onClick={() => handleViewDailyBreakdown(report.employee_id)}
+                        className="flex items-center space-x-1 text-green-600 hover:bg-green-50 px-2 py-1 rounded"
+                      >
+                        <Eye className="h-4 w-4" />
+                        <span className="text-sm">Daily View</span>
                       </button>
                     </td>
                   </tr>
