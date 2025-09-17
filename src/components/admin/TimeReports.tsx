@@ -551,14 +551,12 @@ const TimeReports: React.FC = () => {
               <thead>
                 <tr className="border-b border-gray-200">
                   <th className="text-left py-3 px-2 font-medium text-gray-900">Date</th>
-                  <th className="text-left py-3 px-2 font-medium text-gray-900">Clock In<br/><span className="text-xs text-gray-500">Actual</span></th>
-                  <th className="text-left py-3 px-2 font-medium text-gray-900">Clock In<br/><span className="text-xs text-gray-500">Adjusted</span></th>
+                  <th className="text-left py-3 px-2 font-medium text-gray-900">Clock In</th>
                   <th className="text-left py-3 px-2 font-medium text-gray-900">Lunch<br/><span className="text-xs text-gray-500">Start</span></th>
                   <th className="text-left py-3 px-2 font-medium text-gray-900">Lunch<br/><span className="text-xs text-gray-500">End</span></th>
                   <th className="text-left py-3 px-2 font-medium text-gray-900">Unpaid<br/><span className="text-xs text-gray-500">Start</span></th>
                   <th className="text-left py-3 px-2 font-medium text-gray-900">Unpaid<br/><span className="text-xs text-gray-500">End</span></th>
-                  <th className="text-left py-3 px-2 font-medium text-gray-900">Clock Out<br/><span className="text-xs text-gray-500">Actual</span></th>
-                  <th className="text-left py-3 px-2 font-medium text-gray-900">Clock Out<br/><span className="text-xs text-gray-500">Adjusted</span></th>
+                  <th className="text-left py-3 px-2 font-medium text-gray-900">Clock Out</th>
                 </tr>
               </thead>
               <tbody>
@@ -571,14 +569,30 @@ const TimeReports: React.FC = () => {
                         day: 'numeric' 
                       })}
                     </td>
-                    <td className="py-3 px-2 font-mono text-gray-900">{day.clock_in_actual || '-'}</td>
-                    <td className="py-3 px-2 font-mono text-blue-600 font-semibold">{day.clock_in_adjusted || '-'}</td>
+                    <td className="py-3 px-2">
+                      {day.clock_in_adjusted ? (
+                        <div>
+                          <div className="font-mono text-blue-600 font-semibold">{day.clock_in_adjusted}</div>
+                          <div className="font-mono text-xs text-gray-500 italic">{day.clock_in_actual}</div>
+                        </div>
+                      ) : (
+                        <span className="text-gray-400">-</span>
+                      )}
+                    </td>
                     <td className="py-3 px-2 font-mono text-orange-600">{day.lunch_start || '-'}</td>
                     <td className="py-3 px-2 font-mono text-orange-600">{day.lunch_end || '-'}</td>
                     <td className="py-3 px-2 font-mono text-purple-600">{day.unpaid_start || '-'}</td>
                     <td className="py-3 px-2 font-mono text-purple-600">{day.unpaid_end || '-'}</td>
-                    <td className="py-3 px-2 font-mono text-gray-900">{day.clock_out_actual || '-'}</td>
-                    <td className="py-3 px-2 font-mono text-red-600 font-semibold">{day.clock_out_adjusted || '-'}</td>
+                    <td className="py-3 px-2">
+                      {day.clock_out_adjusted ? (
+                        <div>
+                          <div className="font-mono text-red-600 font-semibold">{day.clock_out_adjusted}</div>
+                          <div className="font-mono text-xs text-gray-500 italic">{day.clock_out_actual}</div>
+                        </div>
+                      ) : (
+                        <span className="text-gray-400">-</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -596,9 +610,9 @@ const TimeReports: React.FC = () => {
         <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
           <h4 className="text-sm font-semibold text-blue-900 mb-2">Time Adjustment Information</h4>
           <div className="text-sm text-blue-800 space-y-1">
-            <p>• <strong>Actual Times:</strong> The exact time the employee clocked in/out</p>
-            <p>• <strong>Adjusted Times:</strong> Times rounded to the nearest 15-minute increment for payroll</p>
-            <p>• <strong>Color Coding:</strong> Blue = Clock In Adjusted, Red = Clock Out Adjusted</p>
+            <p>• <strong>Large Times:</strong> Adjusted times rounded to the nearest 15-minute increment for payroll</p>
+            <p>• <strong>Small Italic Times:</strong> The exact time the employee clocked in/out</p>
+            <p>• <strong>Color Coding:</strong> Blue = Clock In Times, Red = Clock Out Times</p>
             <p>• Lunch and unpaid break times are recorded as-is (no adjustment needed)</p>
           </div>
         </div>
