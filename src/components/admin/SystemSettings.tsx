@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Settings, Clock, Save } from 'lucide-react';
+import { Settings, Clock, Save, Calendar } from 'lucide-react';
 
 interface SystemSettings {
   default_vacation_allotment: number;
