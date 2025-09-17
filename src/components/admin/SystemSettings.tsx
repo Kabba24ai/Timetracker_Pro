@@ -4,10 +4,12 @@ import { Settings, Clock, Save, Calendar } from 'lucide-react';
 interface SystemSettings {
   default_vacation_allotment: number;
   vacation_accrual_rate: number;
-  pay_buffer_minutes: number;
+  pay_increments: number;
   pay_period_type: 'weekly' | 'biweekly';
   pay_period_start_date: string;
   default_lunch_duration_minutes: number;
+  limit_start_time_to_shift: boolean;
+  limit_end_time_to_shift: boolean;
   daily_shifts: {
     monday: { start: string; end: string; enabled: boolean; lunch_required: boolean };
     tuesday: { start: string; end: string; enabled: boolean; lunch_required: boolean };
@@ -23,10 +25,12 @@ const SystemSettings: React.FC = () => {
   const [settings, setSettings] = useState<SystemSettings>({
     default_vacation_allotment: 80,
     vacation_accrual_rate: 26,
-    pay_buffer_minutes: 15,
+    pay_increments: 15,
     pay_period_type: 'biweekly',
     pay_period_start_date: '2025-01-05',
     default_lunch_duration_minutes: 60,
+    limit_start_time_to_shift: false,
+    limit_end_time_to_shift: false,
     daily_shifts: {
       monday: { start: '08:00', end: '17:00', enabled: true, lunch_required: true },
       tuesday: { start: '08:00', end: '17:00', enabled: true, lunch_required: true },
@@ -129,71 +133,132 @@ const SystemSettings: React.FC = () => {
       </div>
 
       <div className="space-y-6">
-        {/* Vacation Settings */}
+        {/* Main Settings Grid */}
         <div className="bg-gray-50 rounded-lg p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Vacation Settings</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <h3 className="text-lg font-semibold text-gray-900 mb-6">System Configuration</h3>
+          
+          {/* Row 1 */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Default Vacation Allotment (hours)
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Pay Period Type
+              </label>
+              <select
+                value={settings.pay_period_type}
+                onChange={(e) => handleInputChange('pay_period_type', e.target.value)}
+                className="w-32 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              >
+                <option value="weekly">Weekly</option>
+                <option value="biweekly">Biweekly</option>
+              </select>
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Pay Period Start Date
+              </label>
+              <input
+                type="date"
+                value={settings.pay_period_start_date}
+                onChange={(e) => handleInputChange('pay_period_start_date', e.target.value)}
+                className="w-32 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              />
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Default Vacation Allotment
               </label>
               <input
                 type="number"
                 value={settings.default_vacation_allotment}
                 onChange={(e) => handleInputChange('default_vacation_allotment', Number(e.target.value))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-32 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                 min="0"
+                placeholder="80"
               />
-              <p className="text-xs text-gray-500 mt-1">Standard is 80 hours (2 weeks)</p>
+              <p className="text-xs text-gray-500 mt-1">Hours per year</p>
             </div>
+            
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Vacation Accrual Rate (hours worked per hour earned)
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Vacation Accrual Rate
               </label>
               <input
                 type="number"
                 value={settings.vacation_accrual_rate}
                 onChange={(e) => handleInputChange('vacation_accrual_rate', Number(e.target.value))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-32 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                 min="1"
+                placeholder="26"
               />
-              <p className="text-xs text-gray-500 mt-1">1 vacation hour per X hours worked</p>
+              <p className="text-xs text-gray-500 mt-1">Hours worked per hour earned</p>
             </div>
           </div>
-        </div>
-
-        {/* Time Tracking Settings */}
-        <div className="bg-gray-50 rounded-lg p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Time Tracking Settings</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          
+          {/* Row 2 */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Pay Buffer (minutes)
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Pay Increments (minutes)
               </label>
-              <input
-                type="number"
-                value={settings.pay_buffer_minutes}
-                onChange={(e) => handleInputChange('pay_buffer_minutes', Number(e.target.value))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                min="0"
-              />
-              <p className="text-xs text-gray-500 mt-1">Grace period for early/late clock in/out</p>
+              <select
+                value={settings.pay_increments}
+                onChange={(e) => handleInputChange('pay_increments', Number(e.target.value))}
+                className="w-32 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              >
+                <option value={5}>5 minutes</option>
+                <option value={10}>10 minutes</option>
+                <option value={15}>15 minutes</option>
+              </select>
+              <p className="text-xs text-gray-500 mt-1">Time rounding</p>
             </div>
+            
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Default Lunch Duration (minutes)
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Default Lunch Duration
               </label>
               <select
                 value={settings.default_lunch_duration_minutes}
                 onChange={(e) => handleInputChange('default_lunch_duration_minutes', Number(e.target.value))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-32 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
               >
-                <option value={30}>30 minutes</option>
-                <option value={45}>45 minutes</option>
-                <option value={60}>60 minutes</option>
-                <option value={90}>90 minutes</option>
+                <option value={30}>30 min</option>
+                <option value={45}>45 min</option>
+                <option value={60}>60 min</option>
+                <option value={90}>90 min</option>
               </select>
-              <p className="text-xs text-gray-500 mt-1">Standard lunch break duration</p>
+              <p className="text-xs text-gray-500 mt-1">Standard lunch</p>
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Limit Start Time to Shift Start
+              </label>
+              <div className="flex items-center h-10">
+                <input
+                  type="checkbox"
+                  checked={settings.limit_start_time_to_shift}
+                  onChange={(e) => handleInputChange('limit_start_time_to_shift', e.target.checked)}
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                />
+              </div>
+              <p className="text-xs text-gray-500 mt-1">Cap early clock-ins</p>
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Limit End Time to Shift End
+              </label>
+              <div className="flex items-center h-10">
+                <input
+                  type="checkbox"
+                  checked={settings.limit_end_time_to_shift}
+                  onChange={(e) => handleInputChange('limit_end_time_to_shift', e.target.checked)}
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                />
+              </div>
+              <p className="text-xs text-gray-500 mt-1">Cap late clock-outs</p>
             </div>
           </div>
         </div>
@@ -290,62 +355,17 @@ const SystemSettings: React.FC = () => {
           </div>
         </div>
 
-        {/* Pay Period Settings */}
-        <div className="bg-gray-50 rounded-lg p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Pay Period Settings</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Pay Period Type
-              </label>
-              <select
-                value={settings.pay_period_type}
-                onChange={(e) => handleInputChange('pay_period_type', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="weekly">Weekly (7 days)</option>
-                <option value="biweekly">Biweekly (14 days)</option>
-              </select>
-              <p className="text-xs text-gray-500 mt-1">How often employees are paid</p>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Pay Period Start Date
-              </label>
-              <input
-                type="date"
-                value={settings.pay_period_start_date}
-                onChange={(e) => handleInputChange('pay_period_start_date', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <p className="text-xs text-gray-500 mt-1">First day of Pay Period 1</p>
-            </div>
-          </div>
-          <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <div className="flex items-start space-x-3">
-              <Calendar className="h-5 w-5 text-blue-600 mt-0.5" />
-              <div>
-                <h4 className="text-sm font-semibold text-blue-900 mb-2">Pay Period Information</h4>
-                <div className="text-sm text-blue-800 space-y-1">
-                  <p>• Pay periods are numbered sequentially starting from the start date</p>
-                  <p>• {settings.pay_period_type === 'weekly' ? 'Weekly periods run for 7 days' : 'Biweekly periods run for 14 days'}</p>
-                  <p>• All time reports will be organized by pay period for easier payroll processing</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Information Panel */}
+        {/* Time Limits Information Panel */}
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
           <div className="flex items-start space-x-3">
             <Clock className="h-6 w-6 text-blue-600 mt-0.5" />
             <div>
-              <h4 className="text-sm font-semibold text-blue-900 mb-2">Pay Buffer Information</h4>
+              <h4 className="text-sm font-semibold text-blue-900 mb-2">Time Limit Settings</h4>
               <div className="text-sm text-blue-800 space-y-1">
-                <p>• Employees can clock in up to {settings.pay_buffer_minutes} minutes early and still be paid from shift start time</p>
-                <p>• Employees can clock out up to {settings.pay_buffer_minutes} minutes late and still be paid only until shift end time</p>
-                <p>• This prevents time theft while allowing for minor variations in schedule adherence</p>
+                <p>• <strong>Limit Start Time:</strong> When checked, employees who clock in early will have their start time recorded as the scheduled shift start time</p>
+                <p>• <strong>Limit End Time:</strong> When checked, employees who clock out late will have their end time recorded as the scheduled shift end time</p>
+                <p>• <strong>Pay Increments:</strong> Time is rounded to the nearest {settings.pay_increments} minute increment for payroll calculations</p>
+                <p>• These settings help control labor costs while maintaining fair time tracking</p>
               </div>
             </div>
           </div>
