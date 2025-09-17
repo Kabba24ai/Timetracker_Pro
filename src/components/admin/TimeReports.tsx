@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Clock, Calendar, Download, Edit, Plus, Save, X, Trash2 } from 'lucide-react';
+import { Clock, Calendar, Download, Edit, Plus, Save, X, Trash2, ChevronDown } from 'lucide-react';
 
 interface TimeEntry {
   id: string;
@@ -16,6 +16,13 @@ interface TimeReportData {
   lunch_hours: number;
   unpaid_hours: number;
   paid_hours: number;
+}
+
+interface PayPeriod {
+  number: number;
+  start_date: string;
+  end_date: string;
+  label: string;
 }
 
 // Mock report data for demo
@@ -57,14 +64,67 @@ const TimeReports: React.FC = () => {
     date: new Date().toISOString().split('T')[0],
     time: '08:00',
   });
-  const [dateRange, setDateRange] = useState({
-    start: new Date().toISOString().split('T')[0],
-    end: new Date().toISOString().split('T')[0],
-  });
+  const [selectedPayPeriod, setSelectedPayPeriod] = useState<PayPeriod | null>(null);
+  const [payPeriods, setPayPeriods] = useState<PayPeriod[]>([]);
+  const [showPayPeriodDropdown, setShowPayPeriodDropdown] = useState(false);
 
   useEffect(() => {
-    fetchTimeReports();
-  }, [dateRange]);
+    generatePayPeriods();
+  }, []);
+
+  useEffect(() => {
+    if (selectedPayPeriod) {
+      fetchTimeReports();
+    }
+  }, [selectedPayPeriod]);
+
+  const generatePayPeriods = () => {
+    // Get pay period settings from localStorage
+    const savedSettings = localStorage.getItem('demo_system_settings');
+    const settings = savedSettings ? JSON.parse(savedSettings) : {
+      pay_period_type: 'biweekly',
+      pay_period_start_date: '2024-01-01'
+    };
+
+    const startDate = new Date(settings.pay_period_start_date);
+    const periodLength = settings.pay_period_type === 'weekly' ? 7 : 14;
+    const periods: PayPeriod[] = [];
+    const currentDate = new Date();
+
+    // Generate periods from start date to current date + 2 periods ahead
+    let periodStart = new Date(startDate);
+    let periodNumber = 1;
+
+    while (periodStart <= new Date(currentDate.getTime() + (periodLength * 2 * 24 * 60 * 60 * 1000))) {
+      const periodEnd = new Date(periodStart);
+      periodEnd.setDate(periodEnd.getDate() + periodLength - 1);
+
+      periods.push({
+        number: periodNumber,
+        start_date: periodStart.toISOString().split('T')[0],
+        end_date: periodEnd.toISOString().split('T')[0],
+        label: `Period ${periodNumber}: ${periodStart.toLocaleDateString()} - ${periodEnd.toLocaleDateString()}`
+      });
+
+      periodStart = new Date(periodEnd);
+      periodStart.setDate(periodStart.getDate() + 1);
+      periodNumber++;
+    }
+
+    setPayPeriods(periods);
+    
+    // Set current pay period as default
+    const currentPeriod = periods.find(period => {
+      const today = new Date().toISOString().split('T')[0];
+      return today >= period.start_date && today <= period.end_date;
+    });
+    
+    if (currentPeriod) {
+      setSelectedPayPeriod(currentPeriod);
+    } else if (periods.length > 0) {
+      setSelectedPayPeriod(periods[periods.length - 1]);
+    }
+  };
 
   const fetchTimeReports = async () => {
     setLoading(true);
@@ -87,10 +147,12 @@ const TimeReports: React.FC = () => {
       let entries: TimeEntry[] = [];
       if (savedEntries) {
         const allEntries = JSON.parse(savedEntries);
-        // Filter for date range
+        // Filter for selected pay period
         entries = allEntries.filter((entry: TimeEntry) => {
           const entryDate = entry.timestamp.split('T')[0];
-          return entryDate >= dateRange.start && entryDate <= dateRange.end;
+          return selectedPayPeriod && 
+                 entryDate >= selectedPayPeriod.start_date && 
+                 entryDate <= selectedPayPeriod.end_date;
         });
       }
       
@@ -322,7 +384,7 @@ const TimeReports: React.FC = () => {
           {employeeEntries.length === 0 && (
             <div className="text-center py-8">
               <Clock className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-500">No time entries found for the selected date range.</p>
+              <p className="text-gray-500">No time entries found for the selected pay period.</p>
               <p className="text-sm text-gray-400 mt-1">Add entries using the button above.</p>
             </div>
           )}
@@ -346,28 +408,45 @@ const TimeReports: React.FC = () => {
 
       <div className="mb-4 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
         <p className="text-sm text-yellow-800">
-          <strong>Demo Mode:</strong> Showing sample time report data. Click "Edit" to manage individual employee time entries.
+          <strong>Demo Mode:</strong> Showing sample time report data. Select a pay period and click "Edit" to manage individual employee time entries.
         </p>
       </div>
 
-      <div className="mb-6 flex items-center space-x-4 bg-gray-50 p-4 rounded-lg">
+      <div className="mb-6 bg-gray-50 p-4 rounded-lg">
         <div className="flex items-center space-x-2">
           <Calendar className="h-5 w-5 text-gray-600" />
-          <label className="text-sm font-medium text-gray-700">Date Range:</label>
+          <label className="text-sm font-medium text-gray-700">Pay Period:</label>
         </div>
-        <input
-          type="date"
-          value={dateRange.start}
-          onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))}
-          className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-        <span className="text-gray-500">to</span>
-        <input
-          type="date"
-          value={dateRange.end}
-          onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))}
-          className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
+        <div className="relative mt-2">
+          <button
+            onClick={() => setShowPayPeriodDropdown(!showPayPeriodDropdown)}
+            className="w-full md:w-96 px-4 py-2 text-left bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 flex items-center justify-between"
+          >
+            <span className="text-gray-900">
+              {selectedPayPeriod ? selectedPayPeriod.label : 'Select a pay period...'}
+            </span>
+            <ChevronDown className="h-5 w-5 text-gray-400" />
+          </button>
+          
+          {showPayPeriodDropdown && (
+            <div className="absolute z-10 w-full md:w-96 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+              {payPeriods.map((period) => (
+                <button
+                  key={period.number}
+                  onClick={() => {
+                    setSelectedPayPeriod(period);
+                    setShowPayPeriodDropdown(false);
+                  }}
+                  className={`w-full px-4 py-2 text-left hover:bg-blue-50 ${
+                    selectedPayPeriod?.number === period.number ? 'bg-blue-50 text-blue-600' : 'text-gray-900'
+                  }`}
+                >
+                  {period.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {loading ? (
@@ -423,7 +502,7 @@ const TimeReports: React.FC = () => {
           {reportData.length === 0 && (
             <div className="text-center py-8">
               <Clock className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-500">No time data found for the selected date range.</p>
+              <p className="text-gray-500">No time data found for the selected pay period.</p>
             </div>
           )}
         </div>

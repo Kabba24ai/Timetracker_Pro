@@ -7,6 +7,8 @@ interface SystemSettings {
   pay_buffer_minutes: number;
   default_shift_start: string;
   default_shift_end: string;
+  pay_period_type: 'weekly' | 'biweekly';
+  pay_period_start_date: string;
 }
 
 const SystemSettings: React.FC = () => {
@@ -16,6 +18,8 @@ const SystemSettings: React.FC = () => {
     pay_buffer_minutes: 15,
     default_shift_start: '08:00',
     default_shift_end: '17:00',
+    pay_period_type: 'biweekly',
+    pay_period_start_date: '2024-01-01',
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -163,6 +167,52 @@ const SystemSettings: React.FC = () => {
                 onChange={(e) => handleInputChange('default_shift_end', e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
+            </div>
+          </div>
+        </div>
+
+        {/* Pay Period Settings */}
+        <div className="bg-gray-50 rounded-lg p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Pay Period Settings</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Pay Period Type
+              </label>
+              <select
+                value={settings.pay_period_type}
+                onChange={(e) => handleInputChange('pay_period_type', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="weekly">Weekly (7 days)</option>
+                <option value="biweekly">Biweekly (14 days)</option>
+              </select>
+              <p className="text-xs text-gray-500 mt-1">How often employees are paid</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Pay Period Start Date
+              </label>
+              <input
+                type="date"
+                value={settings.pay_period_start_date}
+                onChange={(e) => handleInputChange('pay_period_start_date', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <p className="text-xs text-gray-500 mt-1">First day of Pay Period 1</p>
+            </div>
+          </div>
+          <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div className="flex items-start space-x-3">
+              <Calendar className="h-5 w-5 text-blue-600 mt-0.5" />
+              <div>
+                <h4 className="text-sm font-semibold text-blue-900 mb-2">Pay Period Information</h4>
+                <div className="text-sm text-blue-800 space-y-1">
+                  <p>• Pay periods are numbered sequentially starting from the start date</p>
+                  <p>• {settings.pay_period_type === 'weekly' ? 'Weekly periods run for 7 days' : 'Biweekly periods run for 14 days'}</p>
+                  <p>• All time reports will be organized by pay period for easier payroll processing</p>
+                </div>
+              </div>
             </div>
           </div>
         </div>
