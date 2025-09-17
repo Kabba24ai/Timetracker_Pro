@@ -85,6 +85,12 @@ const TimeReports: React.FC = () => {
     };
 
     const startDate = new Date(settings.pay_period_start_date);
+    
+    // Validate the date - if invalid, use default
+    if (isNaN(startDate.getTime())) {
+      startDate.setTime(new Date('2025-01-05').getTime());
+    }
+    
     const periodLength = settings.pay_period_type === 'weekly' ? 7 : 14;
     const periods: PayPeriod[] = [];
     const currentDate = new Date();
