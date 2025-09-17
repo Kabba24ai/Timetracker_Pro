@@ -73,9 +73,7 @@ const TimeReports: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (selectedPayPeriod) {
-      fetchTimeReports();
-    }
+    fetchTimeReports();
   }, [selectedPayPeriod]);
 
   const generatePayPeriods = () => {
@@ -95,7 +93,8 @@ const TimeReports: React.FC = () => {
     let periodStart = new Date(startDate);
     let periodNumber = 1;
 
-    while (periodStart <= new Date(currentDate.getTime() + (periodLength * 2 * 24 * 60 * 60 * 1000))) {
+    // Generate at least 10 periods to ensure we have data
+    while (periodNumber <= 10) {
       const periodEnd = new Date(periodStart);
       periodEnd.setDate(periodEnd.getDate() + periodLength - 1);
 
@@ -113,20 +112,18 @@ const TimeReports: React.FC = () => {
 
     setPayPeriods(periods);
     
-    // Set current pay period as default
-    const currentPeriod = periods.find(period => {
-      const today = new Date().toISOString().split('T')[0];
-      return today >= period.start_date && today <= period.end_date;
-    });
-    
-    if (currentPeriod) {
-      setSelectedPayPeriod(currentPeriod);
-    } else if (periods.length > 0) {
-      setSelectedPayPeriod(periods[periods.length - 1]);
+    // Set first period as default (our demo data period)
+    if (periods.length > 0) {
+      setSelectedPayPeriod(periods[0]);
     }
   };
 
   const fetchTimeReports = async () => {
+    if (!selectedPayPeriod) {
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
       // Calculate actual report data from time entries
@@ -147,8 +144,7 @@ const TimeReports: React.FC = () => {
           // Filter for selected pay period
           entries = allEntries.filter((entry: any) => {
             const entryDate = entry.timestamp.split('T')[0];
-            return selectedPayPeriod && 
-                   entryDate >= selectedPayPeriod.start_date && 
+            return entryDate >= selectedPayPeriod.start_date && 
                    entryDate <= selectedPayPeriod.end_date;
           });
         }
@@ -167,6 +163,7 @@ const TimeReports: React.FC = () => {
       setReportData(reportData);
     } catch (error) {
       console.error('Error fetching time reports:', error);
+      setReportData([]); // Set empty data on error
     } finally {
       setLoading(false);
     }
