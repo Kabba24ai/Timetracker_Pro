@@ -5,10 +5,17 @@ interface SystemSettings {
   default_vacation_allotment: number;
   vacation_accrual_rate: number;
   pay_buffer_minutes: number;
-  default_shift_start: string;
-  default_shift_end: string;
   pay_period_type: 'weekly' | 'biweekly';
   pay_period_start_date: string;
+  daily_shifts: {
+    monday: { start: string; end: string; enabled: boolean };
+    tuesday: { start: string; end: string; enabled: boolean };
+    wednesday: { start: string; end: string; enabled: boolean };
+    thursday: { start: string; end: string; enabled: boolean };
+    friday: { start: string; end: string; enabled: boolean };
+    saturday: { start: string; end: string; enabled: boolean };
+    sunday: { start: string; end: string; enabled: boolean };
+  };
 }
 
 const SystemSettings: React.FC = () => {
@@ -16,10 +23,17 @@ const SystemSettings: React.FC = () => {
     default_vacation_allotment: 80,
     vacation_accrual_rate: 26,
     pay_buffer_minutes: 15,
-    default_shift_start: '08:00',
-    default_shift_end: '17:00',
     pay_period_type: 'biweekly',
     pay_period_start_date: '2025-01-05',
+    daily_shifts: {
+      monday: { start: '08:00', end: '17:00', enabled: true },
+      tuesday: { start: '08:00', end: '17:00', enabled: true },
+      wednesday: { start: '08:00', end: '17:00', enabled: true },
+      thursday: { start: '08:00', end: '17:00', enabled: true },
+      friday: { start: '08:00', end: '17:00', enabled: true },
+      saturday: { start: '08:00', end: '17:00', enabled: false },
+      sunday: { start: '08:00', end: '17:00', enabled: false },
+    },
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -56,6 +70,23 @@ const SystemSettings: React.FC = () => {
 
   const handleInputChange = (field: keyof SystemSettings, value: string | number) => {
     setSettings(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleDailyShiftChange = (day: keyof SystemSettings['daily_shifts'], field: 'start' | 'end' | 'enabled', value: string | boolean) => {
+    setSettings(prev => ({
+      ...prev,
+      daily_shifts: {
+        ...prev.daily_shifts,
+        [day]: {
+          ...prev.daily_shifts[day],
+          [field]: value
+        }
+      }
+    }));
+  };
+
+  const getDayLabel = (day: string) => {
+    return day.charAt(0).toUpperCase() + day.slice(1);
   };
 
   if (loading) {
