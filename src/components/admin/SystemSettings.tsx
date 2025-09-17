@@ -7,14 +7,15 @@ interface SystemSettings {
   pay_buffer_minutes: number;
   pay_period_type: 'weekly' | 'biweekly';
   pay_period_start_date: string;
+  default_lunch_duration_minutes: number;
   daily_shifts: {
-    monday: { start: string; end: string; enabled: boolean };
-    tuesday: { start: string; end: string; enabled: boolean };
-    wednesday: { start: string; end: string; enabled: boolean };
-    thursday: { start: string; end: string; enabled: boolean };
-    friday: { start: string; end: string; enabled: boolean };
-    saturday: { start: string; end: string; enabled: boolean };
-    sunday: { start: string; end: string; enabled: boolean };
+    monday: { start: string; end: string; enabled: boolean; lunch_required: boolean };
+    tuesday: { start: string; end: string; enabled: boolean; lunch_required: boolean };
+    wednesday: { start: string; end: string; enabled: boolean; lunch_required: boolean };
+    thursday: { start: string; end: string; enabled: boolean; lunch_required: boolean };
+    friday: { start: string; end: string; enabled: boolean; lunch_required: boolean };
+    saturday: { start: string; end: string; enabled: boolean; lunch_required: boolean };
+    sunday: { start: string; end: string; enabled: boolean; lunch_required: boolean };
   };
 }
 
@@ -25,14 +26,15 @@ const SystemSettings: React.FC = () => {
     pay_buffer_minutes: 15,
     pay_period_type: 'biweekly',
     pay_period_start_date: '2025-01-05',
+    default_lunch_duration_minutes: 60,
     daily_shifts: {
-      monday: { start: '08:00', end: '17:00', enabled: true },
-      tuesday: { start: '08:00', end: '17:00', enabled: true },
-      wednesday: { start: '08:00', end: '17:00', enabled: true },
-      thursday: { start: '08:00', end: '17:00', enabled: true },
-      friday: { start: '08:00', end: '17:00', enabled: true },
-      saturday: { start: '08:00', end: '17:00', enabled: false },
-      sunday: { start: '08:00', end: '17:00', enabled: false },
+      monday: { start: '08:00', end: '17:00', enabled: true, lunch_required: true },
+      tuesday: { start: '08:00', end: '17:00', enabled: true, lunch_required: true },
+      wednesday: { start: '08:00', end: '17:00', enabled: true, lunch_required: true },
+      thursday: { start: '08:00', end: '17:00', enabled: true, lunch_required: true },
+      friday: { start: '08:00', end: '17:00', enabled: true, lunch_required: true },
+      saturday: { start: '08:00', end: '17:00', enabled: false, lunch_required: false },
+      sunday: { start: '08:00', end: '17:00', enabled: false, lunch_required: false },
     },
   });
   const [loading, setLoading] = useState(true);
@@ -72,7 +74,7 @@ const SystemSettings: React.FC = () => {
     setSettings(prev => ({ ...prev, [field]: value }));
   };
 
-  const handleDailyShiftChange = (day: keyof SystemSettings['daily_shifts'], field: 'start' | 'end' | 'enabled', value: string | boolean) => {
+  const handleDailyShiftChange = (day: keyof SystemSettings['daily_shifts'], field: 'start' | 'end' | 'enabled' | 'lunch_required', value: string | boolean) => {
     setSettings(prev => ({
       ...prev,
       daily_shifts: {
@@ -163,7 +165,7 @@ const SystemSettings: React.FC = () => {
         {/* Time Tracking Settings */}
         <div className="bg-gray-50 rounded-lg p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Time Tracking Settings</h3>
-          <div className="grid grid-cols-1 md:grid-cols-1 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Pay Buffer (minutes)
@@ -177,6 +179,22 @@ const SystemSettings: React.FC = () => {
               />
               <p className="text-xs text-gray-500 mt-1">Grace period for early/late clock in/out</p>
             </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Default Lunch Duration (minutes)
+              </label>
+              <select
+                value={settings.default_lunch_duration_minutes}
+                onChange={(e) => handleInputChange('default_lunch_duration_minutes', Number(e.target.value))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value={30}>30 minutes</option>
+                <option value={45}>45 minutes</option>
+                <option value={60}>60 minutes</option>
+                <option value={90}>90 minutes</option>
+              </select>
+              <p className="text-xs text-gray-500 mt-1">Standard lunch break duration</p>
+            </div>
           </div>
         </div>
 
@@ -186,7 +204,7 @@ const SystemSettings: React.FC = () => {
           <div className="space-y-4">
             {Object.entries(settings.daily_shifts).map(([day, shift]) => (
               <div key={day} className="flex items-center space-x-4 p-4 bg-white rounded-lg border">
-                <div className="flex items-center space-x-3 w-32">
+                <div className="flex items-center space-x-3 w-28">
                   <input
                     type="checkbox"
                     checked={shift.enabled}
@@ -221,6 +239,19 @@ const SystemSettings: React.FC = () => {
                     />
                   </div>
                   
+                  <div className="flex-1">
+                    <label className="block text-xs text-gray-500 mb-1">Lunch Required</label>
+                    <div className="flex items-center justify-center h-10">
+                      <input
+                        type="checkbox"
+                        checked={shift.lunch_required}
+                        onChange={(e) => handleDailyShiftChange(day as keyof SystemSettings['daily_shifts'], 'lunch_required', e.target.checked)}
+                        disabled={!shift.enabled}
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded disabled:opacity-50"
+                      />
+                    </div>
+                  </div>
+                  
                   <div className="w-20 text-right">
                     {shift.enabled && (
                       <div className="text-sm text-gray-600">
@@ -248,6 +279,8 @@ const SystemSettings: React.FC = () => {
                 <h4 className="text-sm font-semibold text-blue-900 mb-2">Daily Shift Information</h4>
                 <div className="text-sm text-blue-800 space-y-1">
                   <p>• Configure different start and end times for each day of the week</p>
+                  <p>• Check "Lunch Required" for days when employees must take a lunch break</p>
+                  <p>• Default lunch duration is {settings.default_lunch_duration_minutes} minutes (configurable above)</p>
                   <p>• Uncheck days when your business is closed</p>
                   <p>• These settings will be used for scheduling and payroll calculations</p>
                   <p>• Hours shown are the total shift length for each day</p>
