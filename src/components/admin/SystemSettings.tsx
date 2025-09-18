@@ -154,6 +154,21 @@ const SystemSettings: React.FC = () => {
           {/* Row 1 */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
             <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Limit End Time to Shift End
+              </label>
+              <div className="flex items-center h-10">
+                <input
+                  type="checkbox"
+                  checked={settings.limit_end_time_to_shift}
+                  onChange={(e) => handleInputChange('limit_end_time_to_shift', e.target.checked)}
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                />
+              </div>
+              <p className="text-xs text-gray-500 mt-1">Cap late clock-outs</p>
+            </div>
+          </div>
+          
           <div className="space-y-6">
             {/* Row 1: 1st Reminder Minutes */}
             <div className="flex items-center space-x-4">
@@ -191,7 +206,7 @@ const SystemSettings: React.FC = () => {
                 {160 - settings.clock_in_message_1.length} characters remaining
               </p>
             </div>
-                Limit End Time to Shift End
+
             {/* Row 3: 2nd Reminder Minutes */}
             <div className="flex items-center space-x-4">
               <label className="block text-sm font-medium text-gray-700 w-48">
@@ -210,7 +225,7 @@ const SystemSettings: React.FC = () => {
               </select>
               <span className="text-xs text-gray-500">after shift start</span>
             </div>
-              </label>
+
             {/* Row 4: 2nd Reminder Message Box */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -228,7 +243,7 @@ const SystemSettings: React.FC = () => {
                 {160 - settings.clock_in_message_2.length} characters remaining
               </p>
             </div>
-              <div className="flex items-center h-10">
+
             {/* Auto Clock-Out Settings */}
             <div className="pt-4 border-t border-gray-200">
               <div className="flex items-center space-x-4 mb-4">
@@ -248,7 +263,7 @@ const SystemSettings: React.FC = () => {
                 </select>
                 <span className="text-xs text-gray-500">after shift end</span>
               </div>
-                <input
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Auto Clock-Out Message
@@ -265,15 +280,6 @@ const SystemSettings: React.FC = () => {
                   {160 - settings.auto_clock_out_message.length} characters remaining
                 </p>
               </div>
-            </div>
-          </div>
-                  type="checkbox"
-                  checked={settings.limit_end_time_to_shift}
-                  onChange={(e) => handleInputChange('limit_end_time_to_shift', e.target.checked)}
-                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                />
-              </div>
-              <p className="text-xs text-gray-500 mt-1">Cap late clock-outs</p>
             </div>
           </div>
         </div>
