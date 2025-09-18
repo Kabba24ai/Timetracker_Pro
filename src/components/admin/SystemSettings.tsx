@@ -147,7 +147,8 @@ const SystemSettings: React.FC = () => {
         <div className="bg-gray-50 rounded-lg p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-6">System Configuration</h3>
           
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
+          {/* First Row - 4 columns */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Pay Increments (minutes)
@@ -204,8 +205,8 @@ const SystemSettings: React.FC = () => {
             </div>
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-            
+          {/* Second Row - 2 columns for checkboxes */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 <input
@@ -231,7 +232,8 @@ const SystemSettings: React.FC = () => {
             </div>
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* Third Row - Clock-in reminders */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 1st Clock-In Reminder
@@ -265,26 +267,10 @@ const SystemSettings: React.FC = () => {
                 <option value={60}>60 minutes after shift start</option>
               </select>
             </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Auto Clock-Out Limit
-              </label>
-              <select
-                value={settings.auto_clock_out_limit_minutes}
-                onChange={(e) => handleInputChange('auto_clock_out_limit_minutes', Number(e.target.value))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value={30}>30 minutes after shift end</option>
-                <option value={45}>45 minutes after shift end</option>
-                <option value={60}>60 minutes after shift end</option>
-                <option value={90}>90 minutes after shift end</option>
-                <option value={120}>120 minutes after shift end</option>
-              </select>
-            </div>
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+          {/* Fourth Row - Reminder messages */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 1st Reminder Message
@@ -320,7 +306,28 @@ const SystemSettings: React.FC = () => {
             </div>
           </div>
           
-          <div className="mt-6">
+          {/* Fifth Row - Auto clock-out settings */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Auto Clock-Out Limit
+              </label>
+              <select
+                value={settings.auto_clock_out_limit_minutes}
+                onChange={(e) => handleInputChange('auto_clock_out_limit_minutes', Number(e.target.value))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value={30}>30 minutes after shift end</option>
+                <option value={45}>45 minutes after shift end</option>
+                <option value={60}>60 minutes after shift end</option>
+                <option value={90}>90 minutes after shift end</option>
+                <option value={120}>120 minutes after shift end</option>
+              </select>
+            </div>
+          </div>
+          
+          {/* Sixth Row - Auto clock-out message */}
+          <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Auto Clock-Out Message
             </label>
