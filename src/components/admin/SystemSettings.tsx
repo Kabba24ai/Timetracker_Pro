@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Settings, Clock, Save, Calendar } from 'lucide-react';
 
 interface SystemSettings {
-  default_vacation_allotment: number;
   vacation_accrual_rate: number;
+  vacation_eligibility_days: number;
   pay_increments: number;
   pay_period_type: 'weekly' | 'biweekly';
   pay_period_start_date: string;
@@ -30,8 +30,8 @@ interface SystemSettings {
 
 const SystemSettings: React.FC = () => {
   const [settings, setSettings] = useState<SystemSettings>({
-    default_vacation_allotment: 80,
     vacation_accrual_rate: 26,
+    vacation_eligibility_days: 90,
     pay_increments: 15,
     pay_period_type: 'biweekly',
     pay_period_start_date: '2025-01-05',
@@ -154,15 +154,16 @@ const SystemSettings: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Default Vacation Allotment (hours)
+                Vacation Eligibility Period (days)
               </label>
               <input
                 type="number"
-                value={settings.default_vacation_allotment}
-                onChange={(e) => handleInputChange('default_vacation_allotment', Number(e.target.value))}
+                value={settings.vacation_eligibility_days}
+                onChange={(e) => handleInputChange('vacation_eligibility_days', Number(e.target.value))}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 min="0"
               />
+              <p className="text-xs text-gray-500 mt-1">Days after hire before vacation starts accruing</p>
             </div>
             
             <div>
