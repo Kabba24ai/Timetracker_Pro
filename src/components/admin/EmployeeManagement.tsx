@@ -139,7 +139,7 @@ const EmployeeManagement: React.FC = () => {
             
             {/* View-Only Employee Information */}
             <div className="bg-gray-50 rounded-lg p-4 mb-6">
-              <h4 className="text-sm font-semibold text-gray-900 mb-3">Employee Information (View Only)</h4>
+              <h4 className="text-sm font-semibold text-gray-900 mb-3">Employee Information (View Only - From Roles Module)</h4>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">First Name</label>
