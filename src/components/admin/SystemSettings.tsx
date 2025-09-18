@@ -2,8 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Settings, Clock, Save, Calendar } from 'lucide-react';
 
 interface SystemSettings {
-  vacation_accrual_rate: number;
-  vacation_eligibility_days: number;
   pay_increments: number;
   pay_period_type: 'weekly' | 'biweekly';
   pay_period_start_date: string;
@@ -30,8 +28,6 @@ interface SystemSettings {
 
 const SystemSettings: React.FC = () => {
   const [settings, setSettings] = useState<SystemSettings>({
-    vacation_accrual_rate: 26,
-    vacation_eligibility_days: 90,
     pay_increments: 15,
     pay_period_type: 'biweekly',
     pay_period_start_date: '2025-01-05',
