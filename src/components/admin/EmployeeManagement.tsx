@@ -154,9 +154,9 @@ const EmployeeManagement: React.FC = () => {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Employee Time Clock Code</label>
                   <div className="px-3 py-2 bg-white border border-gray-200 rounded-lg text-gray-900">
-                    {editingEmployee.email}
+                    {editingEmployee.id.padStart(4, '0')}
                   </div>
                 </div>
                 <div>
