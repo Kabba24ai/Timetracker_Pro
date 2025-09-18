@@ -241,7 +241,7 @@ const SystemSettings: React.FC = () => {
               <select
                 value={settings.first_clock_in_reminder_minutes}
                 onChange={(e) => handleInputChange('first_clock_in_reminder_minutes', Number(e.target.value))}
-                className="w-[120px] px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-[250px] px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value={5}>5 minutes after shift start</option>
                 <option value={10}>10 minutes after shift start</option>
@@ -258,7 +258,7 @@ const SystemSettings: React.FC = () => {
               <select
                 value={settings.second_clock_in_reminder_minutes}
                 onChange={(e) => handleInputChange('second_clock_in_reminder_minutes', Number(e.target.value))}
-                className="w-[120px] px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-[250px] px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value={15}>15 minutes after shift start</option>
                 <option value={20}>20 minutes after shift start</option>
