@@ -360,7 +360,9 @@ const SystemSettings: React.FC = () => {
                   <p>• Configure different start and end times for each day of the week</p>
                   <p>• Check "Lunch Required" for days when employees must take a lunch break</p>
                   <p>• Default lunch duration is {settings.default_lunch_duration_minutes} minutes (configurable above)</p>
-                  <p>• Uncheck days when your business is closed</p>
+                  <p>• <strong>Auto Clock-Out:</strong> After {settings.auto_clock_out_limit_minutes} minutes past shift end, employees are automatically clocked out</p>
+                  <p>• <strong>Lunch Deduction:</strong> Auto clock-out includes {settings.default_lunch_duration_minutes} minute lunch deduction if lunch is required for that day</p>
+                  <p>• These settings help control labor costs while maintaining fair time tracking and ensuring accurate payroll</p>
                   <p>• These settings will be used for scheduling and payroll calculations</p>
                   <p>• Hours shown are the total shift length for each day</p>
                 </div>
