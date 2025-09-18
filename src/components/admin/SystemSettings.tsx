@@ -177,9 +177,7 @@ const SystemSettings: React.FC = () => {
                 <option value="biweekly">Bi-weekly</option>
               </select>
             </div>
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
+            
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Pay Period Start Date
@@ -204,6 +202,9 @@ const SystemSettings: React.FC = () => {
                 min="0"
               />
             </div>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
             
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
