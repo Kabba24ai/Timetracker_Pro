@@ -169,27 +169,60 @@ const SystemSettings: React.FC = () => {
             </div>
           </div>
           
-          <div className="space-y-6">
-            {/* Row 1: 1st Reminder Minutes */}
-            <div className="flex items-center space-x-4">
-              <label className="block text-sm font-medium text-gray-700 w-48">
-                1st Clock-In Reminder (Minutes)
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                1st Clock-In Reminder
               </label>
               <select
                 value={settings.first_clock_in_reminder_minutes}
                 onChange={(e) => handleInputChange('first_clock_in_reminder_minutes', Number(e.target.value))}
-                className="w-32 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                <option value={5}>5 minutes</option>
-                <option value={10}>10 minutes</option>
-                <option value={15}>15 minutes</option>
-                <option value={20}>20 minutes</option>
-                <option value={30}>30 minutes</option>
+                <option value={5}>5 minutes after shift start</option>
+                <option value={10}>10 minutes after shift start</option>
+                <option value={15}>15 minutes after shift start</option>
+                <option value={20}>20 minutes after shift start</option>
+                <option value={30}>30 minutes after shift start</option>
               </select>
-              <span className="text-xs text-gray-500">after shift start</span>
             </div>
-
-            {/* Row 2: 1st Reminder Message Box */}
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                2nd Clock-In Reminder
+              </label>
+              <select
+                value={settings.second_clock_in_reminder_minutes}
+                onChange={(e) => handleInputChange('second_clock_in_reminder_minutes', Number(e.target.value))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value={15}>15 minutes after shift start</option>
+                <option value={20}>20 minutes after shift start</option>
+                <option value={30}>30 minutes after shift start</option>
+                <option value={45}>45 minutes after shift start</option>
+                <option value={60}>60 minutes after shift start</option>
+              </select>
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Auto Clock-Out Limit
+              </label>
+              <select
+                value={settings.auto_clock_out_limit_minutes}
+                onChange={(e) => handleInputChange('auto_clock_out_limit_minutes', Number(e.target.value))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value={30}>30 minutes after shift end</option>
+                <option value={45}>45 minutes after shift end</option>
+                <option value={60}>60 minutes after shift end</option>
+                <option value={90}>90 minutes after shift end</option>
+                <option value={120}>120 minutes after shift end</option>
+              </select>
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 1st Reminder Message
@@ -206,27 +239,7 @@ const SystemSettings: React.FC = () => {
                 {160 - settings.clock_in_message_1.length} characters remaining
               </p>
             </div>
-
-            {/* Row 3: 2nd Reminder Minutes */}
-            <div className="flex items-center space-x-4">
-              <label className="block text-sm font-medium text-gray-700 w-48">
-                2nd Clock-In Reminder (Minutes)
-              </label>
-              <select
-                value={settings.second_clock_in_reminder_minutes}
-                onChange={(e) => handleInputChange('second_clock_in_reminder_minutes', Number(e.target.value))}
-                className="w-32 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-              >
-                <option value={15}>15 minutes</option>
-                <option value={20}>20 minutes</option>
-                <option value={30}>30 minutes</option>
-                <option value={45}>45 minutes</option>
-                <option value={60}>60 minutes</option>
-              </select>
-              <span className="text-xs text-gray-500">after shift start</span>
-            </div>
-
-            {/* Row 4: 2nd Reminder Message Box */}
+            
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 2nd Reminder Message
@@ -243,44 +256,23 @@ const SystemSettings: React.FC = () => {
                 {160 - settings.clock_in_message_2.length} characters remaining
               </p>
             </div>
-
-            {/* Auto Clock-Out Settings */}
-            <div className="pt-4 border-t border-gray-200">
-              <div className="flex items-center space-x-4 mb-4">
-                <label className="block text-sm font-medium text-gray-700 w-48">
-                  Auto Clock-Out Limit (Minutes)
-                </label>
-                <select
-                  value={settings.auto_clock_out_limit_minutes}
-                  onChange={(e) => handleInputChange('auto_clock_out_limit_minutes', Number(e.target.value))}
-                  className="w-32 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                >
-                  <option value={30}>30 minutes</option>
-                  <option value={45}>45 minutes</option>
-                  <option value={60}>60 minutes</option>
-                  <option value={90}>90 minutes</option>
-                  <option value={120}>120 minutes</option>
-                </select>
-                <span className="text-xs text-gray-500">after shift end</span>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Auto Clock-Out Message
-                </label>
-                <textarea
-                  value={settings.auto_clock_out_message}
-                  onChange={(e) => handleInputChange('auto_clock_out_message', e.target.value)}
-                  maxLength={160}
-                  rows={3}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-none"
-                  placeholder="Enter auto clock-out message..."
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  {160 - settings.auto_clock_out_message.length} characters remaining
-                </p>
-              </div>
-            </div>
+          </div>
+          
+          <div className="mt-6">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Auto Clock-Out Message
+            </label>
+            <textarea
+              value={settings.auto_clock_out_message}
+              onChange={(e) => handleInputChange('auto_clock_out_message', e.target.value)}
+              maxLength={160}
+              rows={3}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-none"
+              placeholder="Enter auto clock-out message..."
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              {160 - settings.auto_clock_out_message.length} characters remaining
+            </p>
           </div>
         </div>
 
