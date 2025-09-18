@@ -154,118 +154,119 @@ const SystemSettings: React.FC = () => {
           {/* Row 1 */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Pay Period Type
+          <div className="space-y-6">
+            {/* Row 1: 1st Reminder Minutes */}
+            <div className="flex items-center space-x-4">
+              <label className="block text-sm font-medium text-gray-700 w-48">
+                1st Clock-In Reminder (Minutes)
               </label>
               <select
-                value={settings.pay_period_type}
-                onChange={(e) => handleInputChange('pay_period_type', e.target.value)}
-                className="w-32 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-              >
-                <option value="weekly">Weekly</option>
-                <option value="biweekly">Biweekly</option>
-              </select>
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Pay Period Start Date
-              </label>
-              <input
-                type="date"
-                value={settings.pay_period_start_date}
-                onChange={(e) => handleInputChange('pay_period_start_date', e.target.value)}
-                className="w-32 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-              />
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Default Vacation Allotment
-              </label>
-              <input
-                type="number"
-                value={settings.default_vacation_allotment}
-                onChange={(e) => handleInputChange('default_vacation_allotment', Number(e.target.value))}
-                className="w-32 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                min="0"
-                placeholder="80"
-              />
-              <p className="text-xs text-gray-500 mt-1">Hours per year</p>
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Vacation Accrual Rate
-              </label>
-              <input
-                type="number"
-                value={settings.vacation_accrual_rate}
-                onChange={(e) => handleInputChange('vacation_accrual_rate', Number(e.target.value))}
-                className="w-32 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                min="1"
-                placeholder="26"
-              />
-              <p className="text-xs text-gray-500 mt-1">Hours worked per hour earned</p>
-            </div>
-          </div>
-          
-          {/* Row 2 */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Pay Increments (minutes)
-              </label>
-              <select
-                value={settings.pay_increments}
-                onChange={(e) => handleInputChange('pay_increments', Number(e.target.value))}
+                value={settings.first_clock_in_reminder_minutes}
+                onChange={(e) => handleInputChange('first_clock_in_reminder_minutes', Number(e.target.value))}
                 className="w-32 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
               >
                 <option value={5}>5 minutes</option>
                 <option value={10}>10 minutes</option>
                 <option value={15}>15 minutes</option>
+                <option value={20}>20 minutes</option>
+                <option value={30}>30 minutes</option>
               </select>
-              <p className="text-xs text-gray-500 mt-1">Time rounding</p>
+              <span className="text-xs text-gray-500">after shift start</span>
             </div>
-            
+
+            {/* Row 2: 1st Reminder Message Box */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Default Lunch Duration
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                1st Reminder Message
+              </label>
+              <textarea
+                value={settings.clock_in_message_1}
+                onChange={(e) => handleInputChange('clock_in_message_1', e.target.value)}
+                maxLength={160}
+                rows={3}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-none"
+                placeholder="Enter first reminder message..."
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                {160 - settings.clock_in_message_1.length} characters remaining
+              </p>
+            </div>
+                Limit End Time to Shift End
+            {/* Row 3: 2nd Reminder Minutes */}
+            <div className="flex items-center space-x-4">
+              <label className="block text-sm font-medium text-gray-700 w-48">
+                2nd Clock-In Reminder (Minutes)
               </label>
               <select
-                value={settings.default_lunch_duration_minutes}
-                onChange={(e) => handleInputChange('default_lunch_duration_minutes', Number(e.target.value))}
+                value={settings.second_clock_in_reminder_minutes}
+                onChange={(e) => handleInputChange('second_clock_in_reminder_minutes', Number(e.target.value))}
                 className="w-32 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
               >
-                <option value={30}>30 min</option>
-                <option value={45}>45 min</option>
-                <option value={60}>60 min</option>
-                <option value={90}>90 min</option>
+                <option value={15}>15 minutes</option>
+                <option value={20}>20 minutes</option>
+                <option value={30}>30 minutes</option>
+                <option value={45}>45 minutes</option>
+                <option value={60}>60 minutes</option>
               </select>
-              <p className="text-xs text-gray-500 mt-1">Standard lunch</p>
+              <span className="text-xs text-gray-500">after shift start</span>
             </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Limit Start Time to Shift Start
               </label>
+            {/* Row 4: 2nd Reminder Message Box */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                2nd Reminder Message
+              </label>
+              <textarea
+                value={settings.clock_in_message_2}
+                onChange={(e) => handleInputChange('clock_in_message_2', e.target.value)}
+                maxLength={160}
+                rows={3}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-none"
+                placeholder="Enter second reminder message..."
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                {160 - settings.clock_in_message_2.length} characters remaining
+              </p>
+            </div>
               <div className="flex items-center h-10">
-                <input
-                  type="checkbox"
-                  checked={settings.limit_start_time_to_shift}
-                  onChange={(e) => handleInputChange('limit_start_time_to_shift', e.target.checked)}
-                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                />
+            {/* Auto Clock-Out Settings */}
+            <div className="pt-4 border-t border-gray-200">
+              <div className="flex items-center space-x-4 mb-4">
+                <label className="block text-sm font-medium text-gray-700 w-48">
+                  Auto Clock-Out Limit (Minutes)
+                </label>
+                <select
+                  value={settings.auto_clock_out_limit_minutes}
+                  onChange={(e) => handleInputChange('auto_clock_out_limit_minutes', Number(e.target.value))}
+                  className="w-32 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                >
+                  <option value={30}>30 minutes</option>
+                  <option value={45}>45 minutes</option>
+                  <option value={60}>60 minutes</option>
+                  <option value={90}>90 minutes</option>
+                  <option value={120}>120 minutes</option>
+                </select>
+                <span className="text-xs text-gray-500">after shift end</span>
               </div>
-              <p className="text-xs text-gray-500 mt-1">Cap early clock-ins</p>
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Limit End Time to Shift End
-              </label>
-              <div className="flex items-center h-10">
                 <input
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Auto Clock-Out Message
+                </label>
+                <textarea
+                  value={settings.auto_clock_out_message}
+                  onChange={(e) => handleInputChange('auto_clock_out_message', e.target.value)}
+                  maxLength={160}
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-none"
+                  placeholder="Enter auto clock-out message..."
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  {160 - settings.auto_clock_out_message.length} characters remaining
+                </p>
+              </div>
+            </div>
+          </div>
                   type="checkbox"
                   checked={settings.limit_end_time_to_shift}
                   onChange={(e) => handleInputChange('limit_end_time_to_shift', e.target.checked)}
