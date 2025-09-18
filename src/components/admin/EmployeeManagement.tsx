@@ -14,6 +14,7 @@ interface Employee {
   pay_end_buffer?: number;
   vacation_allotment_hours?: number;
   vacation_eligible?: boolean;
+  vacation_start_days?: number;
 }
 
 // Mock employees for demo
@@ -29,6 +30,7 @@ const mockEmployees: Employee[] = [
     shift_end_time: '17:00',
     vacation_allotment_hours: 80,
     vacation_eligible: true,
+    vacation_start_days: 90,
   },
   {
     id: '2',
@@ -41,6 +43,7 @@ const mockEmployees: Employee[] = [
     shift_end_time: '18:00',
     vacation_allotment_hours: 120,
     vacation_eligible: true,
+    vacation_start_days: 30,
   },
   {
     id: '3',
@@ -53,6 +56,7 @@ const mockEmployees: Employee[] = [
     shift_end_time: '16:00',
     vacation_allotment_hours: 0,
     vacation_eligible: false,
+    vacation_start_days: 0,
   }
 ];
 
@@ -133,105 +137,71 @@ const EmployeeManagement: React.FC = () => {
               Edit Employee - {editingEmployee.first_name} {editingEmployee.last_name}
             </h3>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  First Name
-                </label>
-                <input
-                  type="text"
-                  value={editFormData.first_name || ''}
-                  onChange={(e) => setEditFormData(prev => ({ ...prev, first_name: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Last Name
-                </label>
-                <input
-                  type="text"
-                  value={editFormData.last_name || ''}
-                  onChange={(e) => setEditFormData(prev => ({ ...prev, last_name: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Email
-                </label>
-                <input
-                  type="email"
-                  value={editFormData.email || ''}
-                  onChange={(e) => setEditFormData(prev => ({ ...prev, email: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Role
-                </label>
-                <select
-                  value={editFormData.role || 'employee'}
-                  onChange={(e) => setEditFormData(prev => ({ ...prev, role: e.target.value as 'employee' | 'admin' }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="employee">Employee</option>
-                  <option value="admin">Admin</option>
-                </select>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Shift Start Time
-                </label>
-                <input
-                  type="time"
-                  value={editFormData.shift_start_time || ''}
-                  onChange={(e) => setEditFormData(prev => ({ ...prev, shift_start_time: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Shift End Time
-                </label>
-                <input
-                  type="time"
-                  value={editFormData.shift_end_time || ''}
-                  onChange={(e) => setEditFormData(prev => ({ ...prev, shift_end_time: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
+            {/* View-Only Employee Information */}
+            <div className="bg-gray-50 rounded-lg p-4 mb-6">
+              <h4 className="text-sm font-semibold text-gray-900 mb-3">Employee Information (View Only)</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">First Name</label>
+                  <div className="px-3 py-2 bg-white border border-gray-200 rounded-lg text-gray-900">
+                    {editingEmployee.first_name}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Last Name</label>
+                  <div className="px-3 py-2 bg-white border border-gray-200 rounded-lg text-gray-900">
+                    {editingEmployee.last_name}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                  <div className="px-3 py-2 bg-white border border-gray-200 rounded-lg text-gray-900">
+                    {editingEmployee.email}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+                  <div className="px-3 py-2 bg-white border border-gray-200 rounded-lg">
+                    <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
+                      editingEmployee.role === 'admin'
+                        ? 'bg-purple-100 text-purple-800'
+                        : 'bg-blue-100 text-blue-800'
+                    }`}>
+                      {editingEmployee.role}
+                    </span>
+                  </div>
+                </div>
               </div>
             </div>
             
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-              <h4 className="text-sm font-semibold text-blue-900 mb-3">Vacation Settings</h4>
+            {/* Editable Vacation Settings */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-6">
+              <h4 className="text-sm font-semibold text-blue-900 mb-4">Vacation Settings</h4>
               
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div>
-                  <label className="flex items-center space-x-3">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Vacation Eligible
+                  </label>
+                  <label className="flex items-center">
                     <input
                       type="checkbox"
                       checked={editFormData.vacation_eligible || false}
                       onChange={(e) => setEditFormData(prev => ({ 
                         ...prev, 
                         vacation_eligible: e.target.checked,
-                        vacation_allotment_hours: e.target.checked ? (prev.vacation_allotment_hours || 80) : 0
+                        vacation_allotment_hours: e.target.checked ? (prev.vacation_allotment_hours || 80) : 0,
+                        vacation_start_days: e.target.checked ? (prev.vacation_start_days || 90) : 0
                       }))}
                       className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                     />
-                    <span className="text-sm font-medium text-gray-700">Vacation Eligible</span>
+                    <span className="ml-2 text-sm text-gray-700">Enable vacation for this employee</span>
                   </label>
                 </div>
                 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Vacation Rate
+                    Vacation Hours (Annual)
                   </label>
                   <select
                     value={editFormData.vacation_allotment_hours || 0}
@@ -260,6 +230,26 @@ const EmployeeManagement: React.FC = () => {
                     <option value={144}>144 hours</option>
                     <option value={152}>152 hours</option>
                     <option value={160}>160 hours</option>
+                  </select>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Vacation Start (Days after hire)
+                  </label>
+                  <select
+                    value={editFormData.vacation_start_days || 90}
+                    onChange={(e) => setEditFormData(prev => ({ ...prev, vacation_start_days: Number(e.target.value) }))}
+                    disabled={!editFormData.vacation_eligible}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-400"
+                  >
+                    <option value={0}>Immediate</option>
+                    <option value={30}>30 days</option>
+                    <option value={60}>60 days</option>
+                    <option value={90}>90 days</option>
+                    <option value={120}>120 days</option>
+                    <option value={180}>180 days</option>
+                    <option value={365}>1 year</option>
                   </select>
                 </div>
               </div>
