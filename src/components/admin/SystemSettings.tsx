@@ -177,6 +177,17 @@ const SystemSettings: React.FC = () => {
                 <option value="weekly">Weekly</option>
                 <option value="biweekly">Bi-weekly</option>
               </select>
+              <div className="mt-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <input
+                    type="checkbox"
+                    checked={settings.limit_end_time_to_shift}
+                    onChange={(e) => handleInputChange('limit_end_time_to_shift', e.target.checked)}
+                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded mr-2"
+                  />
+                  Limit End Time to Shift End
+                </label>
+              </div>
             </div>
             
             <div>
@@ -205,8 +216,8 @@ const SystemSettings: React.FC = () => {
             </div>
           </div>
           
-          {/* Second Row - 2 columns for checkboxes */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+          {/* Second Row - 1 column for remaining checkbox */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 <input
@@ -216,18 +227,6 @@ const SystemSettings: React.FC = () => {
                   className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded mr-2"
                 />
                 Limit Start Time to Shift Start
-              </label>
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                <input
-                  type="checkbox"
-                  checked={settings.limit_end_time_to_shift}
-                  onChange={(e) => handleInputChange('limit_end_time_to_shift', e.target.checked)}
-                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded mr-2"
-                />
-                Limit End Time to Shift End
               </label>
             </div>
           </div>
