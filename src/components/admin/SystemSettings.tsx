@@ -241,7 +241,7 @@ const SystemSettings: React.FC = () => {
               <select
                 value={settings.first_clock_in_reminder_minutes}
                 onChange={(e) => handleInputChange('first_clock_in_reminder_minutes', Number(e.target.value))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-48 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value={5}>5 minutes after shift start</option>
                 <option value={10}>10 minutes after shift start</option>
