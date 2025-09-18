@@ -210,30 +210,30 @@ const SystemSettings: React.FC = () => {
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Limit Start Time to Shift Start
               </label>
-              <div className="flex items-center h-10">
+             <label className="flex items-center h-10">
                 <input
                   type="checkbox"
                   checked={settings.limit_start_time_to_shift}
                   onChange={(e) => handleInputChange('limit_start_time_to_shift', e.target.checked)}
                   className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                 />
-              </div>
-              <p className="text-xs text-gray-500 mt-1">Cap early clock-ins</p>
+               <span className="ml-2 text-xs text-gray-500">Cap early clock-ins</span>
+             </label>
             </div>
             
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Limit End Time to Shift End
               </label>
-              <div className="flex items-center h-10">
+             <label className="flex items-center h-10">
                 <input
                   type="checkbox"
                   checked={settings.limit_end_time_to_shift}
                   onChange={(e) => handleInputChange('limit_end_time_to_shift', e.target.checked)}
                   className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                 />
-              </div>
-              <p className="text-xs text-gray-500 mt-1">Cap late clock-outs</p>
+               <span className="ml-2 text-xs text-gray-500">Cap late clock-outs</span>
+             </label>
             </div>
           </div>
           
