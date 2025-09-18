@@ -151,8 +151,105 @@ const SystemSettings: React.FC = () => {
         <div className="bg-gray-50 rounded-lg p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-6">System Configuration</h3>
           
-          {/* Row 1 */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Default Vacation Allotment (hours)
+              </label>
+              <input
+                type="number"
+                value={settings.default_vacation_allotment}
+                onChange={(e) => handleInputChange('default_vacation_allotment', Number(e.target.value))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                min="0"
+              />
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Vacation Accrual Rate (hours worked per vacation hour)
+              </label>
+              <input
+                type="number"
+                value={settings.vacation_accrual_rate}
+                onChange={(e) => handleInputChange('vacation_accrual_rate', Number(e.target.value))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                min="1"
+              />
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Pay Increments (minutes)
+              </label>
+              <select
+                value={settings.pay_increments}
+                onChange={(e) => handleInputChange('pay_increments', Number(e.target.value))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value={5}>5 minutes</option>
+                <option value={10}>10 minutes</option>
+                <option value={15}>15 minutes</option>
+                <option value={30}>30 minutes</option>
+              </select>
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Pay Period Type
+              </label>
+              <select
+                value={settings.pay_period_type}
+                onChange={(e) => handleInputChange('pay_period_type', e.target.value as 'weekly' | 'biweekly')}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="weekly">Weekly</option>
+                <option value="biweekly">Bi-weekly</option>
+              </select>
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Pay Period Start Date
+              </label>
+              <input
+                type="date"
+                value={settings.pay_period_start_date}
+                onChange={(e) => handleInputChange('pay_period_start_date', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Default Lunch Duration (minutes)
+              </label>
+              <input
+                type="number"
+                value={settings.default_lunch_duration_minutes}
+                onChange={(e) => handleInputChange('default_lunch_duration_minutes', Number(e.target.value))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                min="0"
+              />
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Limit Start Time to Shift Start
+              </label>
+              <div className="flex items-center h-10">
+                <input
+                  type="checkbox"
+                  checked={settings.limit_start_time_to_shift}
+                  onChange={(e) => handleInputChange('limit_start_time_to_shift', e.target.checked)}
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                />
+              </div>
+              <p className="text-xs text-gray-500 mt-1">Cap early clock-ins</p>
+            </div>
+            
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Limit End Time to Shift End
