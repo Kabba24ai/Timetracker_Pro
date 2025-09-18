@@ -227,23 +227,40 @@ const EmployeeManagement: React.FC = () => {
                     />
                     <span className="text-sm font-medium text-gray-700">Vacation Eligible</span>
                   </label>
-                  <p className="text-xs text-gray-500 mt-1 ml-7">Enable vacation accrual for this employee</p>
                 </div>
                 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Annual Vacation Hours
+                    Vacation Rate
                   </label>
-                  <input
-                    type="number"
+                  <select
                     value={editFormData.vacation_allotment_hours || 0}
                     onChange={(e) => setEditFormData(prev => ({ ...prev, vacation_allotment_hours: Number(e.target.value) }))}
                     disabled={!editFormData.vacation_eligible}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-400"
-                    min="0"
-                    step="8"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">Common values: 40, 80, 120, 160 hours</p>
+                  >
+                    <option value={0}>0 hours</option>
+                    <option value={8}>8 hours</option>
+                    <option value={16}>16 hours</option>
+                    <option value={24}>24 hours</option>
+                    <option value={32}>32 hours</option>
+                    <option value={40}>40 hours</option>
+                    <option value={48}>48 hours</option>
+                    <option value={56}>56 hours</option>
+                    <option value={64}>64 hours</option>
+                    <option value={72}>72 hours</option>
+                    <option value={80}>80 hours</option>
+                    <option value={88}>88 hours</option>
+                    <option value={96}>96 hours</option>
+                    <option value={104}>104 hours</option>
+                    <option value={112}>112 hours</option>
+                    <option value={120}>120 hours</option>
+                    <option value={128}>128 hours</option>
+                    <option value={136}>136 hours</option>
+                    <option value={144}>144 hours</option>
+                    <option value={152}>152 hours</option>
+                    <option value={160}>160 hours</option>
+                  </select>
                 </div>
               </div>
             </div>
