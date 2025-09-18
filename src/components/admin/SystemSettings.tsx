@@ -150,33 +150,6 @@ const SystemSettings: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Vacation Eligibility Period (days)
-              </label>
-              <input
-                type="number"
-                value={settings.vacation_eligibility_days}
-                onChange={(e) => handleInputChange('vacation_eligibility_days', Number(e.target.value))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                min="0"
-              />
-              <p className="text-xs text-gray-500 mt-1">Days after hire before vacation starts accruing</p>
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Vacation Accrual Rate (hours worked per vacation hour)
-              </label>
-              <input
-                type="number"
-                value={settings.vacation_accrual_rate}
-                onChange={(e) => handleInputChange('vacation_accrual_rate', Number(e.target.value))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                min="1"
-              />
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
                 Pay Increments (minutes)
               </label>
               <select
