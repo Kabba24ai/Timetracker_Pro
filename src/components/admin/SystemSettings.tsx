@@ -10,6 +10,13 @@ interface SystemSettings {
   default_lunch_duration_minutes: number;
   limit_start_time_to_shift: boolean;
   limit_end_time_to_shift: boolean;
+  // Automated messaging settings
+  first_clock_in_reminder_minutes: number;
+  second_clock_in_reminder_minutes: number;
+  auto_clock_out_limit_minutes: number;
+  clock_in_message_1: string;
+  clock_in_message_2: string;
+  auto_clock_out_message: string;
   daily_shifts: {
     monday: { start: string; end: string; enabled: boolean; lunch_required: boolean };
     tuesday: { start: string; end: string; enabled: boolean; lunch_required: boolean };
@@ -31,6 +38,13 @@ const SystemSettings: React.FC = () => {
     default_lunch_duration_minutes: 60,
     limit_start_time_to_shift: false,
     limit_end_time_to_shift: false,
+    // Automated messaging defaults
+    first_clock_in_reminder_minutes: 15,
+    second_clock_in_reminder_minutes: 30,
+    auto_clock_out_limit_minutes: 60,
+    clock_in_message_1: "Reminder: Please clock in for your shift. Reply STOP to opt out.",
+    clock_in_message_2: "Final reminder: You haven't clocked in yet. Please clock in now or contact your supervisor.",
+    auto_clock_out_message: "You were automatically clocked out at shift end with lunch deducted. Contact HR if incorrect.",
     daily_shifts: {
       monday: { start: '08:00', end: '17:00', enabled: true, lunch_required: true },
       tuesday: { start: '08:00', end: '17:00', enabled: true, lunch_required: true },
