@@ -163,6 +163,17 @@ const SystemSettings: React.FC = () => {
                 <option value={15}>15 minutes</option>
                 <option value={30}>30 minutes</option>
               </select>
+              <div className="mt-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <input
+                    type="checkbox"
+                    checked={settings.limit_start_time_to_shift}
+                    onChange={(e) => handleInputChange('limit_start_time_to_shift', e.target.checked)}
+                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded mr-2"
+                  />
+                  Limit Start Time to Shift Start
+                </label>
+              </div>
             </div>
             
             <div>
@@ -216,22 +227,7 @@ const SystemSettings: React.FC = () => {
             </div>
           </div>
           
-          {/* Second Row - 1 column for remaining checkbox */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                <input
-                  type="checkbox"
-                  checked={settings.limit_start_time_to_shift}
-                  onChange={(e) => handleInputChange('limit_start_time_to_shift', e.target.checked)}
-                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded mr-2"
-                />
-                Limit Start Time to Shift Start
-              </label>
-            </div>
-          </div>
-          
-          {/* Third Row - Clock-in reminders */}
+          {/* Second Row - Clock-in reminders */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -268,7 +264,7 @@ const SystemSettings: React.FC = () => {
             </div>
           </div>
           
-          {/* Fourth Row - Reminder messages */}
+          {/* Third Row - Reminder messages */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -305,7 +301,7 @@ const SystemSettings: React.FC = () => {
             </div>
           </div>
           
-          {/* Fifth Row - Auto clock-out settings */}
+          {/* Fourth Row - Auto clock-out settings */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -325,7 +321,7 @@ const SystemSettings: React.FC = () => {
             </div>
           </div>
           
-          {/* Sixth Row - Auto clock-out message */}
+          {/* Fifth Row - Auto clock-out message */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Auto Clock-Out Message
