@@ -195,7 +195,7 @@ const EmployeeManagement: React.FC = () => {
                       }))}
                       className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                     />
-                    <span className="ml-2 text-sm text-gray-700">Enable vacation for this employee</span>
+                    <span className="ml-2 text-sm text-gray-700">Enable vacation</span>
                   </label>
                 </div>
                 
@@ -235,7 +235,7 @@ const EmployeeManagement: React.FC = () => {
                 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Vacation Start (Days after hire)
+                    Vacation Start
                   </label>
                   <select
                     value={editFormData.vacation_start_days || 90}
