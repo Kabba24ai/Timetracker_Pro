@@ -310,7 +310,7 @@ const SystemSettings: React.FC = () => {
               <select
                 value={settings.auto_clock_out_limit_minutes}
                 onChange={(e) => handleInputChange('auto_clock_out_limit_minutes', Number(e.target.value))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-[260px] px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value={30}>30 minutes after shift end</option>
                 <option value={45}>45 minutes after shift end</option>
