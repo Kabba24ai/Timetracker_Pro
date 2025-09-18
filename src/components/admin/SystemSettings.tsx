@@ -383,7 +383,7 @@ const SystemSettings: React.FC = () => {
                   
                   <div className="flex-1">
                     <label className="block text-xs text-gray-500 mb-1">Lunch Required</label>
-                    <div className="flex items-center justify-center h-10">
+                    <div className="flex items-center space-x-2 h-10">
                       <input
                         type="checkbox"
                         checked={shift.lunch_required}
@@ -391,6 +391,7 @@ const SystemSettings: React.FC = () => {
                         disabled={!shift.enabled}
                         className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded disabled:opacity-50"
                       />
+                      <span className="text-sm text-gray-700">Required</span>
                     </div>
                   </div>
                   
