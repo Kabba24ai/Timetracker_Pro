@@ -331,7 +331,7 @@ const SystemSettings: React.FC = () => {
               onChange={(e) => handleInputChange('auto_clock_out_message', e.target.value)}
               maxLength={160}
               rows={3}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-none"
+              className="w-[600px] px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-none"
               placeholder="Enter auto clock-out message..."
             />
             <p className="text-xs text-gray-500 mt-1">
