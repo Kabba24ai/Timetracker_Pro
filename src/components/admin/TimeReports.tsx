@@ -16,6 +16,7 @@ interface TimeReportData {
   lunch_hours: number;
   unpaid_hours: number;
   paid_hours: number;
+  vacation_hours: number;
 }
 
 interface PayPeriod {
@@ -34,6 +35,7 @@ const mockReportData: TimeReportData[] = [
     lunch_hours: 4.0,
     unpaid_hours: 1.5,
     paid_hours: 33.0,
+    vacation_hours: 8.0,
   },
   {
     employee_name: 'Jane Smith',
@@ -42,6 +44,7 @@ const mockReportData: TimeReportData[] = [
     lunch_hours: 5.0,
     unpaid_hours: 0.5,
     paid_hours: 36.5,
+    vacation_hours: 0.0,
   },
   {
     employee_name: 'Admin User',
@@ -50,6 +53,7 @@ const mockReportData: TimeReportData[] = [
     lunch_hours: 3.0,
     unpaid_hours: 0.0,
     paid_hours: 32.0,
+    vacation_hours: 0.0,
   }
 ];
 
@@ -164,6 +168,8 @@ const TimeReports: React.FC = () => {
         }
 
         const hours = calculateEmployeeHours(entries);
+        const vacationHours = calculateVacationHours(employee.id, selectedPayPeriod);
+        
         reportData.push({
           employee_name: employee.name,
           employee_id: employee.id,
@@ -171,6 +177,7 @@ const TimeReports: React.FC = () => {
           lunch_hours: hours.lunch,
           unpaid_hours: hours.unpaid,
           paid_hours: hours.paid,
+          vacation_hours: vacationHours,
         });
       }
 
@@ -261,6 +268,46 @@ const TimeReports: React.FC = () => {
       unpaid: Math.round(unpaidHours * 100) / 100,
       paid: Math.round(paidHours * 100) / 100,
     };
+  };
+
+  const calculateVacationHours = (employeeId: string, payPeriod: PayPeriod) => {
+    try {
+      const requestsKey = `vacation_requests_${employeeId}`;
+      const savedRequests = localStorage.getItem(requestsKey);
+      
+      if (!savedRequests) return 0;
+      
+      const requests = JSON.parse(savedRequests);
+      let vacationHours = 0;
+      
+      requests.forEach((request: any) => {
+        if (request.status === 'approved') {
+          // Check if vacation dates overlap with pay period
+          const vacationStart = new Date(request.start_date);
+          const vacationEnd = new Date(request.end_date);
+          const periodStart = new Date(payPeriod.start_date);
+          const periodEnd = new Date(payPeriod.end_date);
+          
+          // Check for overlap
+          if (vacationStart <= periodEnd && vacationEnd >= periodStart) {
+            // Calculate overlapping days and proportional hours
+            const overlapStart = new Date(Math.max(vacationStart.getTime(), periodStart.getTime()));
+            const overlapEnd = new Date(Math.min(vacationEnd.getTime(), periodEnd.getTime()));
+            
+            const totalVacationDays = Math.ceil((vacationEnd.getTime() - vacationStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+            const overlapDays = Math.ceil((overlapEnd.getTime() - overlapStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+            
+            const proportionalHours = (request.hours * overlapDays) / totalVacationDays;
+            vacationHours += proportionalHours;
+          }
+        }
+      });
+      
+      return Math.round(vacationHours * 100) / 100;
+    } catch (error) {
+      console.error('Error calculating vacation hours:', error);
+      return 0;
+    }
   };
 
   const fetchEmployeeEntries = async (employeeId: string) => {
@@ -930,6 +977,7 @@ const TimeReports: React.FC = () => {
                   <th className="text-left py-3 px-4 font-medium text-gray-900">Lunch Hours</th>
                   <th className="text-left py-3 px-4 font-medium text-gray-900">Unpaid Hours</th>
                   <th className="text-left py-3 px-4 font-medium text-gray-900">Paid Hours</th>
+                  <th className="text-left py-3 px-4 font-medium text-gray-900">Vacation Hours</th>
                   <th className="text-left py-3 px-4 font-medium text-gray-900">Actions</th>
                 </tr>
               </thead>
@@ -948,6 +996,9 @@ const TimeReports: React.FC = () => {
                     </td>
                     <td className="py-3 px-4 text-green-600 font-semibold">
                       {report.paid_hours.toFixed(2)}
+                    </td>
+                    <td className="py-3 px-4 text-purple-600 font-semibold">
+                      {report.vacation_hours.toFixed(2)}
                     </td>
                     <td className="py-3 px-4">
                       <button

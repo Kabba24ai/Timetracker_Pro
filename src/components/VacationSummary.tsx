@@ -12,7 +12,8 @@ interface VacationData {
 interface VacationRequest {
   id: string;
   employee_id: string;
-  date: string;
+  start_date: string;
+  end_date: string;
   hours: number;
   status: 'pending' | 'approved' | 'denied';
   created_at: string;
@@ -30,7 +31,8 @@ const VacationSummary: React.FC = () => {
   const [showRequestForm, setShowRequestForm] = useState(false);
   const [vacationRequests, setVacationRequests] = useState<VacationRequest[]>([]);
   const [newRequest, setNewRequest] = useState({
-    date: '',
+    start_date: '',
+    end_date: '',
     hours: 8,
   });
 
@@ -94,7 +96,8 @@ const VacationSummary: React.FC = () => {
     const request: VacationRequest = {
       id: Date.now().toString(),
       employee_id: employee.id,
-      date: newRequest.date,
+      start_date: newRequest.start_date,
+      end_date: newRequest.end_date,
       hours: newRequest.hours,
       status: 'pending',
       created_at: new Date().toISOString(),
@@ -109,7 +112,7 @@ const VacationSummary: React.FC = () => {
 
       setVacationRequests(requests);
       setShowRequestForm(false);
-      setNewRequest({ date: '', hours: 8 });
+      setNewRequest({ start_date: '', end_date: '', hours: 8 });
     } catch (error) {
       console.error('Error submitting vacation request:', error);
     }
@@ -117,7 +120,7 @@ const VacationSummary: React.FC = () => {
 
   const handleCancelRequest = () => {
     setShowRequestForm(false);
-    setNewRequest({ date: '', hours: 8 });
+    setNewRequest({ start_date: '', end_date: '', hours: 8 });
   };
 
   const calculateHoursWorked = (entries: any[]) => {
@@ -202,13 +205,23 @@ const VacationSummary: React.FC = () => {
           <h3 className="text-lg font-semibold text-blue-900 mb-4">Request Vacation Time</h3>
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
               <input
                 type="date"
-                value={newRequest.date}
-                onChange={(e) => setNewRequest(prev => ({ ...prev, date: e.target.value }))}
+                value={newRequest.start_date}
+                onChange={(e) => setNewRequest(prev => ({ ...prev, start_date: e.target.value }))}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 min={new Date().toISOString().split('T')[0]}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">End Date</label>
+              <input
+                type="date"
+                value={newRequest.end_date}
+                onChange={(e) => setNewRequest(prev => ({ ...prev, end_date: e.target.value }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                min={newRequest.start_date || new Date().toISOString().split('T')[0]}
               />
             </div>
             <div>
@@ -231,7 +244,7 @@ const VacationSummary: React.FC = () => {
             <div className="flex items-center space-x-3">
               <button
                 onClick={handleSubmitRequest}
-                disabled={!newRequest.date || newRequest.hours <= 0 || availableHours < newRequest.hours}
+                disabled={!newRequest.start_date || !newRequest.end_date || newRequest.hours <= 0 || availableHours < newRequest.hours}
                 className="flex items-center space-x-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Save className="h-4 w-4" />
@@ -294,7 +307,7 @@ const VacationSummary: React.FC = () => {
                 <div key={request.id} className="flex items-center justify-between p-2 bg-white rounded border">
                   <div>
                     <p className="text-sm font-medium text-gray-900">
-                      {new Date(request.date).toLocaleDateString()} - {request.hours} hours
+                      {new Date(request.start_date).toLocaleDateString()} - {new Date(request.end_date).toLocaleDateString()} ({request.hours} hours)
                     </p>
                     <p className="text-xs text-gray-500">
                       Requested {new Date(request.created_at).toLocaleDateString()}

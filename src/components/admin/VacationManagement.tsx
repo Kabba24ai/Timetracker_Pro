@@ -14,7 +14,8 @@ interface VacationRequest {
   id: string;
   employee_id: string;
   employee_name?: string;
-  date: string;
+  start_date: string;
+  end_date: string;
   hours: number;
   status: 'pending' | 'approved' | 'denied';
   created_at: string;
@@ -304,7 +305,7 @@ const VacationManagement: React.FC = () => {
                         <div>
                           <p className="font-medium text-gray-900">{request.employee_name}</p>
                           <p className="text-sm text-gray-600">
-                            {new Date(request.date).toLocaleDateString()} - {request.hours} hours
+                            {new Date(request.start_date).toLocaleDateString()} - {new Date(request.end_date).toLocaleDateString()} ({request.hours} hours)
                           </p>
                           <p className="text-xs text-gray-500">
                             Requested on {new Date(request.created_at).toLocaleDateString()}
