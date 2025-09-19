@@ -602,7 +602,16 @@ const SystemSettings: React.FC = () => {
 
         {/* Holiday Management */}
         <div className="bg-gray-50 rounded-lg p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Holiday Management</h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-900">Holiday Management</h3>
+            <button
+              onClick={() => setShowAddFloatingHoliday(true)}
+              className="flex items-center space-x-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
+            >
+              <Plus className="h-4 w-4" />
+              <span>Add Floating Holiday</span>
+            </button>
+          </div>
           
           <div className="mb-4">
             <div className="flex items-center space-x-4">
@@ -626,33 +635,111 @@ const SystemSettings: React.FC = () => {
             </div>
           </div>
 
+          {showAddFloatingHoliday && (
+            <div className="mb-6 bg-green-50 border border-green-200 rounded-lg p-4">
+              <h4 className="text-lg font-semibold text-green-900 mb-4">Add Floating Holiday</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Holiday Date
+                  </label>
+                  <input
+                    type="date"
+                    value={newFloatingHoliday.date}
+                    onChange={(e) => setNewFloatingHoliday(prev => ({ ...prev, date: e.target.value }))}
+                    min={`${selectedHolidayYear}-01-01`}
+                    max={`${selectedHolidayYear}-12-31`}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Holiday Name
+                  </label>
+                  <input
+                    type="text"
+                    value={newFloatingHoliday.name}
+                    onChange={(e) => setNewFloatingHoliday(prev => ({ ...prev, name: e.target.value }))}
+                    placeholder="e.g., Company Picnic Day"
+                    maxLength={50}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    {50 - newFloatingHoliday.name.length} characters remaining
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center space-x-3 mt-4">
+                <button
+                  onClick={addFloatingHoliday}
+                  disabled={!newFloatingHoliday.date || !newFloatingHoliday.name.trim()}
+                  className="flex items-center space-x-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Save className="h-4 w-4" />
+                  <span>Add Holiday</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setShowAddFloatingHoliday(false);
+                    setNewFloatingHoliday({ date: '', name: '' });
+                  }}
+                  className="flex items-center space-x-2 bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors"
+                >
+                  <X className="h-4 w-4" />
+                  <span>Cancel</span>
+                </button>
+              </div>
+            </div>
+          )}
           <div className="space-y-4">
-            {settings.holidays[selectedHolidayYear] && Object.entries(settings.holidays[selectedHolidayYear]).map(([holiday, enabled]) => (
-              <div key={holiday} className="flex items-center justify-between p-4 bg-white rounded-lg border">
+            {getAllHolidaysChronological().map((holiday) => (
+              <div key={holiday.key} className="flex items-center justify-between p-4 bg-white rounded-lg border">
                 <div className="flex items-center space-x-3">
                   <input
                     type="checkbox"
-                    checked={enabled}
-                    onChange={(e) => handleHolidayChange(selectedHolidayYear, holiday, e.target.checked)}
+                    checked={holiday.enabled}
+                    onChange={(e) => {
+                      if (holiday.type === 'standard') {
+                        handleHolidayChange(selectedHolidayYear, holiday.key, e.target.checked);
+                      } else {
+                        toggleFloatingHoliday(holiday.key, e.target.checked);
+                      }
+                    }}
                     className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                   />
                   <div>
-                    <label className="text-sm font-medium text-gray-900">
-                      {getHolidayLabel(holiday)}
-                    </label>
+                    <div className="flex items-center space-x-2">
+                      <label className="text-sm font-medium text-gray-900">
+                        {holiday.name}
+                      </label>
+                      {holiday.type === 'floating' && (
+                        <span className="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">
+                          Floating
+                        </span>
+                      )}
+                    </div>
                     <p className="text-xs text-gray-500">
-                      {getHolidayDate(selectedHolidayYear, holiday)}
+                      {formatDisplayDate(holiday.date)}
                     </p>
                   </div>
                 </div>
-                <div className="text-right">
+                <div className="flex items-center space-x-2">
                   <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
-                    enabled 
+                    holiday.enabled 
                       ? 'bg-green-100 text-green-800' 
                       : 'bg-red-100 text-red-800'
                   }`}>
-                    {enabled ? 'Paid Holiday' : 'Work Day'}
+                    {holiday.enabled ? 'Paid Holiday' : 'Work Day'}
                   </span>
+                  {holiday.type === 'floating' && (
+                    <button
+                      onClick={() => removeFloatingHoliday(holiday.key)}
+                      className="p-1 text-red-600 hover:bg-red-50 rounded"
+                      title="Remove floating holiday"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
