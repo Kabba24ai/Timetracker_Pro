@@ -466,6 +466,81 @@ const SystemSettings: React.FC = () => {
           </div>
         </div>
 
+        {/* Holiday Management */}
+        <div className="bg-gray-50 rounded-lg p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Holiday Management</h3>
+          
+          <div className="mb-4">
+            <div className="flex items-center space-x-4">
+              <label className="block text-sm font-medium text-gray-700">
+                Select Year:
+              </label>
+              <select
+                value={selectedHolidayYear}
+                onChange={(e) => {
+                  setSelectedHolidayYear(e.target.value);
+                  addHolidayYear(e.target.value);
+                }}
+                className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="2024">2024</option>
+                <option value="2025">2025</option>
+                <option value="2026">2026</option>
+                <option value="2027">2027</option>
+                <option value="2028">2028</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            {settings.holidays[selectedHolidayYear] && Object.entries(settings.holidays[selectedHolidayYear]).map(([holiday, enabled]) => (
+              <div key={holiday} className="flex items-center justify-between p-4 bg-white rounded-lg border">
+                <div className="flex items-center space-x-3">
+                  <input
+                    type="checkbox"
+                    checked={enabled}
+                    onChange={(e) => handleHolidayChange(selectedHolidayYear, holiday, e.target.checked)}
+                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                  />
+                  <div>
+                    <label className="text-sm font-medium text-gray-900">
+                      {getHolidayLabel(holiday)}
+                    </label>
+                    <p className="text-xs text-gray-500">
+                      {getHolidayDate(selectedHolidayYear, holiday)}
+                    </p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
+                    enabled 
+                      ? 'bg-green-100 text-green-800' 
+                      : 'bg-red-100 text-red-800'
+                  }`}>
+                    {enabled ? 'Paid Holiday' : 'Work Day'}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+          
+          <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div className="flex items-start space-x-3">
+              <Calendar className="h-5 w-5 text-blue-600 mt-0.5" />
+              <div>
+                <h4 className="text-sm font-semibold text-blue-900 mb-2">Holiday Information</h4>
+                <div className="text-sm text-blue-800 space-y-1">
+                  <p>• <strong>Checked holidays</strong> are paid days off - employees don't work but get paid</p>
+                  <p>• <strong>Unchecked holidays</strong> are regular work days - employees work normal hours</p>
+                  <p>• Holiday dates are automatically calculated each year (Memorial Day, Labor Day, etc.)</p>
+                  <p>• These settings affect vacation calculations and payroll reporting</p>
+                  <p>• Configure holidays for each year as needed for your business</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Daily Shift Settings */}
         <div className="bg-gray-50 rounded-lg p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Daily Shift Hours</h3>

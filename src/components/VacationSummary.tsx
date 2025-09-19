@@ -131,12 +131,22 @@ const VacationSummary: React.FC = () => {
     let currentDate = new Date(start);
     let workDaysAdded = 0;
     
+    // Get holiday settings
+    const savedSettings = localStorage.getItem('demo_system_settings');
+    const settings = savedSettings ? JSON.parse(savedSettings) : null;
+    const year = start.getFullYear().toString();
+    const holidays = settings?.holidays?.[year] || {};
+    
+    // Get holiday dates for the year
+    const holidayDates = getHolidayDates(year, holidays);
+    
     // Add work days, skipping weekends
     while (workDaysAdded < workDaysNeeded) {
       const dayOfWeek = currentDate.getDay();
+      const dateString = currentDate.toISOString().split('T')[0];
       
-      // If it's a weekday (Monday = 1, Friday = 5), count it
-      if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+      // If it's a weekday (Monday = 1, Friday = 5) and not a holiday, count it
+      if (dayOfWeek >= 1 && dayOfWeek <= 5 && !holidayDates.includes(dateString)) {
         workDaysAdded++;
       }
       
@@ -152,6 +162,51 @@ const VacationSummary: React.FC = () => {
       month: 'short',
       day: 'numeric'
     });
+  };
+
+  const getHolidayDates = (year: string, holidays: any) => {
+    const yearNum = parseInt(year);
+    const dates: string[] = [];
+    
+    if (holidays.new_years_day) {
+      dates.push(`${year}-01-01`);
+    }
+    
+    if (holidays.memorial_day) {
+      // Last Monday in May
+      const may = new Date(yearNum, 4, 31);
+      const lastMonday = new Date(may);
+      lastMonday.setDate(31 - (may.getDay() + 6) % 7);
+      dates.push(lastMonday.toISOString().split('T')[0]);
+    }
+    
+    if (holidays.independence_day) {
+      dates.push(`${year}-07-04`);
+    }
+    
+    if (holidays.labor_day) {
+      // First Monday in September
+      const sept = new Date(yearNum, 8, 1);
+      const firstMonday = new Date(sept);
+      firstMonday.setDate(1 + (8 - sept.getDay()) % 7);
+      dates.push(firstMonday.toISOString().split('T')[0]);
+    }
+    
+    if (holidays.thanksgiving_day) {
+      // Fourth Thursday in November
+      const nov = new Date(yearNum, 10, 1);
+      const firstThursday = new Date(nov);
+      firstThursday.setDate(1 + (11 - nov.getDay()) % 7);
+      const fourthThursday = new Date(firstThursday);
+      fourthThursday.setDate(firstThursday.getDate() + 21);
+      dates.push(fourthThursday.toISOString().split('T')[0]);
+    }
+    
+    if (holidays.christmas_day) {
+      dates.push(`${year}-12-25`);
+    }
+    
+    return dates;
   };
 
   const calculateHoursWorked = (entries: any[]) => {
