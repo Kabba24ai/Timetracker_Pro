@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Settings, Clock, Save, Calendar } from 'lucide-react';
+import { Settings, Clock, Save, Calendar, Plus, X } from 'lucide-react';
 
 const initialDefaultSettings: SystemSettings = {
   pay_increments: 15,
