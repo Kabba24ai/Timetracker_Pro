@@ -91,13 +91,15 @@ const VacationSummary: React.FC = () => {
   };
 
   const handleSubmitRequest = async () => {
-    if (!employee || !newRequest.date || newRequest.hours <= 0) return;
+    if (!employee || !newRequest.start_date || newRequest.hours <= 0) return;
+
+    const endDate = calculateEndDate(newRequest.start_date, newRequest.hours);
 
     const request: VacationRequest = {
       id: Date.now().toString(),
       employee_id: employee.id,
       start_date: newRequest.start_date,
-      end_date: newRequest.end_date,
+      end_date: endDate,
       hours: newRequest.hours,
       status: 'pending',
       created_at: new Date().toISOString(),
@@ -121,6 +123,35 @@ const VacationSummary: React.FC = () => {
   const handleCancelRequest = () => {
     setShowRequestForm(false);
     setNewRequest({ start_date: '', end_date: '', hours: 8 });
+  };
+
+  const calculateEndDate = (startDate: string, hours: number) => {
+    const start = new Date(startDate);
+    const workDaysNeeded = Math.ceil(hours / 8); // 8 hours per work day
+    let currentDate = new Date(start);
+    let workDaysAdded = 0;
+    
+    // Add work days, skipping weekends
+    while (workDaysAdded < workDaysNeeded) {
+      const dayOfWeek = currentDate.getDay();
+      
+      // If it's a weekday (Monday = 1, Friday = 5), count it
+      if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+        workDaysAdded++;
+      }
+      
+      // If we haven't reached the required work days, move to next day
+      if (workDaysAdded < workDaysNeeded) {
+        currentDate.setDate(currentDate.getDate() + 1);
+      }
+    }
+    
+    return currentDate.toLocaleDateString('en-US', {
+      weekday: 'short',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
   };
 
   const calculateHoursWorked = (entries: any[]) => {
@@ -215,36 +246,45 @@ const VacationSummary: React.FC = () => {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">End Date</label>
-              <input
-                type="date"
-                value={newRequest.end_date}
-                onChange={(e) => setNewRequest(prev => ({ ...prev, end_date: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                min={newRequest.start_date || new Date().toISOString().split('T')[0]}
-              />
-            </div>
-            <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Hours</label>
               <select
                 value={newRequest.hours}
                 onChange={(e) => setNewRequest(prev => ({ ...prev, hours: Number(e.target.value) }))}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                <option value={4}>4 hours (Half day)</option>
-                <option value={8}>8 hours (Full day)</option>
                 <option value={1}>1 hour</option>
                 <option value={2}>2 hours</option>
                 <option value={3}>3 hours</option>
+                <option value={4}>4 hours (Half day)</option>
                 <option value={5}>5 hours</option>
                 <option value={6}>6 hours</option>
                 <option value={7}>7 hours</option>
+                <option value={8}>8 hours (Full day)</option>
+                <option value={16}>16 hours (2 days)</option>
+                <option value={24}>24 hours (3 days)</option>
+                <option value={32}>32 hours (4 days)</option>
+                <option value={40}>40 hours (5 days)</option>
+                <option value={48}>48 hours (6 days)</option>
+                <option value={56}>56 hours (7 days)</option>
+                <option value={64}>64 hours (8 days)</option>
+                <option value={72}>72 hours (9 days)</option>
+                <option value={80}>80 hours (10 days)</option>
               </select>
             </div>
+            {newRequest.start_date && newRequest.hours > 0 && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <p className="text-sm text-blue-800">
+                  <strong>Calculated End Date:</strong> {calculateEndDate(newRequest.start_date, newRequest.hours)}
+                </p>
+                <p className="text-xs text-blue-600 mt-1">
+                  Based on 8 hours per work day, excluding weekends
+                </p>
+              </div>
+            )}
             <div className="flex items-center space-x-3">
               <button
                 onClick={handleSubmitRequest}
-                disabled={!newRequest.start_date || !newRequest.end_date || newRequest.hours <= 0 || availableHours < newRequest.hours}
+                disabled={!newRequest.start_date || newRequest.hours <= 0 || availableHours < newRequest.hours}
                 className="flex items-center space-x-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Save className="h-4 w-4" />

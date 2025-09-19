@@ -305,7 +305,10 @@ const VacationManagement: React.FC = () => {
                         <div>
                           <p className="font-medium text-gray-900">{request.employee_name}</p>
                           <p className="text-sm text-gray-600">
-                            {new Date(request.start_date).toLocaleDateString()} - {new Date(request.end_date).toLocaleDateString()} ({request.hours} hours)
+                            {new Date(request.start_date).toLocaleDateString()} - {new Date(request.end_date).toLocaleDateString()}
+                          </p>
+                          <p className="text-sm font-semibold text-blue-600">
+                            {request.hours} hours ({Math.ceil(request.hours / 8)} work days)
                           </p>
                           <p className="text-xs text-gray-500">
                             Requested on {new Date(request.created_at).toLocaleDateString()}
