@@ -230,6 +230,9 @@ const SystemSettings: React.FC = () => {
     return dates[holiday] ? dates[holiday](yearNum) : '';
   };
   const getDayLabel = (day: string) => {
+    return day.charAt(0).toUpperCase() + day.slice(1);
+  };
+
   const addFloatingHoliday = () => {
     if (!newFloatingHoliday.date || !newFloatingHoliday.name.trim()) return;
     
@@ -361,8 +364,6 @@ const SystemSettings: React.FC = () => {
       day: 'numeric',
       year: 'numeric'
     });
-  };
-    return day.charAt(0).toUpperCase() + day.slice(1);
   };
 
   if (loading) {
