@@ -1,6 +1,50 @@
 import React, { useState, useEffect } from 'react';
 import { Settings, Clock, Save, Calendar } from 'lucide-react';
 
+const initialDefaultSettings: SystemSettings = {
+  pay_increments: 15,
+  pay_period_type: 'biweekly',
+  pay_period_start_date: '2025-01-05',
+  default_lunch_duration_minutes: 60,
+  limit_start_time_to_shift: false,
+  limit_end_time_to_shift: false,
+  // Automated messaging defaults
+  first_clock_in_reminder_minutes: 15,
+  second_clock_in_reminder_minutes: 30,
+  auto_clock_out_limit_minutes: 60,
+  clock_in_message_1: "Reminder: Please clock in for your shift. Reply STOP to opt out.",
+  clock_in_message_2: "Final reminder: You haven't clocked in yet. Please clock in now or contact your supervisor.",
+  auto_clock_out_message: "You were automatically clocked out at shift end with lunch deducted. Contact HR if incorrect.",
+  // Default holidays for current and next year
+  holidays: {
+    '2025': {
+      new_years_day: true,
+      memorial_day: true,
+      independence_day: true,
+      labor_day: true,
+      thanksgiving_day: true,
+      christmas_day: true,
+    },
+    '2026': {
+      new_years_day: true,
+      memorial_day: true,
+      independence_day: true,
+      labor_day: true,
+      thanksgiving_day: true,
+      christmas_day: true,
+    },
+  },
+  daily_shifts: {
+    monday: { start: '08:00', end: '17:00', enabled: true, lunch_required: true },
+    tuesday: { start: '08:00', end: '17:00', enabled: true, lunch_required: true },
+    wednesday: { start: '08:00', end: '17:00', enabled: true, lunch_required: true },
+    thursday: { start: '08:00', end: '17:00', enabled: true, lunch_required: true },
+    friday: { start: '08:00', end: '17:00', enabled: true, lunch_required: true },
+    saturday: { start: '08:00', end: '17:00', enabled: false, lunch_required: false },
+    sunday: { start: '08:00', end: '17:00', enabled: false, lunch_required: false },
+  },
+};
+
 interface SystemSettings {
   pay_increments: number;
   pay_period_type: 'weekly' | 'biweekly';
@@ -38,68 +82,7 @@ interface SystemSettings {
 }
 
 const SystemSettings: React.FC = () => {
-  const [settings, setSettings] = useState<SystemSettings>({
-    pay_increments: 15,
-    pay_period_type: 'biweekly',
-    pay_period_start_date: '2025-01-05',
-    default_lunch_duration_minutes: 60,
-    limit_start_time_to_shift: false,
-    limit_end_time_to_shift: false,
-    // Automated messaging defaults
-    first_clock_in_reminder_minutes: 15,
-    second_clock_in_reminder_minutes: 30,
-    auto_clock_out_limit_minutes: 60,
-    clock_in_message_1: "Reminder: Please clock in for your shift. Reply STOP to opt out.",
-    clock_in_message_2: "Final reminder: You haven't clocked in yet. Please clock in now or contact your supervisor.",
-    auto_clock_out_message: "You were automatically clocked out at shift end with lunch deducted. Contact HR if incorrect.",
-    // Default holidays for current and next year
-    holidays: {
-      '2025': {
-        new_years_day: true,
-        memorial_day: true,
-        independence_day: true,
-        labor_day: true,
-        thanksgiving_day: true,
-        christmas_day: true,
-      },
-      '2026': {
-        new_years_day: true,
-        memorial_day: true,
-        independence_day: true,
-        labor_day: true,
-        thanksgiving_day: true,
-        christmas_day: true,
-      },
-    },
-    // Default holidays for current and next year
-    holidays: {
-      '2025': {
-        new_years_day: true,
-        memorial_day: true,
-        independence_day: true,
-        labor_day: true,
-        thanksgiving_day: true,
-        christmas_day: true,
-      },
-      '2026': {
-        new_years_day: true,
-        memorial_day: true,
-        independence_day: true,
-        labor_day: true,
-        thanksgiving_day: true,
-        christmas_day: true,
-      },
-    },
-    daily_shifts: {
-      monday: { start: '08:00', end: '17:00', enabled: true, lunch_required: true },
-      tuesday: { start: '08:00', end: '17:00', enabled: true, lunch_required: true },
-      wednesday: { start: '08:00', end: '17:00', enabled: true, lunch_required: true },
-      thursday: { start: '08:00', end: '17:00', enabled: true, lunch_required: true },
-      friday: { start: '08:00', end: '17:00', enabled: true, lunch_required: true },
-      saturday: { start: '08:00', end: '17:00', enabled: false, lunch_required: false },
-      sunday: { start: '08:00', end: '17:00', enabled: false, lunch_required: false },
-    },
-  });
+  const [settings, setSettings] = useState<SystemSettings>(initialDefaultSettings);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [selectedHolidayYear, setSelectedHolidayYear] = useState('2025');
@@ -113,7 +96,19 @@ const SystemSettings: React.FC = () => {
       // Load settings from localStorage for demo
       const savedSettings = localStorage.getItem('demo_system_settings');
       if (savedSettings) {
-        setSettings(JSON.parse(savedSettings));
+        const parsedSettings = JSON.parse(savedSettings);
+        setSettings({
+          ...initialDefaultSettings,
+          ...parsedSettings,
+          holidays: {
+            ...initialDefaultSettings.holidays,
+            ...(parsedSettings.holidays || {})
+          },
+          daily_shifts: {
+            ...initialDefaultSettings.daily_shifts,
+            ...(parsedSettings.daily_shifts || {})
+          }
+        });
       }
     } catch (error) {
       console.error('Error fetching settings:', error);
