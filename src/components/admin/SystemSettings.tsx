@@ -68,6 +68,7 @@ interface SystemSettings {
       labor_day: boolean;
       thanksgiving_day: boolean;
       christmas_day: boolean;
+      floating_holidays?: { [date: string]: { name: string; enabled: boolean } };
     };
   };
   daily_shifts: {
@@ -86,6 +87,11 @@ const SystemSettings: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [selectedHolidayYear, setSelectedHolidayYear] = useState('2025');
+  const [showAddFloatingHoliday, setShowAddFloatingHoliday] = useState(false);
+  const [newFloatingHoliday, setNewFloatingHoliday] = useState({
+    date: '',
+    name: ''
+  });
 
   useEffect(() => {
     fetchSettings();
@@ -172,6 +178,7 @@ const SystemSettings: React.FC = () => {
             labor_day: true,
             thanksgiving_day: true,
             christmas_day: true,
+            floating_holidays: {}
           }
         }
       }));
@@ -223,6 +230,138 @@ const SystemSettings: React.FC = () => {
     return dates[holiday] ? dates[holiday](yearNum) : '';
   };
   const getDayLabel = (day: string) => {
+  const addFloatingHoliday = () => {
+    if (!newFloatingHoliday.date || !newFloatingHoliday.name.trim()) return;
+    
+    // Validate date is in selected year
+    const holidayYear = new Date(newFloatingHoliday.date).getFullYear().toString();
+    if (holidayYear !== selectedHolidayYear) {
+      alert(`Please select a date in ${selectedHolidayYear}`);
+      return;
+    }
+    
+    setSettings(prev => ({
+      ...prev,
+      holidays: {
+        ...prev.holidays,
+        [selectedHolidayYear]: {
+          ...prev.holidays[selectedHolidayYear],
+          floating_holidays: {
+            ...prev.holidays[selectedHolidayYear]?.floating_holidays,
+            [newFloatingHoliday.date]: {
+              name: newFloatingHoliday.name.trim(),
+              enabled: true
+            }
+          }
+        }
+      }
+    }));
+    
+    setNewFloatingHoliday({ date: '', name: '' });
+    setShowAddFloatingHoliday(false);
+  };
+
+  const removeFloatingHoliday = (date: string) => {
+    setSettings(prev => {
+      const updatedFloatingHolidays = { ...prev.holidays[selectedHolidayYear]?.floating_holidays };
+      delete updatedFloatingHolidays[date];
+      
+      return {
+        ...prev,
+        holidays: {
+          ...prev.holidays,
+          [selectedHolidayYear]: {
+            ...prev.holidays[selectedHolidayYear],
+            floating_holidays: updatedFloatingHolidays
+          }
+        }
+      };
+    });
+  };
+
+  const toggleFloatingHoliday = (date: string, enabled: boolean) => {
+    setSettings(prev => ({
+      ...prev,
+      holidays: {
+        ...prev.holidays,
+        [selectedHolidayYear]: {
+          ...prev.holidays[selectedHolidayYear],
+          floating_holidays: {
+            ...prev.holidays[selectedHolidayYear]?.floating_holidays,
+            [date]: {
+              ...prev.holidays[selectedHolidayYear]?.floating_holidays?.[date],
+              enabled
+            }
+          }
+        }
+      }
+    }));
+  };
+
+  const getAllHolidaysChronological = () => {
+    const yearHolidays = settings.holidays[selectedHolidayYear];
+    if (!yearHolidays) return [];
+    
+    const holidays: Array<{
+      date: string;
+      name: string;
+      enabled: boolean;
+      type: 'standard' | 'floating';
+      key: string;
+    }> = [];
+    
+    // Add standard holidays
+    Object.entries(yearHolidays).forEach(([holiday, enabled]) => {
+      if (holiday !== 'floating_holidays' && typeof enabled === 'boolean') {
+        const date = getHolidayDate(selectedHolidayYear, holiday);
+        if (date) {
+          // Convert date to sortable format
+          const sortableDate = convertToSortableDate(date);
+          holidays.push({
+            date: sortableDate,
+            name: getHolidayLabel(holiday),
+            enabled,
+            type: 'standard',
+            key: holiday
+          });
+        }
+      }
+    });
+    
+    // Add floating holidays
+    if (yearHolidays.floating_holidays) {
+      Object.entries(yearHolidays.floating_holidays).forEach(([date, holiday]) => {
+        holidays.push({
+          date,
+          name: holiday.name,
+          enabled: holiday.enabled,
+          type: 'floating',
+          key: date
+        });
+      });
+    }
+    
+    // Sort chronologically
+    holidays.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    
+    return holidays;
+  };
+
+  const convertToSortableDate = (dateString: string) => {
+    // Convert "January 1, 2025" to "2025-01-01"
+    const date = new Date(dateString);
+    return date.toISOString().split('T')[0];
+  };
+
+  const formatDisplayDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', { 
+      weekday: 'short',
+      month: 'long', 
+      day: 'numeric',
+      year: 'numeric'
+    });
+  };
     return day.charAt(0).toUpperCase() + day.slice(1);
   };
 
