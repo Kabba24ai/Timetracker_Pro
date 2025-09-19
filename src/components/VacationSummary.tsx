@@ -206,6 +206,15 @@ const VacationSummary: React.FC = () => {
       dates.push(`${year}-12-25`);
     }
     
+    // Add floating holidays
+    if (holidays.floating_holidays) {
+      Object.entries(holidays.floating_holidays).forEach(([date, holiday]: [string, any]) => {
+        if (holiday.enabled) {
+          dates.push(date);
+        }
+      });
+    }
+    
     return dates;
   };
 

@@ -666,9 +666,11 @@ const SystemSettings: React.FC = () => {
                 <div className="text-sm text-blue-800 space-y-1">
                   <p>• <strong>Checked holidays</strong> are paid days off - employees don't work but get paid</p>
                   <p>• <strong>Unchecked holidays</strong> are regular work days - employees work normal hours</p>
+                  <p>• <strong>Floating holidays</strong> are custom dates you can add for company-specific events</p>
                   <p>• Holiday dates are automatically calculated each year (Memorial Day, Labor Day, etc.)</p>
                   <p>• These settings affect vacation calculations and payroll reporting</p>
                   <p>• Configure holidays for each year as needed for your business</p>
+                  <p>• All holidays are displayed in chronological order throughout the year</p>
                 </div>
               </div>
             </div>
