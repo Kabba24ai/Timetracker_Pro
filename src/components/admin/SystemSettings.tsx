@@ -15,6 +15,17 @@ interface SystemSettings {
   clock_in_message_1: string;
   clock_in_message_2: string;
   auto_clock_out_message: string;
+  // Holiday settings
+  holidays: {
+    [year: string]: {
+      new_years_day: boolean;
+      memorial_day: boolean;
+      independence_day: boolean;
+      labor_day: boolean;
+      thanksgiving_day: boolean;
+      christmas_day: boolean;
+    };
+  };
   daily_shifts: {
     monday: { start: string; end: string; enabled: boolean; lunch_required: boolean };
     tuesday: { start: string; end: string; enabled: boolean; lunch_required: boolean };
@@ -41,6 +52,44 @@ const SystemSettings: React.FC = () => {
     clock_in_message_1: "Reminder: Please clock in for your shift. Reply STOP to opt out.",
     clock_in_message_2: "Final reminder: You haven't clocked in yet. Please clock in now or contact your supervisor.",
     auto_clock_out_message: "You were automatically clocked out at shift end with lunch deducted. Contact HR if incorrect.",
+    // Default holidays for current and next year
+    holidays: {
+      '2025': {
+        new_years_day: true,
+        memorial_day: true,
+        independence_day: true,
+        labor_day: true,
+        thanksgiving_day: true,
+        christmas_day: true,
+      },
+      '2026': {
+        new_years_day: true,
+        memorial_day: true,
+        independence_day: true,
+        labor_day: true,
+        thanksgiving_day: true,
+        christmas_day: true,
+      },
+    },
+    // Default holidays for current and next year
+    holidays: {
+      '2025': {
+        new_years_day: true,
+        memorial_day: true,
+        independence_day: true,
+        labor_day: true,
+        thanksgiving_day: true,
+        christmas_day: true,
+      },
+      '2026': {
+        new_years_day: true,
+        memorial_day: true,
+        independence_day: true,
+        labor_day: true,
+        thanksgiving_day: true,
+        christmas_day: true,
+      },
+    },
     daily_shifts: {
       monday: { start: '08:00', end: '17:00', enabled: true, lunch_required: true },
       tuesday: { start: '08:00', end: '17:00', enabled: true, lunch_required: true },
@@ -53,6 +102,7 @@ const SystemSettings: React.FC = () => {
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [selectedHolidayYear, setSelectedHolidayYear] = useState('2025');
 
   useEffect(() => {
     fetchSettings();
@@ -101,6 +151,82 @@ const SystemSettings: React.FC = () => {
     }));
   };
 
+  const handleHolidayChange = (year: string, holiday: string, enabled: boolean) => {
+    setSettings(prev => ({
+      ...prev,
+      holidays: {
+        ...prev.holidays,
+        [year]: {
+          ...prev.holidays[year],
+          [holiday]: enabled
+        }
+      }
+    }));
+  };
+
+  const addHolidayYear = (year: string) => {
+    if (!settings.holidays[year]) {
+      setSettings(prev => ({
+        ...prev,
+        holidays: {
+          ...prev.holidays,
+          [year]: {
+            new_years_day: true,
+            memorial_day: true,
+            independence_day: true,
+            labor_day: true,
+            thanksgiving_day: true,
+            christmas_day: true,
+          }
+        }
+      }));
+    }
+  };
+
+  const getHolidayLabel = (holiday: string) => {
+    const labels: { [key: string]: string } = {
+      new_years_day: "New Year's Day",
+      memorial_day: "Memorial Day",
+      independence_day: "Independence Day",
+      labor_day: "Labor Day",
+      thanksgiving_day: "Thanksgiving Day",
+      christmas_day: "Christmas Day",
+    };
+    return labels[holiday] || holiday;
+  };
+
+  const getHolidayDate = (year: string, holiday: string) => {
+    const yearNum = parseInt(year);
+    const dates: { [key: string]: (year: number) => string } = {
+      new_years_day: (y) => `January 1, ${y}`,
+      memorial_day: (y) => {
+        // Last Monday in May
+        const may = new Date(y, 4, 31); // May 31
+        const lastMonday = new Date(may);
+        lastMonday.setDate(31 - (may.getDay() + 6) % 7);
+        return lastMonday.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+      },
+      independence_day: (y) => `July 4, ${y}`,
+      labor_day: (y) => {
+        // First Monday in September
+        const sept = new Date(y, 8, 1); // September 1
+        const firstMonday = new Date(sept);
+        firstMonday.setDate(1 + (8 - sept.getDay()) % 7);
+        return firstMonday.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+      },
+      thanksgiving_day: (y) => {
+        // Fourth Thursday in November
+        const nov = new Date(y, 10, 1); // November 1
+        const firstThursday = new Date(nov);
+        firstThursday.setDate(1 + (11 - nov.getDay()) % 7);
+        const fourthThursday = new Date(firstThursday);
+        fourthThursday.setDate(firstThursday.getDate() + 21);
+        return fourthThursday.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+      },
+      christmas_day: (y) => `December 25, ${y}`,
+    };
+    return dates[holiday] ? dates[holiday](yearNum) : '';
+  };
   const getDayLabel = (day: string) => {
     return day.charAt(0).toUpperCase() + day.slice(1);
   };
