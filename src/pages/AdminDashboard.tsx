@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { Users, Settings, Calendar, Clock } from 'lucide-react';
+import { Users, Settings, Calendar, Clock, CalendarDays } from 'lucide-react';
 import Header from '../components/Header';
 import EmployeeManagement from '../components/admin/EmployeeManagement';
 import TimeReports from '../components/admin/TimeReports';
 import VacationManagement from '../components/admin/VacationManagement';
 import SystemSettings from '../components/admin/SystemSettings';
+import WorkSchedule from '../components/admin/WorkSchedule';
 
 const AdminDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState('employees');
@@ -12,6 +13,7 @@ const AdminDashboard: React.FC = () => {
   const tabs = [
     { id: 'employees', name: 'Employees', icon: Users },
     { id: 'time-reports', name: 'Time Reports', icon: Clock },
+    { id: 'work-schedule', name: 'Work Schedule', icon: CalendarDays },
     { id: 'vacation', name: 'Vacation Management', icon: Calendar },
     { id: 'settings', name: 'Settings', icon: Settings },
   ];
@@ -22,6 +24,8 @@ const AdminDashboard: React.FC = () => {
         return <EmployeeManagement />;
       case 'time-reports':
         return <TimeReports />;
+      case 'work-schedule':
+        return <WorkSchedule />;
       case 'vacation':
         return <VacationManagement />;
       case 'settings':
