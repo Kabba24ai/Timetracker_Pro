@@ -680,18 +680,18 @@ const WorkSchedule: React.FC = () => {
                       Employee
                     </th>
                     {weekDates.map((date, index) => (
-                      <th key={index} className="text-center py-2 px-1 font-medium text-gray-900 bg-gray-50 min-w-[100px] w-[100px]">
+                      <th key={index} className="text-center py-4 px-3 font-medium text-gray-900 bg-gray-50 min-w-[140px]">
                         <div>
                           <div className="text-sm font-semibold">
                             {date.toLocaleDateString('en-US', { weekday: 'short' })}
                           </div>
-                          <div className="text-xs text-gray-500">
+                          <div className="text-xs text-gray-600">
                             {date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                           </div>
                         </div>
                       </th>
                     ))}
-                    <th className="text-center py-4 px-2 font-medium text-gray-900 bg-gray-50 min-w-[70px] w-[70px]">
+                    <th className="text-center py-4 px-1 font-medium text-gray-900 bg-gray-50 min-w-[60px] w-[60px]">
                       Total
                     </th>
                   </tr>
@@ -706,10 +706,10 @@ const WorkSchedule: React.FC = () => {
                     
                     return (
                       <tr key={employeeId} className="border-b border-gray-100 hover:bg-gray-50">
-                        <td className="py-3 px-4 bg-white sticky left-0 z-10 border-r border-gray-200">
+                        <td className="py-2 px-2 bg-white sticky left-0 z-10 border-r border-gray-200">
                           <div>
                             <div className="flex items-center space-x-2">
-                              <p className="font-medium text-gray-900">{employee?.name}</p>
+                              <p className="font-medium text-gray-900 text-sm truncate">{employee?.name}</p>
                               <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
                                 employee?.role === 'admin'
                                   ? 'bg-purple-100 text-purple-800'
@@ -718,7 +718,7 @@ const WorkSchedule: React.FC = () => {
                                 {employee?.role}
                               </span>
                             </div>
-                            <p className="text-xs text-gray-500">{employee?.primary_store}</p>
+                            <p className="text-xs text-gray-500 truncate">{employee?.primary_store}</p>
                           </div>
                         </td>
                         {weekDates.map((date, dayIndex) => {
@@ -825,7 +825,7 @@ const WorkSchedule: React.FC = () => {
                             </td>
                           );
                         })}
-                        <td className="py-3 px-4 text-center">
+                        <td className="py-2 px-1 text-center">
                           <div className="text-lg font-bold text-blue-600">
                             {totalHours.toFixed(1)}h
                           </div>
