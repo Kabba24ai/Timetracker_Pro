@@ -71,9 +71,17 @@ const WorkSchedule: React.FC = () => {
   const [editValues, setEditValues] = useState<Partial<WorkDay>>({});
   const [showBulkAssign, setShowBulkAssign] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<string>('');
+  const [roleFilter, setRoleFilter] = useState<'all' | 'admin' | 'employee'>('all');
+  const [storeFilter, setStoreFilter] = useState<string>('all');
 
   // Sort employees by role (admin first) then alphabetically
-  const sortedEmployees = [...mockEmployees].sort((a, b) => {
+  const filteredAndSortedEmployees = [...mockEmployees]
+    .filter(emp => {
+      const roleMatch = roleFilter === 'all' || emp.role === roleFilter;
+      const storeMatch = storeFilter === 'all' || emp.primary_store === storeFilter;
+      return roleMatch && storeMatch;
+    })
+    .sort((a, b) => {
     if (a.role !== b.role) {
       return a.role === 'admin' ? -1 : 1;
     }
@@ -88,7 +96,7 @@ const WorkSchedule: React.FC = () => {
     setSelectedWeek(sunday.toISOString().split('T')[0]);
     
     // Pre-check all employees by default
-    setSelectedEmployees(sortedEmployees.map(emp => emp.id));
+    setSelectedEmployees(mockEmployees.map(emp => emp.id));
   }, []);
 
   useEffect(() => {
@@ -115,7 +123,7 @@ const WorkSchedule: React.FC = () => {
         const existingSchedule = savedSchedule ? JSON.parse(savedSchedule) : {};
 
         // Get employee data
-        const employee = sortedEmployees.find(emp => emp.id === employeeId);
+        const employee = mockEmployees.find(emp => emp.id === employeeId);
         
         const weekDays: WorkDay[] = [];
         
@@ -204,7 +212,7 @@ const WorkSchedule: React.FC = () => {
     const updatedWorkDays: { [employeeId: string]: WorkDay[] } = {};
     
     for (const employeeId of selectedEmployees) {
-      const employee = sortedEmployees.find(emp => emp.id === employeeId);
+      const employee = mockEmployees.find(emp => emp.id === employeeId);
       const employeeWorkDays = workDays[employeeId] || [];
       
       const updatedEmployeeWorkDays = employeeWorkDays.map(day => {
@@ -352,6 +360,34 @@ const WorkSchedule: React.FC = () => {
     );
   };
 
+  const handleRoleFilterChange = (role: 'all' | 'admin' | 'employee') => {
+    setRoleFilter(role);
+    // Update selected employees based on new filter
+    if (role === 'all') {
+      setSelectedEmployees(mockEmployees.map(emp => emp.id));
+    } else {
+      const filteredIds = mockEmployees.filter(emp => emp.role === role).map(emp => emp.id);
+      setSelectedEmployees(filteredIds);
+    }
+  };
+
+  const handleStoreFilterChange = (store: string) => {
+    setStoreFilter(store);
+    // Update selected employees based on new filter
+    if (store === 'all') {
+      const roleFilteredEmployees = roleFilter === 'all' 
+        ? mockEmployees 
+        : mockEmployees.filter(emp => emp.role === roleFilter);
+      setSelectedEmployees(roleFilteredEmployees.map(emp => emp.id));
+    } else {
+      const filteredEmployees = mockEmployees.filter(emp => {
+        const roleMatch = roleFilter === 'all' || emp.role === roleFilter;
+        const storeMatch = emp.primary_store === store;
+        return roleMatch && storeMatch;
+      });
+      setSelectedEmployees(filteredEmployees.map(emp => emp.id));
+    }
+  };
   const getWeekDates = (weekStart: string) => {
     const dates = [];
     const start = new Date(weekStart);
@@ -475,13 +511,49 @@ const WorkSchedule: React.FC = () => {
       )}
 
       {/* Employee and Week Selection */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+        {/* Filters */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-3">
-            Select Employees (All checked by default)
+            Filter Employees
+          </label>
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">By Role</label>
+              <select
+                value={roleFilter}
+                onChange={(e) => handleRoleFilterChange(e.target.value as 'all' | 'admin' | 'employee')}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="all">All Roles</option>
+                <option value="admin">Admins Only</option>
+                <option value="employee">Employees Only</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">By Store Location</label>
+              <select
+                value={storeFilter}
+                onChange={(e) => handleStoreFilterChange(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="all">All Stores</option>
+                {storeLocations.map(location => (
+                  <option key={location} value={location}>
+                    {location}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+        
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-3">
+            Select Employees ({filteredAndSortedEmployees.length} shown)
           </label>
           <div className="space-y-2 bg-gray-50 border border-gray-300 rounded-lg p-3 max-h-40 overflow-y-auto">
-            {sortedEmployees.map(employee => (
+            {filteredAndSortedEmployees.map(employee => (
               <label key={employee.id} className="flex items-center space-x-3 cursor-pointer hover:bg-white p-2 rounded">
                 <input
                   type="checkbox"
@@ -506,7 +578,7 @@ const WorkSchedule: React.FC = () => {
             ))}
           </div>
           <p className="text-xs text-gray-500 mt-2">
-            {selectedEmployees.length} of {sortedEmployees.length} employees selected
+            {selectedEmployees.filter(id => filteredAndSortedEmployees.find(emp => emp.id === id)).length} of {filteredAndSortedEmployees.length} employees selected
           </p>
         </div>
         
@@ -572,7 +644,9 @@ const WorkSchedule: React.FC = () => {
                 </thead>
                 <tbody>
                   {selectedEmployees.map(employeeId => {
-                    const employee = sortedEmployees.find(emp => emp.id === employeeId);
+                    const employee = filteredAndSortedEmployees.find(emp => emp.id === employeeId);
+                    if (!employee) return null; // Skip if employee is filtered out
+                    
                     const employeeWorkDays = workDays[employeeId] || [];
                     const totalHours = getEmployeeTotalHours(employeeId);
                     
@@ -722,7 +796,13 @@ const WorkSchedule: React.FC = () => {
         </div>
       )}
       
-      {selectedEmployees.length === 0 && (
+      {filteredAndSortedEmployees.length === 0 ? (
+        <div className="text-center py-8 text-gray-500">
+          <Users className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+          <p>No employees match the current filters.</p>
+          <p className="text-sm text-gray-400 mt-1">Try adjusting the role or store location filters.</p>
+        </div>
+      ) : selectedEmployees.filter(id => filteredAndSortedEmployees.find(emp => emp.id === id)).length === 0 && (
         <div className="text-center py-8 text-gray-500">
           <Users className="h-12 w-12 text-gray-300 mx-auto mb-4" />
           <p>Please select at least one employee to manage their work schedule.</p>
