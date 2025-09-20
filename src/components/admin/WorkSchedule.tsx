@@ -499,7 +499,7 @@ const WorkSchedule: React.FC = () => {
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6">
         <div className="flex flex-col sm:flex-row sm:items-center gap-4">
           <div>
-            Week Starting (Sunday):
+            <label className="block text-sm font-medium text-gray-700 mb-2">
               Week Starting (Sunday)
             </label>
             <input
