@@ -62,11 +62,12 @@ const scheduleTemplates: ScheduleTemplate[] = [
 ];
 
 const WorkSchedule: React.FC = () => {
-  const [selectedEmployee, setSelectedEmployee] = useState<string>('');
+  const [selectedEmployees, setSelectedEmployees] = useState<string[]>([]);
   const [selectedWeek, setSelectedWeek] = useState<string>('');
-  const [workDays, setWorkDays] = useState<WorkDay[]>([]);
+  const [workDays, setWorkDays] = useState<{ [employeeId: string]: WorkDay[] }>({});
   const [loading, setLoading] = useState(false);
   const [editingDay, setEditingDay] = useState<string | null>(null);
+  const [editingEmployee, setEditingEmployee] = useState<string | null>(null);
   const [editValues, setEditValues] = useState<Partial<WorkDay>>({});
   const [showBulkAssign, setShowBulkAssign] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<string>('');
@@ -77,59 +78,67 @@ const WorkSchedule: React.FC = () => {
     const monday = new Date(today);
     monday.setDate(today.getDate() - today.getDay() + 1);
     setSelectedWeek(monday.toISOString().split('T')[0]);
+    
+    // Pre-check all employees by default
+    setSelectedEmployees(mockEmployees.map(emp => emp.id));
   }, []);
 
   useEffect(() => {
-    if (selectedEmployee && selectedWeek) {
+    if (selectedEmployees.length > 0 && selectedWeek) {
       fetchWorkSchedule();
     }
-  }, [selectedEmployee, selectedWeek]);
+  }, [selectedEmployees, selectedWeek]);
 
   const fetchWorkSchedule = async () => {
     setLoading(true);
     try {
-      // Generate week dates
       const weekStart = new Date(selectedWeek);
-      const weekDays: WorkDay[] = [];
-      
-      // Get saved schedule from localStorage
-      const scheduleKey = `work_schedule_${selectedEmployee}_${selectedWeek}`;
-      const savedSchedule = localStorage.getItem(scheduleKey);
-      const existingSchedule = savedSchedule ? JSON.parse(savedSchedule) : {};
-
-      // Get employee data
-      const employee = mockEmployees.find(emp => emp.id === selectedEmployee);
+      const allWorkDays: { [employeeId: string]: WorkDay[] } = {};
       
       // Get system settings for default shift times
       const savedSettings = localStorage.getItem('demo_system_settings');
       const settings = savedSettings ? JSON.parse(savedSettings) : null;
       const dailyShifts = settings?.daily_shifts || {};
+      
+      for (const employeeId of selectedEmployees) {
+        // Get saved schedule from localStorage
+        const scheduleKey = `work_schedule_${employeeId}_${selectedWeek}`;
+        const savedSchedule = localStorage.getItem(scheduleKey);
+        const existingSchedule = savedSchedule ? JSON.parse(savedSchedule) : {};
 
-      for (let i = 0; i < 7; i++) {
-        const date = new Date(weekStart);
-        date.setDate(weekStart.getDate() + i);
-        const dateStr = date.toISOString().split('T')[0];
-        const dayName = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][date.getDay()];
+        // Get employee data
+        const employee = mockEmployees.find(emp => emp.id === employeeId);
         
-        // Check if there's existing data for this day
-        const existingDay = existingSchedule[dateStr];
+        const weekDays: WorkDay[] = [];
         
-        // Get default shift for this day
-        const dayShift = dailyShifts[dayName] || { start: '08:00', end: '17:00', enabled: true };
+        for (let i = 0; i < 7; i++) {
+          const date = new Date(weekStart);
+          date.setDate(weekStart.getDate() + i);
+          const dateStr = date.toISOString().split('T')[0];
+          const dayName = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][date.getDay()];
+          
+          // Check if there's existing data for this day
+          const existingDay = existingSchedule[dateStr];
+          
+          // Get default shift for this day
+          const dayShift = dailyShifts[dayName] || { start: '08:00', end: '17:00', enabled: true };
+          
+          weekDays.push({
+            date: dateStr,
+            employee_id: employeeId,
+            start_time: existingDay?.start_time || dayShift.start,
+            end_time: existingDay?.end_time || dayShift.end,
+            store_location: existingDay?.store_location || employee?.primary_store || 'Main Store',
+            is_scheduled: existingDay?.is_scheduled !== undefined ? existingDay.is_scheduled : dayShift.enabled,
+            hours: existingDay?.hours || calculateHours(dayShift.start, dayShift.end),
+            notes: existingDay?.notes || ''
+          });
+        }
         
-        weekDays.push({
-          date: dateStr,
-          employee_id: selectedEmployee,
-          start_time: existingDay?.start_time || dayShift.start,
-          end_time: existingDay?.end_time || dayShift.end,
-          store_location: existingDay?.store_location || employee?.primary_store || 'Main Store',
-          is_scheduled: existingDay?.is_scheduled !== undefined ? existingDay.is_scheduled : dayShift.enabled,
-          hours: existingDay?.hours || calculateHours(dayShift.start, dayShift.end),
-          notes: existingDay?.notes || ''
-        });
+        allWorkDays[employeeId] = weekDays;
       }
       
-      setWorkDays(weekDays);
+      setWorkDays(allWorkDays);
     } catch (error) {
       console.error('Error fetching work schedule:', error);
     } finally {
@@ -154,13 +163,17 @@ const WorkSchedule: React.FC = () => {
   };
 
   const saveWorkSchedule = async () => {
-    if (!selectedEmployee || !selectedWeek) return;
+    if (selectedEmployees.length === 0 || !selectedWeek) return;
     
     try {
-      const scheduleKey = `work_schedule_${selectedEmployee}_${selectedWeek}`;
-      const scheduleData: { [date: string]: WorkDay } = {};
-      
-      workDays.forEach(day => {
+      for (const employeeId of selectedEmployees) {
+        const scheduleKey = `work_schedule_${employeeId}_${selectedWeek}`;
+        const scheduleData: { [date: string]: WorkDay } = {};
+        
+        const employeeWorkDays = workDays[employeeId] || [];
+        employeeWorkDays.forEach(day => {
+          scheduleData[day.date] = day;
+        });
         scheduleData[day.date] = day;
       });
       
@@ -171,7 +184,7 @@ const WorkSchedule: React.FC = () => {
   };
 
   const applyTemplate = async () => {
-    if (!selectedTemplate || !selectedEmployee) return;
+    if (!selectedTemplate || selectedEmployees.length === 0) return;
     
     const template = scheduleTemplates.find(t => t.id === selectedTemplate);
     if (!template) return;
@@ -180,50 +193,58 @@ const WorkSchedule: React.FC = () => {
     const savedSettings = localStorage.getItem('demo_system_settings');
     const settings = savedSettings ? JSON.parse(savedSettings) : null;
     const dailyShifts = settings?.daily_shifts || {};
-    const employee = mockEmployees.find(emp => emp.id === selectedEmployee);
     
-    const updatedWorkDays = workDays.map(day => {
-      const date = new Date(day.date);
-      const dayName = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][date.getDay()];
-      const dayShift = dailyShifts[dayName] || { start: '08:00', end: '17:00', enabled: true };
+    const updatedWorkDays: { [employeeId: string]: WorkDay[] } = {};
+    
+    for (const employeeId of selectedEmployees) {
+      const employee = mockEmployees.find(emp => emp.id === employeeId);
+      const employeeWorkDays = workDays[employeeId] || [];
       
-      let newDay = { ...day };
-      
-      switch (template.type) {
-        case 'every_day_full':
-          newDay.is_scheduled = true;
-          newDay.start_time = dayShift.start;
-          newDay.end_time = dayShift.end;
-          newDay.hours = calculateHours(dayShift.start, dayShift.end);
-          break;
-          
-        case 'every_day_8hours':
-          newDay.is_scheduled = true;
-          newDay.start_time = dayShift.start;
-          // Calculate end time for 8 hours + lunch
-          const startTime = new Date(`2000-01-01T${dayShift.start}:00`);
-          const lunchMinutes = settings?.default_lunch_duration_minutes || 60;
-          const endTime = new Date(startTime.getTime() + (8 * 60 * 60 * 1000) + (lunchMinutes * 60 * 1000));
-          newDay.end_time = endTime.toTimeString().substring(0, 5);
-          newDay.hours = 8;
-          break;
-          
-        case 'weekdays_only':
-          const isWeekday = date.getDay() >= 1 && date.getDay() <= 5;
-          newDay.is_scheduled = isWeekday;
-          if (isWeekday) {
+      const updatedEmployeeWorkDays = employeeWorkDays.map(day => {
+        const date = new Date(day.date);
+        const dayName = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][date.getDay()];
+        const dayShift = dailyShifts[dayName] || { start: '08:00', end: '17:00', enabled: true };
+        
+        let newDay = { ...day };
+        
+        switch (template.type) {
+          case 'every_day_full':
+            newDay.is_scheduled = true;
             newDay.start_time = dayShift.start;
             newDay.end_time = dayShift.end;
             newDay.hours = calculateHours(dayShift.start, dayShift.end);
-          }
-          break;
-      }
+            break;
+            
+          case 'every_day_8hours':
+            newDay.is_scheduled = true;
+            newDay.start_time = dayShift.start;
+            // Calculate end time for 8 hours + lunch
+            const startTime = new Date(`2000-01-01T${dayShift.start}:00`);
+            const lunchMinutes = settings?.default_lunch_duration_minutes || 60;
+            const endTime = new Date(startTime.getTime() + (8 * 60 * 60 * 1000) + (lunchMinutes * 60 * 1000));
+            newDay.end_time = endTime.toTimeString().substring(0, 5);
+            newDay.hours = 8;
+            break;
+            
+          case 'weekdays_only':
+            const isWeekday = date.getDay() >= 1 && date.getDay() <= 5;
+            newDay.is_scheduled = isWeekday;
+            if (isWeekday) {
+              newDay.start_time = dayShift.start;
+              newDay.end_time = dayShift.end;
+              newDay.hours = calculateHours(dayShift.start, dayShift.end);
+            }
+            break;
+        }
+        
+        // Reset store to primary
+        newDay.store_location = employee?.primary_store || 'Main Store';
+        
+        return newDay;
+      });
       
-      // Reset store to primary
-      newDay.store_location = employee?.primary_store || 'Main Store';
-      
-      return newDay;
-    });
+      updatedWorkDays[employeeId] = updatedEmployeeWorkDays;
+    }
     
     setWorkDays(updatedWorkDays);
     setShowBulkAssign(false);
@@ -236,8 +257,9 @@ const WorkSchedule: React.FC = () => {
   };
 
   const startEditing = (date: string) => {
-    const day = workDays.find(d => d.date === date);
-    if (day) {
+    const employeeWorkDays = workDays[editingEmployee || ''] || [];
+    const day = employeeWorkDays.find(d => d.date === date);
+    if (day && editingEmployee) {
       setEditingDay(date);
       setEditValues(day);
     }
@@ -246,15 +268,19 @@ const WorkSchedule: React.FC = () => {
   const saveEdit = async () => {
     if (!editingDay) return;
     
-    const updatedWorkDays = workDays.map(day => {
-      if (day.date === editingDay) {
-        const updatedDay = { ...day, ...editValues };
-        // Recalculate hours
-        updatedDay.hours = calculateHours(updatedDay.start_time, updatedDay.end_time);
-        return updatedDay;
-      }
-      return day;
-    });
+    const updatedWorkDays = { ...workDays };
+    
+    if (editingEmployee) {
+      updatedWorkDays[editingEmployee] = workDays[editingEmployee].map(day => {
+        if (day.date === editingDay) {
+          const updatedDay = { ...day, ...editValues };
+          // Recalculate hours
+          updatedDay.hours = calculateHours(updatedDay.start_time, updatedDay.end_time);
+          return updatedDay;
+        }
+        return day;
+      });
+    }
     
     setWorkDays(updatedWorkDays);
     setEditingDay(null);
@@ -269,10 +295,14 @@ const WorkSchedule: React.FC = () => {
   const cancelEdit = () => {
     setEditingDay(null);
     setEditValues({});
+    setEditingEmployee(null);
   };
 
   const toggleScheduled = (date: string) => {
-    const updatedWorkDays = workDays.map(day => {
+    if (!editingEmployee) return;
+    
+    const updatedWorkDays = { ...workDays };
+    updatedWorkDays[editingEmployee] = workDays[editingEmployee].map(day => {
       if (day.date === date) {
         return { ...day, is_scheduled: !day.is_scheduled };
       }
@@ -295,7 +325,15 @@ const WorkSchedule: React.FC = () => {
 
   const clearWeek = () => {
     if (confirm('Are you sure you want to clear all scheduled days for this week?')) {
-      const clearedWorkDays = workDays.map(day => ({
+      const clearedWorkDays: { [employeeId: string]: WorkDay[] } = {};
+      
+      for (const employeeId of selectedEmployees) {
+        const employeeWorkDays = workDays[employeeId] || [];
+        clearedWorkDays[employeeId] = employeeWorkDays.map(day => ({
+          ...day,
+          is_scheduled: false,
+          notes: ''
+        }));
         ...day,
         is_scheduled: false,
         notes: ''
@@ -307,6 +345,14 @@ const WorkSchedule: React.FC = () => {
         saveWorkSchedule();
       }, 100);
     }
+  };
+
+  const toggleEmployeeSelection = (employeeId: string) => {
+    setSelectedEmployees(prev => 
+      prev.includes(employeeId)
+        ? prev.filter(id => id !== employeeId)
+        : [...prev, employeeId]
+    );
   };
 
   const formatDate = (dateStr: string) => {
@@ -418,23 +464,30 @@ const WorkSchedule: React.FC = () => {
       )}
 
       {/* Employee and Week Selection */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Select Employee
+          <label className="block text-sm font-medium text-gray-700 mb-3">
+            Select Employees (All checked by default)
           </label>
-          <select
-            value={selectedEmployee}
-            onChange={(e) => setSelectedEmployee(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">Choose an employee...</option>
+          <div className="space-y-2 bg-gray-50 border border-gray-300 rounded-lg p-3 max-h-40 overflow-y-auto">
             {mockEmployees.map(employee => (
-              <option key={employee.id} value={employee.id}>
-                {employee.name} - {employee.primary_store}
-              </option>
+              <label key={employee.id} className="flex items-center space-x-3 cursor-pointer hover:bg-white p-2 rounded">
+                <input
+                  type="checkbox"
+                  checked={selectedEmployees.includes(employee.id)}
+                  onChange={() => toggleEmployeeSelection(employee.id)}
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                />
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-gray-900">{employee.name}</p>
+                  <p className="text-xs text-gray-500">{employee.primary_store}</p>
+                </div>
+              </label>
             ))}
-          </select>
+          </div>
+          <p className="text-xs text-gray-500 mt-2">
+            {selectedEmployees.length} of {mockEmployees.length} employees selected
+          </p>
         </div>
         
         <div>
@@ -456,13 +509,15 @@ const WorkSchedule: React.FC = () => {
       </div>
 
       {/* Schedule Display */}
-      {selectedEmployee && selectedWeek && (
+      {selectedEmployees.length > 0 && selectedWeek && (
         <div className="bg-white rounded-xl shadow-sm border">
           <div className="p-6 border-b">
             <h3 className="text-lg font-semibold text-gray-900">
-              Schedule for {mockEmployees.find(emp => emp.id === selectedEmployee)?.name}
+              Work Schedule Management
             </h3>
-            <p className="text-sm text-gray-600">Week of {getWeekRange(selectedWeek)}</p>
+            <p className="text-sm text-gray-600">
+              Week of {getWeekRange(selectedWeek)} - {selectedEmployees.length} employee{selectedEmployees.length !== 1 ? 's' : ''} selected
+            </p>
           </div>
           
           {loading ? (
@@ -472,7 +527,7 @@ const WorkSchedule: React.FC = () => {
             </div>
           ) : (
             <div className="p-6">
-              <div className="space-y-4">
+              <div className="space-y-6">
                 {workDays.map((day) => {
                   const isEditing = editingDay === day.date;
                   
@@ -588,14 +643,151 @@ const WorkSchedule: React.FC = () => {
                 })}
               </div>
               
-              <div className="mt-6 flex items-center justify-between">
-                <div className="text-sm text-gray-600">
-                  Total scheduled hours this week: {' '}
-                  <span className="font-semibold text-blue-600">
-                    {workDays.filter(d => d.is_scheduled).reduce((sum, day) => sum + day.hours, 0).toFixed(1)} hours
-                  </span>
-                </div>
+              {selectedEmployees.map(employeeId => {
+                const employee = mockEmployees.find(emp => emp.id === employeeId);
+                const employeeWorkDays = workDays[employeeId] || [];
                 
+                return (
+                  <div key={employeeId} className="mb-8">
+                    <div className="flex items-center justify-between mb-4">
+                      <div>
+                        <h4 className="text-lg font-semibold text-gray-900">{employee?.name}</h4>
+                        <p className="text-sm text-gray-600">Primary Store: {employee?.primary_store}</p>
+                      </div>
+                      <div className="text-sm text-gray-600">
+                        Total hours: {' '}
+                        <span className="font-semibold text-blue-600">
+                          {employeeWorkDays.filter(d => d.is_scheduled).reduce((sum, day) => sum + day.hours, 0).toFixed(1)}h
+                        </span>
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-3">
+                      {employeeWorkDays.map((day) => {
+                        const isEditing = editingDay === day.date && editingEmployee === employeeId;
+                        
+                        return (
+                          <div key={day.date} className={`border rounded-lg p-4 ${
+                            day.is_scheduled ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'
+                          }`}>
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center space-x-4">
+                                <input
+                                  type="checkbox"
+                                  checked={day.is_scheduled}
+                                  onChange={() => {
+                                    setEditingEmployee(employeeId);
+                                    toggleScheduled(day.date);
+                                  }}
+                                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                                />
+                                <div>
+                                  <p className="font-medium text-gray-900">
+                                    {getDayName(day.date)}
+                                  </p>
+                                  <p className="text-sm text-gray-600">
+                                    {formatDate(day.date)}
+                                  </p>
+                                </div>
+                              </div>
+                              
+                              {day.is_scheduled && (
+                                <div className="flex items-center space-x-6">
+                                  {isEditing ? (
+                                    <div className="flex items-center space-x-4">
+                                      <div className="flex items-center space-x-2">
+                                        <Clock className="h-4 w-4 text-gray-500" />
+                                        <input
+                                          type="time"
+                                          value={editValues.start_time || ''}
+                                          onChange={(e) => setEditValues(prev => ({ ...prev, start_time: e.target.value }))}
+                                          className="px-2 py-1 border border-gray-300 rounded text-sm"
+                                        />
+                                        <span className="text-gray-500">to</span>
+                                        <input
+                                          type="time"
+                                          value={editValues.end_time || ''}
+                                          onChange={(e) => setEditValues(prev => ({ ...prev, end_time: e.target.value }))}
+                                          className="px-2 py-1 border border-gray-300 rounded text-sm"
+                                        />
+                                      </div>
+                                      
+                                      <div className="flex items-center space-x-2">
+                                        <MapPin className="h-4 w-4 text-gray-500" />
+                                        <select
+                                          value={editValues.store_location || ''}
+                                          onChange={(e) => setEditValues(prev => ({ ...prev, store_location: e.target.value }))}
+                                          className="px-2 py-1 border border-gray-300 rounded text-sm"
+                                        >
+                                          {storeLocations.map(location => (
+                                            <option key={location} value={location}>
+                                              {location}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      </div>
+                                      
+                                      <div className="flex items-center space-x-2">
+                                        <button
+                                          onClick={saveEdit}
+                                          className="p-1 text-green-600 hover:bg-green-100 rounded"
+                                        >
+                                          <Save className="h-4 w-4" />
+                                        </button>
+                                        <button
+                                          onClick={cancelEdit}
+                                          className="p-1 text-gray-600 hover:bg-gray-100 rounded"
+                                        >
+                                          <X className="h-4 w-4" />
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div className="flex items-center space-x-6">
+                                      <div className="flex items-center space-x-2 text-sm text-gray-600">
+                                        <Clock className="h-4 w-4" />
+                                        <span className="font-mono">
+                                          {day.start_time} - {day.end_time}
+                                        </span>
+                                        <span className="text-blue-600 font-semibold">
+                                          ({day.hours.toFixed(1)}h)
+                                        </span>
+                                      </div>
+                                      
+                                      <div className="flex items-center space-x-2 text-sm text-gray-600">
+                                        <MapPin className="h-4 w-4" />
+                                        <span>{day.store_location}</span>
+                                      </div>
+                                      
+                                      <button
+                                        onClick={() => {
+                                          setEditingEmployee(employeeId);
+                                          startEditing(day.date);
+                                        }}
+                                        className="p-1 text-blue-600 hover:bg-blue-100 rounded"
+                                      >
+                                        <Edit className="h-4 w-4" />
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                            
+                            {day.notes && (
+                              <div className="mt-2 text-sm text-gray-600 italic">
+                                Note: {day.notes}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+              
+              <div className="mt-6 flex items-center justify-between">
                 <button
                   onClick={saveWorkSchedule}
                   className="flex items-center space-x-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
@@ -606,6 +798,13 @@ const WorkSchedule: React.FC = () => {
               </div>
             </div>
           )}
+        </div>
+      )}
+      
+      {selectedEmployees.length === 0 && (
+        <div className="text-center py-8 text-gray-500">
+          <Users className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+          <p>Please select at least one employee to manage their work schedule.</p>
         </div>
       )}
 
