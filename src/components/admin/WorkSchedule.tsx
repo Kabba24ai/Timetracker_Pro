@@ -101,8 +101,9 @@ const WorkSchedule: React.FC = () => {
   useEffect(() => {
     // Set current week as default (find the Sunday of current week)
     const today = new Date();
+    const currentDay = today.getDay(); // 0 = Sunday, 1 = Monday, etc.
     const sunday = new Date(today);
-    sunday.setDate(today.getDate() - today.getDay());
+    sunday.setDate(today.getDate() - currentDay); // Go back to Sunday of current week
     setSelectedWeek(sunday.toISOString().split('T')[0]);
     
     // Pre-check all employees by default
@@ -419,7 +420,7 @@ const WorkSchedule: React.FC = () => {
   const getWeekRange = (weekStart: string) => {
     const start = new Date(weekStart);
     const end = new Date(start);
-    end.setDate(start.getDate() + 6);
+    end.setDate(start.getDate() + 6); // Sunday + 6 days = Saturday
     
     return `${start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${end.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
   };
@@ -498,7 +499,7 @@ const WorkSchedule: React.FC = () => {
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6">
         <div className="flex flex-col sm:flex-row sm:items-center gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            Week Starting (Sunday):
               Week Starting (Sunday)
             </label>
             <input
@@ -648,7 +649,7 @@ const WorkSchedule: React.FC = () => {
               Work Schedule Calendar
             </h3>
             <p className="text-sm text-gray-600">
-              Week of {getWeekRange(selectedWeek)} - {selectedEmployees.length} employee{selectedEmployees.length !== 1 ? 's' : ''} selected
+              Week: {getWeekRange(selectedWeek)} (Sunday - Saturday)
             </p>
           </div>
           
