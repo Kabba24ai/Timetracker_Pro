@@ -38,8 +38,7 @@ const storeLocations = [
   'North Branch',
   'South Branch',
   'East Location',
-  'West Location',
-  'Downtown'
+  'West Location'
 ];
 
 const scheduleTemplates: ScheduleTemplate[] = [
