@@ -431,29 +431,6 @@ const WorkSchedule: React.FC = () => {
           <Calendar className="h-6 w-6 text-gray-600" />
           <h2 className="text-2xl font-bold text-gray-900">Work Schedule</h2>
         </div>
-        <div className="flex items-center space-x-3">
-          <button
-            onClick={() => setShowBulkAssign(true)}
-            className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            <Plus className="h-4 w-4" />
-            <span>Bulk Assign</span>
-          </button>
-          <button
-            onClick={copyWeek}
-            className="flex items-center space-x-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
-          >
-            <Copy className="h-4 w-4" />
-            <span>Copy Week</span>
-          </button>
-          <button
-            onClick={clearWeek}
-            className="flex items-center space-x-2 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors"
-          >
-            <Trash2 className="h-4 w-4" />
-            <span>Clear Week</span>
-          </button>
-        </div>
       </div>
 
       {/* Bulk Assignment Modal */}
@@ -510,8 +487,56 @@ const WorkSchedule: React.FC = () => {
         </div>
       )}
 
-      {/* Employee and Week Selection */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+      {/* Week Selection and Action Buttons */}
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Week Starting (Sunday)
+            </label>
+            <input
+              type="date"
+              value={selectedWeek}
+              onChange={(e) => setSelectedWeek(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          {selectedWeek && (
+            <div className="sm:mt-6">
+              <p className="text-sm text-gray-600">
+                Week: {getWeekRange(selectedWeek)}
+              </p>
+            </div>
+          )}
+        </div>
+        
+        <div className="flex items-center space-x-3">
+          <button
+            onClick={() => setShowBulkAssign(true)}
+            className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            <Plus className="h-4 w-4" />
+            <span>Bulk Assign</span>
+          </button>
+          <button
+            onClick={copyWeek}
+            className="flex items-center space-x-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
+          >
+            <Copy className="h-4 w-4" />
+            <span>Copy Week</span>
+          </button>
+          <button
+            onClick={clearWeek}
+            className="flex items-center space-x-2 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors"
+          >
+            <Trash2 className="h-4 w-4" />
+            <span>Clear Week</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Filters and Employee Selection */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         {/* Filters */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-3">
@@ -581,25 +606,7 @@ const WorkSchedule: React.FC = () => {
             {selectedEmployees.filter(id => filteredAndSortedEmployees.find(emp => emp.id === id)).length} of {filteredAndSortedEmployees.length} employees selected
           </p>
         </div>
-        
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Week Starting (Sunday)
-          </label>
-          <input
-            type="date"
-            value={selectedWeek}
-            onChange={(e) => setSelectedWeek(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          {selectedWeek && (
-            <p className="text-sm text-gray-600 mt-1">
-              Week: {getWeekRange(selectedWeek)}
-            </p>
-          )}
-        </div>
       </div>
-
       {/* Calendar View */}
       {selectedEmployees.length > 0 && selectedWeek && (
         <div className="bg-white rounded-xl shadow-sm border">
