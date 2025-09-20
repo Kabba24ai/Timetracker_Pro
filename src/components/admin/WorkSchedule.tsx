@@ -687,7 +687,7 @@ const WorkSchedule: React.FC = () => {
                           </div>
                           <div className="text-xs text-gray-600">
                             {date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][date.getDay()]}
+                          </div>
                         </div>
                       </th>
                     ))}
