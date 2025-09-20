@@ -680,18 +680,18 @@ const WorkSchedule: React.FC = () => {
                       Employee
                     </th>
                     {weekDates.map((date, index) => (
-                      <th key={index} className="text-center py-4 px-3 font-medium text-gray-900 bg-gray-50 min-w-[140px]">
+                      <th key={index} className="text-center py-2 px-1 font-medium text-gray-900 bg-gray-50 min-w-[100px] w-[100px]">
                         <div>
                           <div className="text-sm font-semibold">
                             {date.toLocaleDateString('en-US', { weekday: 'short' })}
                           </div>
-                          <div className="text-xs text-gray-600">
+                          <div className="text-xs text-gray-500">
                             {date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                           </div>
                         </div>
                       </th>
                     ))}
-                    <th className="text-center py-4 px-4 font-medium text-gray-900 bg-gray-50 min-w-[80px]">
+                    <th className="text-center py-4 px-2 font-medium text-gray-900 bg-gray-50 min-w-[70px] w-[70px]">
                       Total
                     </th>
                   </tr>
