@@ -709,16 +709,19 @@ const WorkSchedule: React.FC = () => {
                         <td className="py-2 px-2 bg-white sticky left-0 z-10 border-r border-gray-200">
                           <div>
                             <div className="flex items-center space-x-2">
-                            <p className="font-medium text-gray-900 text-sm truncate">{employee?.name}</p>
+                              <p className="font-medium text-gray-900 text-sm truncate">{employee?.name}</p>
                             </div>
-                            <div className="mt-1">
-                              <span className={`inline-flex px-1.5 py-0.5 text-xs font-medium rounded-full ${
-                                employee?.role === 'admin'
-                                  ? 'bg-purple-100 text-purple-800'
-                                  : 'bg-blue-100 text-blue-800'
-                              }`}>
-                                {employee?.role}
-                              </span>
+                            <div>
+                              <p className="font-medium text-gray-900 text-sm truncate">{employee?.name}</p>
+                              <div className="mt-1">
+                                <span className={`inline-flex px-1.5 py-0.5 text-xs font-medium rounded-full ${
+                                  employee?.role === 'admin'
+                                    ? 'bg-purple-100 text-purple-800'
+                                    : 'bg-blue-100 text-blue-800'
+                                }`}>
+                                  {employee?.role}
+                                </span>
+                              </div>
                             </div>
                             <p className="text-xs text-gray-500 truncate">{employee?.primary_store}</p>
                           </div>
