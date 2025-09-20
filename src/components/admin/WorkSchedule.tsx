@@ -710,13 +710,17 @@ const WorkSchedule: React.FC = () => {
                           <div>
                             <div className="flex items-center space-x-2">
                               <p className="font-medium text-gray-900 text-sm truncate">{employee?.name}</p>
-                              <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
-                                employee?.role === 'admin'
-                                  ? 'bg-purple-100 text-purple-800'
-                                  : 'bg-blue-100 text-blue-800'
-                              }`}>
-                                {employee?.role}
-                              </span>
+                            <div>
+                              <p className="font-medium text-gray-900 text-sm truncate">{employee?.name}</p>
+                              <div className="mt-1">
+                                <span className={`inline-flex px-1.5 py-0.5 text-xs font-medium rounded-full ${
+                                  employee?.role === 'admin'
+                                    ? 'bg-purple-100 text-purple-800'
+                                    : 'bg-blue-100 text-blue-800'
+                                }`}>
+                                  {employee?.role}
+                                </span>
+                              </div>
                             </div>
                             <p className="text-xs text-gray-500 truncate">{employee?.primary_store}</p>
                           </div>
@@ -724,6 +728,7 @@ const WorkSchedule: React.FC = () => {
                         {weekDates.map((date, dayIndex) => {
                           const dateStr = date.toISOString().split('T')[0];
                           const dayData = employeeWorkDays.find(d => d.date === dateStr);
+                    <th className="text-left py-4 px-2 font-medium text-gray-900 bg-gray-50 sticky left-0 z-10 min-w-[120px] w-[120px]">
                           const isEditing = editingCell?.employeeId === employeeId && editingCell?.date === dateStr;
                           
                           return (
