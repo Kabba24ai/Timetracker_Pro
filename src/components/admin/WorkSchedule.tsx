@@ -38,7 +38,8 @@ const storeLocations = [
   'North Branch',
   'South Branch',
   'East Location',
-  'West Location'
+  'West Location',
+  'Downtown'
 ];
 
 const scheduleTemplates: ScheduleTemplate[] = [
@@ -71,14 +72,24 @@ const WorkSchedule: React.FC = () => {
   const [editValues, setEditValues] = useState<Partial<WorkDay>>({});
   const [showBulkAssign, setShowBulkAssign] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<string>('');
-  const [roleFilter, setRoleFilter] = useState<'all' | 'admin' | 'employee'>('all');
-  const [storeFilter, setStoreFilter] = useState<string>('all');
+  const [roleFilters, setRoleFilters] = useState<{ admin: boolean; employee: boolean }>({
+    admin: true,
+    employee: true
+  });
+  const [storeFilters, setStoreFilters] = useState<{ [store: string]: boolean }>({
+    'Main Store': true,
+    'North Branch': true,
+    'South Branch': true,
+    'East Location': true,
+    'West Location': true,
+    'Downtown': true
+  });
 
   // Sort employees by role (admin first) then alphabetically
   const filteredAndSortedEmployees = [...mockEmployees]
     .filter(emp => {
-      const roleMatch = roleFilter === 'all' || emp.role === roleFilter;
-      const storeMatch = storeFilter === 'all' || emp.primary_store === storeFilter;
+      const roleMatch = roleFilters[emp.role];
+      const storeMatch = storeFilters[emp.primary_store];
       return roleMatch && storeMatch;
     })
     .sort((a, b) => {
@@ -360,33 +371,30 @@ const WorkSchedule: React.FC = () => {
     );
   };
 
-  const handleRoleFilterChange = (role: 'all' | 'admin' | 'employee') => {
-    setRoleFilter(role);
-    // Update selected employees based on new filter
-    if (role === 'all') {
-      setSelectedEmployees(mockEmployees.map(emp => emp.id));
-    } else {
-      const filteredIds = mockEmployees.filter(emp => emp.role === role).map(emp => emp.id);
-      setSelectedEmployees(filteredIds);
-    }
+  const handleRoleFilterChange = (role: 'admin' | 'employee', checked: boolean) => {
+    setRoleFilters(prev => ({ ...prev, [role]: checked }));
+    
+    // Update selected employees based on new filters
+    const newRoleFilters = { ...roleFilters, [role]: checked };
+    const filteredEmployees = mockEmployees.filter(emp => {
+      const roleMatch = newRoleFilters[emp.role];
+      const storeMatch = storeFilters[emp.primary_store];
+      return roleMatch && storeMatch;
+    });
+    setSelectedEmployees(filteredEmployees.map(emp => emp.id));
   };
 
-  const handleStoreFilterChange = (store: string) => {
-    setStoreFilter(store);
-    // Update selected employees based on new filter
-    if (store === 'all') {
-      const roleFilteredEmployees = roleFilter === 'all' 
-        ? mockEmployees 
-        : mockEmployees.filter(emp => emp.role === roleFilter);
-      setSelectedEmployees(roleFilteredEmployees.map(emp => emp.id));
-    } else {
-      const filteredEmployees = mockEmployees.filter(emp => {
-        const roleMatch = roleFilter === 'all' || emp.role === roleFilter;
-        const storeMatch = emp.primary_store === store;
-        return roleMatch && storeMatch;
-      });
-      setSelectedEmployees(filteredEmployees.map(emp => emp.id));
-    }
+  const handleStoreFilterChange = (store: string, checked: boolean) => {
+    setStoreFilters(prev => ({ ...prev, [store]: checked }));
+    
+    // Update selected employees based on new filters
+    const newStoreFilters = { ...storeFilters, [store]: checked };
+    const filteredEmployees = mockEmployees.filter(emp => {
+      const roleMatch = roleFilters[emp.role];
+      const storeMatch = newStoreFilters[emp.primary_store];
+      return roleMatch && storeMatch;
+    });
+    setSelectedEmployees(filteredEmployees.map(emp => emp.id));
   };
   const getWeekDates = (weekStart: string) => {
     const dates = [];
@@ -536,48 +544,334 @@ const WorkSchedule: React.FC = () => {
       </div>
 
       {/* Filters and Employee Selection */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        {/* Filters */}
+      <div className="space-y-6 mb-6">
+        {/* Row 1: Role Filters */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-3">
-            Filter Employees
+            By Role
           </label>
-          <div className="space-y-3">
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">By Role</label>
-              <select
-                value={roleFilter}
-                onChange={(e) => handleRoleFilterChange(e.target.value as 'all' | 'admin' | 'employee')}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="all">All Roles</option>
-                <option value="admin">Admins Only</option>
-                <option value="employee">Employees Only</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">By Store Location</label>
-              <select
-                value={storeFilter}
-                onChange={(e) => handleStoreFilterChange(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="all">All Stores</option>
-                {storeLocations.map(location => (
-                  <option key={location} value={location}>
-                    {location}
-                  </option>
-                ))}
-              </select>
-            </div>
+          <div className="flex items-center space-x-6 bg-gray-50 border border-gray-300 rounded-lg p-3">
+            <label className="flex items-center space-x-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={roleFilters.admin}
+                onChange={(e) => handleRoleFilterChange('admin', e.target.checked)}
+                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+              />
+              <span className="text-sm font-medium text-gray-900">Admins</span>
+            </label>
+            <label className="flex items-center space-x-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={roleFilters.employee}
+                onChange={(e) => handleRoleFilterChange('employee', e.target.checked)}
+                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+              />
+              <span className="text-sm font-medium text-gray-900">Employees</span>
+            </label>
           </div>
         </div>
         
+        {/* Row 2: Employee Selection Grid */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-3">
-            Select Employees ({filteredAndSortedEmployees.length} shown)
+            Select Employees ({filteredAndSortedEmployees.length} shown, {selectedEmployees.filter(id => filteredAndSortedEmployees.find(emp => emp.id === id)).length} selected)
           </label>
-          <div className="space-y-2 bg-gray-50 border border-gray-300 rounded-lg p-3 max-h-40 overflow-y-auto">
+          <div className="bg-gray-50 border border-gray-300 rounded-lg p-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3 min-h-[200px]">
+              {filteredAndSortedEmployees.map(employee => (
+                <label key={employee.id} className="flex items-start space-x-2 cursor-pointer hover:bg-white p-2 rounded border border-transparent hover:border-gray-200 transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={selectedEmployees.includes(employee.id)}
+                    onChange={() => toggleEmployeeSelection(employee.id)}
+                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded mt-0.5 flex-shrink-0"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-medium text-gray-900 truncate" title={employee.name}>
+                      {employee.name}
+                    </div>
+                    <div className="flex items-center space-x-1 mt-1">
+                      <span className={`inline-flex px-1.5 py-0.5 text-xs font-medium rounded-full ${
+                        employee.role === 'admin'
+                          ? 'bg-purple-100 text-purple-800'
+                          : 'bg-blue-100 text-blue-800'
+                      }`}>
+                        {employee.role}
+                      </span>
+                    </div>
+                    <div className="text-xs text-gray-500 truncate mt-1" title={employee.primary_store}>
+                      {employee.primary_store}
+                    </div>
+                  </div>
+                </label>
+              ))}
+            </div>
+            {filteredAndSortedEmployees.length === 0 && (
+              <div className="text-center py-8 text-gray-500">
+                <Users className="h-8 w-8 text-gray-300 mx-auto mb-2" />
+                <p className="text-sm">No employees match the current filters.</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Row 3: Store Location Filters */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-3">
+            By Store Location
+          </label>
+          <div className="bg-gray-50 border border-gray-300 rounded-lg p-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-4">
+              {Object.entries(storeFilters).map(([store, checked]) => (
+                <label key={store} className="flex items-center space-x-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={(e) => handleStoreFilterChange(store, e.target.checked)}
+                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                  />
+                  <span className="text-sm font-medium text-gray-900 truncate" title={store}>
+                    {store}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Calendar View */}
+      {selectedEmployees.length > 0 && selectedWeek && (
+        <div className="bg-white rounded-xl shadow-sm border">
+          <div className="p-6 border-b">
+            <h3 className="text-lg font-semibold text-gray-900">
+              Work Schedule Calendar
+            </h3>
+            <p className="text-sm text-gray-600">
+              Week of {getWeekRange(selectedWeek)} - {selectedEmployees.length} employee{selectedEmployees.length !== 1 ? 's' : ''} selected
+            </p>
+          </div>
+          
+          {loading ? (
+            <div className="p-8 text-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+              <p className="text-gray-600 mt-2">Loading schedule...</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full">
+                <thead>
+                  <tr className="border-b border-gray-200">
+                    <th className="text-left py-4 px-4 font-medium text-gray-900 bg-gray-50 sticky left-0 z-10 min-w-[200px]">
+                      Employee
+                    </th>
+                    {weekDates.map((date, index) => (
+                      <th key={index} className="text-center py-4 px-3 font-medium text-gray-900 bg-gray-50 min-w-[140px]">
+                        <div>
+                          <div className="text-sm font-semibold">
+                            {date.toLocaleDateString('en-US', { weekday: 'short' })}
+                          </div>
+                          <div className="text-xs text-gray-600">
+                            {date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                          </div>
+                        </div>
+                      </th>
+                    ))}
+                    <th className="text-center py-4 px-4 font-medium text-gray-900 bg-gray-50 min-w-[80px]">
+                      Total
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {selectedEmployees.map(employeeId => {
+                    const employee = filteredAndSortedEmployees.find(emp => emp.id === employeeId);
+                    if (!employee) return null; // Skip if employee is filtered out
+                    
+                    const employeeWorkDays = workDays[employeeId] || [];
+                    const totalHours = getEmployeeTotalHours(employeeId);
+                    
+                    return (
+                      <tr key={employeeId} className="border-b border-gray-100 hover:bg-gray-50">
+                        <td className="py-3 px-4 bg-white sticky left-0 z-10 border-r border-gray-200">
+                          <div>
+                            <div className="flex items-center space-x-2">
+                              <p className="font-medium text-gray-900">{employee?.name}</p>
+                              <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
+                                employee?.role === 'admin'
+                                  ? 'bg-purple-100 text-purple-800'
+                                  : 'bg-blue-100 text-blue-800'
+                              }`}>
+                                {employee?.role}
+                              </span>
+                            </div>
+                            <p className="text-xs text-gray-500">{employee?.primary_store}</p>
+                          </div>
+                        </td>
+                        {weekDates.map((date, dayIndex) => {
+                          const dateStr = date.toISOString().split('T')[0];
+                          const dayData = employeeWorkDays.find(d => d.date === dateStr);
+                          const isEditing = editingCell?.employeeId === employeeId && editingCell?.date === dateStr;
+                          
+                          return (
+                            <td key={dayIndex} className="py-2 px-2 text-center">
+                              {dayData && (
+                                <div className={`p-2 rounded-lg border-2 ${
+                                  dayData.is_scheduled 
+                                    ? 'bg-green-50 border-green-200' 
+                                    : 'bg-gray-50 border-gray-200'
+                                }`}>
+                                  {isEditing ? (
+                                    <div className="space-y-2">
+                                      <div className="flex items-center justify-center">
+                                        <input
+                                          type="checkbox"
+                                          checked={editValues.is_scheduled || false}
+                                          onChange={(e) => setEditValues(prev => ({ ...prev, is_scheduled: e.target.checked }))}
+                                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                                        />
+                                      </div>
+                                      {editValues.is_scheduled && (
+                                        <>
+                                          <div className="space-y-1">
+                                            <input
+                                              type="time"
+                                              value={editValues.start_time || ''}
+                                              onChange={(e) => setEditValues(prev => ({ ...prev, start_time: e.target.value }))}
+                                              className="w-full px-1 py-1 border border-gray-300 rounded text-xs"
+                                            />
+                                            <input
+                                              type="time"
+                                              value={editValues.end_time || ''}
+                                              onChange={(e) => setEditValues(prev => ({ ...prev, end_time: e.target.value }))}
+                                              className="w-full px-1 py-1 border border-gray-300 rounded text-xs"
+                                            />
+                                          </div>
+                                          <select
+                                            value={editValues.store_location || ''}
+                                            onChange={(e) => setEditValues(prev => ({ ...prev, store_location: e.target.value }))}
+                                            className="w-full px-1 py-1 border border-gray-300 rounded text-xs"
+                                          >
+                                            {storeLocations.map(location => (
+                                              <option key={location} value={location}>
+                                                {location}
+                                              </option>
+                                            ))}
+                                          </select>
+                                        </>
+                                      )}
+                                      <div className="flex items-center justify-center space-x-1">
+                                        <button
+                                          onClick={saveEdit}
+                                          className="p-1 text-green-600 hover:bg-green-100 rounded"
+                                        >
+                                          <Save className="h-3 w-3" />
+                                        </button>
+                                        <button
+                                          onClick={cancelEdit}
+                                          className="p-1 text-gray-600 hover:bg-gray-100 rounded"
+                                        >
+                                          <X className="h-3 w-3" />
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div className="space-y-1">
+                                      <div className="flex items-center justify-center">
+                                        <input
+                                          type="checkbox"
+                                          checked={dayData.is_scheduled}
+                                          onChange={() => toggleScheduled(employeeId, dateStr)}
+                                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                                        />
+                                      </div>
+                                      {dayData.is_scheduled && (
+                                        <>
+                                          <div className="text-xs font-mono text-gray-700">
+                                            <div>{dayData.start_time}</div>
+                                            <div>{dayData.end_time}</div>
+                                          </div>
+                                          <div className="text-xs text-blue-600 font-semibold">
+                                            {dayData.hours.toFixed(1)}h
+                                          </div>
+                                          <div className="text-xs text-gray-600 truncate" title={dayData.store_location}>
+                                            {dayData.store_location.split(' ')[0]}
+                                          </div>
+                                          <button
+                                            onClick={() => startEditing(employeeId, dateStr)}
+                                            className="p-1 text-blue-600 hover:bg-blue-100 rounded"
+                                          >
+                                            <Edit className="h-3 w-3" />
+                                          </button>
+                                        </>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </td>
+                          );
+                        })}
+                        <td className="py-3 px-4 text-center">
+                          <div className="text-lg font-bold text-blue-600">
+                            {totalHours.toFixed(1)}h
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+          
+          <div className="p-6 border-t">
+            <button
+              onClick={saveWorkSchedule}
+              className="flex items-center space-x-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
+            >
+              <Save className="h-4 w-4" />
+              <span>Save Schedule</span>
+            </button>
+          </div>
+        </div>
+      )}
+      
+      {filteredAndSortedEmployees.length === 0 ? (
+        <div className="text-center py-8 text-gray-500">
+          <Users className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+          <p>No employees match the current filters.</p>
+          <p className="text-sm text-gray-400 mt-1">Try adjusting the role or store location filters.</p>
+        </div>
+      ) : selectedEmployees.filter(id => filteredAndSortedEmployees.find(emp => emp.id === id)).length === 0 && (
+        <div className="text-center py-8 text-gray-500">
+          <Users className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+          <p>Please select at least one employee to manage their work schedule.</p>
+        </div>
+      )}
+
+      {/* Information Panel */}
+      <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <div className="flex items-start space-x-3">
+          <Calendar className="h-5 w-5 text-blue-600 mt-0.5" />
+          <div>
+            <h4 className="text-sm font-semibold text-blue-900 mb-2">Calendar View Information</h4>
+            <div className="text-sm text-blue-800 space-y-1">
+              <p>• <strong>Traditional Calendar:</strong> Days run Sunday through Saturday across the top</p>
+              <p>• <strong>Employee Sorting:</strong> Admins listed first, then employees alphabetically</p>
+              <p>• <strong>Quick Edit:</strong> Click checkbox to enable/disable, click edit button for details</p>
+              <p>• <strong>Bulk Operations:</strong> Use templates to set schedules for all selected employees</p>
+              <p>• <strong>Store Locations:</strong> Defaults to primary store, can be changed per day</p>
+              <p>• <strong>Hours Calculation:</strong> Automatically includes lunch deduction for shifts over 6 hours</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default WorkSchedule;
             {filteredAndSortedEmployees.map(employee => (
               <label key={employee.id} className="flex items-center space-x-3 cursor-pointer hover:bg-white p-2 rounded">
                 <input
