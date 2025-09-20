@@ -710,6 +710,7 @@ const WorkSchedule: React.FC = () => {
                           <div>
                             <div className="flex items-center space-x-2">
                               <p className="font-medium text-gray-900 text-sm truncate">{employee?.name}</p>
+                            </div>
                             <div>
                               <p className="font-medium text-gray-900 text-sm truncate">{employee?.name}</p>
                               <div className="mt-1">
@@ -728,7 +729,6 @@ const WorkSchedule: React.FC = () => {
                         {weekDates.map((date, dayIndex) => {
                           const dateStr = date.toISOString().split('T')[0];
                           const dayData = employeeWorkDays.find(d => d.date === dateStr);
-                    <th className="text-left py-4 px-2 font-medium text-gray-900 bg-gray-50 sticky left-0 z-10 min-w-[120px] w-[120px]">
                           const isEditing = editingCell?.employeeId === employeeId && editingCell?.date === dateStr;
                           
                           return (
