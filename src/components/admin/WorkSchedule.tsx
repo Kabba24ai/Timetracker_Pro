@@ -400,6 +400,12 @@ const WorkSchedule: React.FC = () => {
     const dates = [];
     const start = new Date(weekStart);
     
+    // Ensure we start on Sunday (day 0)
+    const currentDay = start.getDay();
+    if (currentDay !== 0) {
+      start.setDate(start.getDate() - currentDay);
+    }
+    
     for (let i = 0; i < 7; i++) {
       const date = new Date(start);
       date.setDate(start.getDate() + i);
@@ -419,6 +425,13 @@ const WorkSchedule: React.FC = () => {
 
   const getWeekRange = (weekStart: string) => {
     const start = new Date(weekStart);
+    
+    // Ensure we start on Sunday
+    const currentDay = start.getDay();
+    if (currentDay !== 0) {
+      start.setDate(start.getDate() - currentDay);
+    }
+    
     const end = new Date(start);
     end.setDate(start.getDate() + 6); // Sunday + 6 days = Saturday
     
@@ -674,7 +687,7 @@ const WorkSchedule: React.FC = () => {
                           </div>
                           <div className="text-xs text-gray-600">
                             {date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                          </div>
+                          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][date.getDay()]}
                         </div>
                       </th>
                     ))}
