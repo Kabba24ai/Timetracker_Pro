@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Clock, MapPin, Edit, Save, X, Plus, Copy, Trash2 } from 'lucide-react';
+import { Calendar, Clock, MapPin, Edit, Save, X, Plus, Copy, Trash2, Users } from 'lucide-react';
 
 interface ScheduleTemplate {
   id: string;
@@ -174,10 +174,9 @@ const WorkSchedule: React.FC = () => {
         employeeWorkDays.forEach(day => {
           scheduleData[day.date] = day;
         });
-        scheduleData[day.date] = day;
-      });
-      
-      localStorage.setItem(scheduleKey, JSON.stringify(scheduleData));
+        
+        localStorage.setItem(scheduleKey, JSON.stringify(scheduleData));
+      }
     } catch (error) {
       console.error('Error saving work schedule:', error);
     }
@@ -334,10 +333,7 @@ const WorkSchedule: React.FC = () => {
           is_scheduled: false,
           notes: ''
         }));
-        ...day,
-        is_scheduled: false,
-        notes: ''
-      }));
+      }
       
       setWorkDays(clearedWorkDays);
       
@@ -528,264 +524,150 @@ const WorkSchedule: React.FC = () => {
           ) : (
             <div className="p-6">
               <div className="space-y-6">
-                {workDays.map((day) => {
-                  const isEditing = editingDay === day.date;
+                {selectedEmployees.map(employeeId => {
+                  const employee = mockEmployees.find(emp => emp.id === employeeId);
+                  const employeeWorkDays = workDays[employeeId] || [];
                   
                   return (
-                    <div key={day.date} className={`border rounded-lg p-4 ${
-                      day.is_scheduled ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'
-                    }`}>
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-4">
-                          <input
-                            type="checkbox"
-                            checked={day.is_scheduled}
-                            onChange={() => toggleScheduled(day.date)}
-                            className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                          />
-                          <div>
-                            <p className="font-medium text-gray-900">
-                              {getDayName(day.date)}
-                            </p>
-                            <p className="text-sm text-gray-600">
-                              {formatDate(day.date)}
-                            </p>
-                          </div>
+                    <div key={employeeId} className="mb-8">
+                      <div className="flex items-center justify-between mb-4">
+                        <div>
+                          <h4 className="text-lg font-semibold text-gray-900">{employee?.name}</h4>
+                          <p className="text-sm text-gray-600">Primary Store: {employee?.primary_store}</p>
                         </div>
-                        
-                        {day.is_scheduled && (
-                          <div className="flex items-center space-x-6">
-                            {isEditing ? (
-                              <div className="flex items-center space-x-4">
-                                <div className="flex items-center space-x-2">
-                                  <Clock className="h-4 w-4 text-gray-500" />
-                                  <input
-                                    type="time"
-                                    value={editValues.start_time || ''}
-                                    onChange={(e) => setEditValues(prev => ({ ...prev, start_time: e.target.value }))}
-                                    className="px-2 py-1 border border-gray-300 rounded text-sm"
-                                  />
-                                  <span className="text-gray-500">to</span>
-                                  <input
-                                    type="time"
-                                    value={editValues.end_time || ''}
-                                    onChange={(e) => setEditValues(prev => ({ ...prev, end_time: e.target.value }))}
-                                    className="px-2 py-1 border border-gray-300 rounded text-sm"
-                                  />
-                                </div>
-                                
-                                <div className="flex items-center space-x-2">
-                                  <MapPin className="h-4 w-4 text-gray-500" />
-                                  <select
-                                    value={editValues.store_location || ''}
-                                    onChange={(e) => setEditValues(prev => ({ ...prev, store_location: e.target.value }))}
-                                    className="px-2 py-1 border border-gray-300 rounded text-sm"
-                                  >
-                                    {storeLocations.map(location => (
-                                      <option key={location} value={location}>
-                                        {location}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </div>
-                                
-                                <div className="flex items-center space-x-2">
-                                  <button
-                                    onClick={saveEdit}
-                                    className="p-1 text-green-600 hover:bg-green-100 rounded"
-                                  >
-                                    <Save className="h-4 w-4" />
-                                  </button>
-                                  <button
-                                    onClick={cancelEdit}
-                                    className="p-1 text-gray-600 hover:bg-gray-100 rounded"
-                                  >
-                                    <X className="h-4 w-4" />
-                                  </button>
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="flex items-center space-x-6">
-                                <div className="flex items-center space-x-2 text-sm text-gray-600">
-                                  <Clock className="h-4 w-4" />
-                                  <span className="font-mono">
-                                    {day.start_time} - {day.end_time}
-                                  </span>
-                                  <span className="text-blue-600 font-semibold">
-                                    ({day.hours.toFixed(1)}h)
-                                  </span>
-                                </div>
-                                
-                                <div className="flex items-center space-x-2 text-sm text-gray-600">
-                                  <MapPin className="h-4 w-4" />
-                                  <span>{day.store_location}</span>
-                                </div>
-                                
-                                <button
-                                  onClick={() => startEditing(day.date)}
-                                  className="p-1 text-blue-600 hover:bg-blue-100 rounded"
-                                >
-                                  <Edit className="h-4 w-4" />
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        )}
+                        <div className="text-sm text-gray-600">
+                          Total hours: {' '}
+                          <span className="font-semibold text-blue-600">
+                            {employeeWorkDays.filter(d => d.is_scheduled).reduce((sum, day) => sum + day.hours, 0).toFixed(1)}h
+                          </span>
+                        </div>
                       </div>
                       
-                      {day.notes && (
-                        <div className="mt-2 text-sm text-gray-600 italic">
-                          Note: {day.notes}
-                        </div>
-                      )}
+                      <div className="space-y-3">
+                        {employeeWorkDays.map((day) => {
+                          const isEditing = editingDay === day.date && editingEmployee === employeeId;
+                          
+                          return (
+                            <div key={day.date} className={`border rounded-lg p-4 ${
+                              day.is_scheduled ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'
+                            }`}>
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center space-x-4">
+                                  <input
+                                    type="checkbox"
+                                    checked={day.is_scheduled}
+                                    onChange={() => {
+                                      setEditingEmployee(employeeId);
+                                      toggleScheduled(day.date);
+                                    }}
+                                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                                  />
+                                  <div>
+                                    <p className="font-medium text-gray-900">
+                                      {getDayName(day.date)}
+                                    </p>
+                                    <p className="text-sm text-gray-600">
+                                      {formatDate(day.date)}
+                                    </p>
+                                  </div>
+                                </div>
+                                
+                                {day.is_scheduled && (
+                                  <div className="flex items-center space-x-6">
+                                    {isEditing ? (
+                                      <div className="flex items-center space-x-4">
+                                        <div className="flex items-center space-x-2">
+                                          <Clock className="h-4 w-4 text-gray-500" />
+                                          <input
+                                            type="time"
+                                            value={editValues.start_time || ''}
+                                            onChange={(e) => setEditValues(prev => ({ ...prev, start_time: e.target.value }))}
+                                            className="px-2 py-1 border border-gray-300 rounded text-sm"
+                                          />
+                                          <span className="text-gray-500">to</span>
+                                          <input
+                                            type="time"
+                                            value={editValues.end_time || ''}
+                                            onChange={(e) => setEditValues(prev => ({ ...prev, end_time: e.target.value }))}
+                                            className="px-2 py-1 border border-gray-300 rounded text-sm"
+                                          />
+                                        </div>
+                                        
+                                        <div className="flex items-center space-x-2">
+                                          <MapPin className="h-4 w-4 text-gray-500" />
+                                          <select
+                                            value={editValues.store_location || ''}
+                                            onChange={(e) => setEditValues(prev => ({ ...prev, store_location: e.target.value }))}
+                                            className="px-2 py-1 border border-gray-300 rounded text-sm"
+                                          >
+                                            {storeLocations.map(location => (
+                                              <option key={location} value={location}>
+                                                {location}
+                                              </option>
+                                            ))}
+                                          </select>
+                                        </div>
+                                        
+                                        <div className="flex items-center space-x-2">
+                                          <button
+                                            onClick={saveEdit}
+                                            className="p-1 text-green-600 hover:bg-green-100 rounded"
+                                          >
+                                            <Save className="h-4 w-4" />
+                                          </button>
+                                          <button
+                                            onClick={cancelEdit}
+                                            className="p-1 text-gray-600 hover:bg-gray-100 rounded"
+                                          >
+                                            <X className="h-4 w-4" />
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <div className="flex items-center space-x-6">
+                                        <div className="flex items-center space-x-2 text-sm text-gray-600">
+                                          <Clock className="h-4 w-4" />
+                                          <span className="font-mono">
+                                            {day.start_time} - {day.end_time}
+                                          </span>
+                                          <span className="text-blue-600 font-semibold">
+                                            ({day.hours.toFixed(1)}h)
+                                          </span>
+                                        </div>
+                                        
+                                        <div className="flex items-center space-x-2 text-sm text-gray-600">
+                                          <MapPin className="h-4 w-4" />
+                                          <span>{day.store_location}</span>
+                                        </div>
+                                        
+                                        <button
+                                          onClick={() => {
+                                            setEditingEmployee(employeeId);
+                                            startEditing(day.date);
+                                          }}
+                                          className="p-1 text-blue-600 hover:bg-blue-100 rounded"
+                                        >
+                                          <Edit className="h-4 w-4" />
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                              
+                              {day.notes && (
+                                <div className="mt-2 text-sm text-gray-600 italic">
+                                  Note: {day.notes}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   );
                 })}
               </div>
-              
-              {selectedEmployees.map(employeeId => {
-                const employee = mockEmployees.find(emp => emp.id === employeeId);
-                const employeeWorkDays = workDays[employeeId] || [];
-                
-                return (
-                  <div key={employeeId} className="mb-8">
-                    <div className="flex items-center justify-between mb-4">
-                      <div>
-                        <h4 className="text-lg font-semibold text-gray-900">{employee?.name}</h4>
-                        <p className="text-sm text-gray-600">Primary Store: {employee?.primary_store}</p>
-                      </div>
-                      <div className="text-sm text-gray-600">
-                        Total hours: {' '}
-                        <span className="font-semibold text-blue-600">
-                          {employeeWorkDays.filter(d => d.is_scheduled).reduce((sum, day) => sum + day.hours, 0).toFixed(1)}h
-                        </span>
-                      </div>
-                    </div>
-                    
-                    <div className="space-y-3">
-                      {employeeWorkDays.map((day) => {
-                        const isEditing = editingDay === day.date && editingEmployee === employeeId;
-                        
-                        return (
-                          <div key={day.date} className={`border rounded-lg p-4 ${
-                            day.is_scheduled ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'
-                          }`}>
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center space-x-4">
-                                <input
-                                  type="checkbox"
-                                  checked={day.is_scheduled}
-                                  onChange={() => {
-                                    setEditingEmployee(employeeId);
-                                    toggleScheduled(day.date);
-                                  }}
-                                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                                />
-                                <div>
-                                  <p className="font-medium text-gray-900">
-                                    {getDayName(day.date)}
-                                  </p>
-                                  <p className="text-sm text-gray-600">
-                                    {formatDate(day.date)}
-                                  </p>
-                                </div>
-                              </div>
-                              
-                              {day.is_scheduled && (
-                                <div className="flex items-center space-x-6">
-                                  {isEditing ? (
-                                    <div className="flex items-center space-x-4">
-                                      <div className="flex items-center space-x-2">
-                                        <Clock className="h-4 w-4 text-gray-500" />
-                                        <input
-                                          type="time"
-                                          value={editValues.start_time || ''}
-                                          onChange={(e) => setEditValues(prev => ({ ...prev, start_time: e.target.value }))}
-                                          className="px-2 py-1 border border-gray-300 rounded text-sm"
-                                        />
-                                        <span className="text-gray-500">to</span>
-                                        <input
-                                          type="time"
-                                          value={editValues.end_time || ''}
-                                          onChange={(e) => setEditValues(prev => ({ ...prev, end_time: e.target.value }))}
-                                          className="px-2 py-1 border border-gray-300 rounded text-sm"
-                                        />
-                                      </div>
-                                      
-                                      <div className="flex items-center space-x-2">
-                                        <MapPin className="h-4 w-4 text-gray-500" />
-                                        <select
-                                          value={editValues.store_location || ''}
-                                          onChange={(e) => setEditValues(prev => ({ ...prev, store_location: e.target.value }))}
-                                          className="px-2 py-1 border border-gray-300 rounded text-sm"
-                                        >
-                                          {storeLocations.map(location => (
-                                            <option key={location} value={location}>
-                                              {location}
-                                            </option>
-                                          ))}
-                                        </select>
-                                      </div>
-                                      
-                                      <div className="flex items-center space-x-2">
-                                        <button
-                                          onClick={saveEdit}
-                                          className="p-1 text-green-600 hover:bg-green-100 rounded"
-                                        >
-                                          <Save className="h-4 w-4" />
-                                        </button>
-                                        <button
-                                          onClick={cancelEdit}
-                                          className="p-1 text-gray-600 hover:bg-gray-100 rounded"
-                                        >
-                                          <X className="h-4 w-4" />
-                                        </button>
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    <div className="flex items-center space-x-6">
-                                      <div className="flex items-center space-x-2 text-sm text-gray-600">
-                                        <Clock className="h-4 w-4" />
-                                        <span className="font-mono">
-                                          {day.start_time} - {day.end_time}
-                                        </span>
-                                        <span className="text-blue-600 font-semibold">
-                                          ({day.hours.toFixed(1)}h)
-                                        </span>
-                                      </div>
-                                      
-                                      <div className="flex items-center space-x-2 text-sm text-gray-600">
-                                        <MapPin className="h-4 w-4" />
-                                        <span>{day.store_location}</span>
-                                      </div>
-                                      
-                                      <button
-                                        onClick={() => {
-                                          setEditingEmployee(employeeId);
-                                          startEditing(day.date);
-                                        }}
-                                        className="p-1 text-blue-600 hover:bg-blue-100 rounded"
-                                      >
-                                        <Edit className="h-4 w-4" />
-                                      </button>
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                            
-                            {day.notes && (
-                              <div className="mt-2 text-sm text-gray-600 italic">
-                                Note: {day.notes}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
               
               <div className="mt-6 flex items-center justify-between">
                 <button
