@@ -673,30 +673,29 @@ const WorkSchedule: React.FC = () => {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="min-w-full">
-                <thead>
-                  <tr className="border-b border-gray-200">
-                    <th className="text-left py-4 px-4 font-medium text-gray-900 bg-gray-50 sticky left-0 z-10 min-w-[200px]">
-                      Employee
-                    </th>
-                    {weekDates.map((date, index) => (
-                      <th key={index} className="text-center py-4 px-3 font-medium text-gray-900 bg-gray-50 min-w-[140px]">
-                        <div>
-                          <div className="text-sm font-semibold">
-                            {date.toLocaleDateString('en-US', { weekday: 'short' })}
-                          </div>
-                          <div className="text-xs text-gray-600">
-                            {date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                          </div>
-                        </div>
-                      </th>
-                    ))}
-                    <th className="text-center py-4 px-1 font-medium text-gray-900 bg-gray-50 min-w-[60px] w-[60px]">
-                      Total
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
+              <div className="w-full overflow-x-hidden">
+                {/* Header row with CSS Grid - guaranteed to fit on screen */}
+                <div className="grid [grid-template-columns:100px_repeat(7,minmax(0,1fr))_64px] border-b border-gray-200 bg-gray-50">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide px-2 py-3 truncate">
+                    Employee
+                  </div>
+                  {weekDates.map((date, index) => (
+                    <div key={index} className="text-[11px] font-semibold uppercase tracking-wide px-2 py-3 text-center truncate">
+                      <div className="text-sm font-semibold">
+                        {date.toLocaleDateString('en-US', { weekday: 'short' })}
+                      </div>
+                      <div className="text-xs text-gray-600">
+                        {date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      </div>
+                    </div>
+                  ))}
+                  <div className="text-[11px] font-semibold uppercase tracking-wide px-1 py-3 text-center">
+                    Total
+                  </div>
+                </div>
+
+                {/* Body rows with CSS Grid */}
+                <div className="divide-y divide-gray-100">
                   {selectedEmployees.map(employeeId => {
                     const employee = filteredAndSortedEmployees.find(emp => emp.id === employeeId);
                     if (!employee) return null; // Skip if employee is filtered out
@@ -705,43 +704,43 @@ const WorkSchedule: React.FC = () => {
                     const totalHours = getEmployeeTotalHours(employeeId);
                     
                     return (
-                      <tr key={employeeId} className="border-b border-gray-100 hover:bg-gray-50">
-                        <td className="py-2 px-2 bg-white sticky left-0 z-10 border-r border-gray-200">
-                          <div>
-                            <p className="font-medium text-gray-900 text-sm truncate">{employee?.name}</p>
-                            <div className="mt-1">
-                              <span className={`inline-flex px-1.5 py-0.5 text-xs font-medium rounded-full ${
-                                employee?.role === 'admin'
-                                  ? 'bg-purple-100 text-purple-800'
-                                  : 'bg-blue-100 text-blue-800'
-                              }`}>
-                                {employee?.role}
-                              </span>
+                      <div
+                        key={employeeId}
+                        className="grid [grid-template-columns:100px_repeat(7,minmax(0,1fr))_64px] items-stretch hover:bg-gray-50"
+                      >
+                        {/* Employee cell: width locked to 100px */}
+                        <div className="px-2 py-2 leading-tight border-r border-gray-200">
+                          <div className="text-sm font-medium leading-tight truncate">{employee?.name}</div>
+                          {employee?.role && (
+                            <div className="mt-0.5 inline-block text-[10px] leading-[12px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-700">
+                              {employee.role}
                             </div>
-                            <p className="text-xs text-gray-500 truncate">{employee?.primary_store}</p>
-                          </div>
-                        </td>
+                          )}
+                          <div className="text-[10px] text-gray-500 truncate mt-0.5">{employee?.primary_store}</div>
+                        </div>
+
+                        {/* Seven day cells */}
                         {weekDates.map((date, dayIndex) => {
                           const dateStr = date.toISOString().split('T')[0];
                           const dayData = employeeWorkDays.find(d => d.date === dateStr);
                           const isEditing = editingCell?.employeeId === employeeId && editingCell?.date === dateStr;
                           
                           return (
-                            <td key={dayIndex} className="py-2 px-2 text-center">
+                            <div key={dayIndex} className="px-1 py-2 flex items-center justify-center text-sm leading-tight min-w-0">
                               {dayData && (
-                                <div className={`p-2 rounded-lg border-2 ${
+                                <div className={`p-1 rounded border w-full ${
                                   dayData.is_scheduled 
                                     ? 'bg-green-50 border-green-200' 
                                     : 'bg-gray-50 border-gray-200'
                                 }`}>
                                   {isEditing ? (
-                                    <div className="space-y-2">
+                                    <div className="space-y-1">
                                       <div className="flex items-center justify-center">
                                         <input
                                           type="checkbox"
                                           checked={editValues.is_scheduled || false}
                                           onChange={(e) => setEditValues(prev => ({ ...prev, is_scheduled: e.target.checked }))}
-                                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                                          className="h-3 w-3 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                                         />
                                       </div>
                                       {editValues.is_scheduled && (
@@ -751,19 +750,19 @@ const WorkSchedule: React.FC = () => {
                                               type="time"
                                               value={editValues.start_time || ''}
                                               onChange={(e) => setEditValues(prev => ({ ...prev, start_time: e.target.value }))}
-                                              className="w-full px-1 py-1 border border-gray-300 rounded text-xs"
+                                              className="w-full px-1 py-0.5 border border-gray-300 rounded text-[10px]"
                                             />
                                             <input
                                               type="time"
                                               value={editValues.end_time || ''}
                                               onChange={(e) => setEditValues(prev => ({ ...prev, end_time: e.target.value }))}
-                                              className="w-full px-1 py-1 border border-gray-300 rounded text-xs"
+                                              className="w-full px-1 py-0.5 border border-gray-300 rounded text-[10px]"
                                             />
                                           </div>
                                           <select
                                             value={editValues.store_location || ''}
                                             onChange={(e) => setEditValues(prev => ({ ...prev, store_location: e.target.value }))}
-                                            className="w-full px-1 py-1 border border-gray-300 rounded text-xs"
+                                            className="w-full px-1 py-0.5 border border-gray-300 rounded text-[10px]"
                                           >
                                             {storeLocations.map(location => (
                                               <option key={location} value={location}>
@@ -776,45 +775,45 @@ const WorkSchedule: React.FC = () => {
                                       <div className="flex items-center justify-center space-x-1">
                                         <button
                                           onClick={saveEdit}
-                                          className="p-1 text-green-600 hover:bg-green-100 rounded"
+                                          className="p-0.5 text-green-600 hover:bg-green-100 rounded"
                                         >
                                           <Save className="h-3 w-3" />
                                         </button>
                                         <button
                                           onClick={cancelEdit}
-                                          className="p-1 text-gray-600 hover:bg-gray-100 rounded"
+                                          className="p-0.5 text-gray-600 hover:bg-gray-100 rounded"
                                         >
                                           <X className="h-3 w-3" />
                                         </button>
                                       </div>
                                     </div>
                                   ) : (
-                                    <div className="space-y-1">
+                                    <div className="space-y-1 text-center">
                                       <div className="flex items-center justify-center">
                                         <input
                                           type="checkbox"
                                           checked={dayData.is_scheduled}
                                           onChange={() => toggleScheduled(employeeId, dateStr)}
-                                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                                          className="h-3 w-3 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                                         />
                                       </div>
                                       {dayData.is_scheduled && (
                                         <>
-                                          <div className="text-xs font-mono text-gray-700">
+                                          <div className="text-[10px] font-mono text-gray-700">
                                             <div>{dayData.start_time}</div>
                                             <div>{dayData.end_time}</div>
                                           </div>
-                                          <div className="text-xs text-blue-600 font-semibold">
+                                          <div className="text-[10px] text-blue-600 font-semibold">
                                             {dayData.hours.toFixed(1)}h
                                           </div>
-                                          <div className="text-xs text-gray-600 truncate" title={dayData.store_location}>
+                                          <div className="text-[9px] text-gray-600 truncate" title={dayData.store_location}>
                                             {dayData.store_location.split(' ')[0]}
                                           </div>
                                           <button
                                             onClick={() => startEditing(employeeId, dateStr)}
-                                            className="p-1 text-blue-600 hover:bg-blue-100 rounded"
+                                            className="p-0.5 text-blue-600 hover:bg-blue-100 rounded"
                                           >
-                                            <Edit className="h-3 w-3" />
+                                            <Edit className="h-2 w-2" />
                                           </button>
                                         </>
                                       )}
@@ -822,19 +821,21 @@ const WorkSchedule: React.FC = () => {
                                   )}
                                 </div>
                               )}
-                            </td>
+                            </div>
                           );
                         })}
-                        <td className="py-2 px-1 text-center">
-                          <div className="text-lg font-bold text-blue-600">
+
+                        {/* Total column (right-aligned, narrow) */}
+                        <div className="px-1 py-2 text-center text-sm font-semibold leading-tight">
+                          <div className="text-blue-600">
                             {totalHours.toFixed(1)}h
                           </div>
-                        </td>
-                      </tr>
+                        </div>
+                      </div>
                     );
                   })}
-                </tbody>
-              </table>
+                </div>
+              </div>
             </div>
           )}
           
