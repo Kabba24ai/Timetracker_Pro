@@ -444,6 +444,18 @@ const WorkSchedule: React.FC = () => {
     return employeeWorkDays.filter(d => d.is_scheduled).reduce((sum, day) => sum + day.hours, 0);
   };
 
+  const getStoreColorClass = (storeLocation: string) => {
+    const storeColors: { [store: string]: string } = {
+      'Main Store': 'bg-blue-50 border-blue-200',
+      'North Branch': 'bg-green-50 border-green-200',
+      'South Branch': 'bg-yellow-50 border-yellow-200',
+      'East Location': 'bg-purple-50 border-purple-200',
+      'West Location': 'bg-pink-50 border-pink-200',
+      'Downtown': 'bg-orange-50 border-orange-200'
+    };
+    return storeColors[storeLocation] || 'bg-gray-50 border-gray-200';
+  };
+
   const weekDates = selectedWeek ? getWeekDates(selectedWeek) : [];
 
   return (
@@ -732,7 +744,7 @@ const WorkSchedule: React.FC = () => {
                               {dayData && (
                                 <div className={`p-2 rounded-lg border-2 ${
                                   dayData.is_scheduled 
-                                    ? getStoreBackgroundColor(dayData.store_location)
+                                    ? 'bg-green-50 border-green-200' 
                                     : 'bg-gray-50 border-gray-200'
                                 }`}>
                                   {isEditing ? (
