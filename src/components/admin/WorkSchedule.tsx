@@ -707,10 +707,11 @@ const WorkSchedule: React.FC = () => {
                     return (
                       <tr key={employeeId} className="border-b border-gray-100 hover:bg-gray-50">
                         <td className="py-2 px-2 bg-white sticky left-0 z-10 border-r border-gray-200">
+                        <td className="py-1 px-1 bg-white sticky left-0 z-10 border-r border-gray-200 w-[50px]">
                           <div>
-                            <p className="font-medium text-gray-900 text-sm truncate">{employee?.name}</p>
+                            <p className="font-medium text-gray-900 text-xs truncate" title={employee?.name}>{employee?.name}</p>
                             <div className="mt-1">
-                              <span className={`inline-flex px-1.5 py-0.5 text-xs font-medium rounded-full ${
+                              <span className={`inline-flex px-1 py-0.5 text-[10px] font-medium rounded-full ${
                                 employee?.role === 'admin'
                                   ? 'bg-purple-100 text-purple-800'
                                   : 'bg-blue-100 text-blue-800'
@@ -718,7 +719,7 @@ const WorkSchedule: React.FC = () => {
                                 {employee?.role}
                               </span>
                             </div>
-                            <p className="text-xs text-gray-500 truncate">{employee?.primary_store}</p>
+                            <p className="text-[10px] text-gray-500 truncate" title={employee?.primary_store}>{employee?.primary_store}</p>
                           </div>
                         </td>
                         {weekDates.map((date, dayIndex) => {
