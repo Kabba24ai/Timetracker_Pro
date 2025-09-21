@@ -732,7 +732,7 @@ const WorkSchedule: React.FC = () => {
                               {dayData && (
                                 <div className={`p-2 rounded-lg border-2 ${
                                   dayData.is_scheduled 
-                                    ? 'bg-green-50 border-green-200' 
+                                    ? getStoreBackgroundColor(dayData.store_location)
                                     : 'bg-gray-50 border-gray-200'
                                 }`}>
                                   {isEditing ? (
