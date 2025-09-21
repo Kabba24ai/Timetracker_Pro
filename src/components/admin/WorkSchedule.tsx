@@ -396,6 +396,7 @@ const WorkSchedule: React.FC = () => {
     });
     setSelectedEmployees(filteredEmployees.map(emp => emp.id));
   };
+  
   const getWeekDates = (weekStart: string) => {
     const dates = [];
     const start = new Date(weekStart);
@@ -706,7 +707,6 @@ const WorkSchedule: React.FC = () => {
                     
                     return (
                       <tr key={employeeId} className="border-b border-gray-100 hover:bg-gray-50">
-                        <td className="py-2 px-2 bg-white sticky left-0 z-10 border-r border-gray-200">
                         <td className="py-1 px-1 bg-white sticky left-0 z-10 border-r border-gray-200 w-[50px]">
                           <div>
                             <p className="font-medium text-gray-900 text-xs truncate" title={employee?.name}>{employee?.name}</p>
