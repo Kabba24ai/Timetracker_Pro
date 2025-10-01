@@ -1,8 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Placeholder Supabase client for demo mode
-// In production, replace with actual Supabase URL and keys
-const supabaseUrl = 'https://placeholder.supabase.co';
-const supabaseAnonKey = 'placeholder-key';
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error('Missing Supabase environment variables');
+}
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
