@@ -40,13 +40,16 @@ const LoginPage: React.FC = () => {
         </div>
 
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm">
-          <h3 className="font-semibold text-blue-900 mb-2">Demo Accounts:</h3>
+          <h3 className="font-semibold text-blue-900 mb-2">Instructions:</h3>
           <div className="space-y-2 text-blue-800">
             <div>
-              <strong>Employee:</strong> john@demo.com / demo123
+              1. Start the backend server: <code className="bg-white px-1 rounded">npm run server</code>
             </div>
             <div>
-              <strong>Admin:</strong> admin@demo.com / admin123
+              2. Create an account in Supabase Auth
+            </div>
+            <div>
+              3. Login with your credentials
             </div>
           </div>
         </div>
