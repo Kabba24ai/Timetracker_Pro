@@ -1,5 +1,4 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { api } from '../services/api';
 
 interface User {
   id: string;
@@ -13,6 +12,7 @@ interface Employee {
   last_name: string;
   email: string;
   role: 'employee' | 'admin';
+  created_at: string;
 }
 
 interface AuthContextType {
@@ -24,6 +24,38 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
+
+// Mock users for demo
+const mockUsers = [
+  {
+    id: '1',
+    email: 'john@demo.com',
+    password: 'demo123',
+    employee: {
+      id: '1',
+      user_id: '1',
+      first_name: 'John',
+      last_name: 'Doe',
+      email: 'john@demo.com',
+      role: 'employee' as const,
+      created_at: '2024-01-01T00:00:00Z',
+    }
+  },
+  {
+    id: '2',
+    email: 'admin@demo.com',
+    password: 'admin123',
+    employee: {
+      id: '2',
+      user_id: '2',
+      first_name: 'Admin',
+      last_name: 'User',
+      email: 'admin@demo.com',
+      role: 'admin' as const,
+      created_at: '2024-01-01T00:00:00Z',
+    }
+  }
+];
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
@@ -39,47 +71,41 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const checkAuth = async () => {
-      const token = localStorage.getItem('access_token');
-
-      if (token) {
-        try {
-          const data = await api.getMe();
-          setUser(data.user);
-          setEmployee(data.employee);
-        } catch (error) {
-          localStorage.removeItem('access_token');
-          localStorage.removeItem('refresh_token');
-        }
-      }
-
-      setLoading(false);
-    };
-
-    checkAuth();
+    // Check for existing session in localStorage
+    const savedUser = localStorage.getItem('demo_user');
+    const savedEmployee = localStorage.getItem('demo_employee');
+    
+    if (savedUser && savedEmployee) {
+      setUser(JSON.parse(savedUser));
+      setEmployee(JSON.parse(savedEmployee));
+    }
+    
+    setLoading(false);
   }, []);
 
   const signIn = async (email: string, password: string) => {
-    const data = await api.login(email, password);
-
-    setUser(data.user);
-    setEmployee(data.employee);
-
-    localStorage.setItem('access_token', data.session.access_token);
-    localStorage.setItem('refresh_token', data.session.refresh_token);
+    const mockUser = mockUsers.find(u => u.email === email && u.password === password);
+    
+    if (!mockUser) {
+      throw new Error('Invalid email or password');
+    }
+    
+    const user = { id: mockUser.id, email: mockUser.email };
+    const employee = mockUser.employee;
+    
+    setUser(user);
+    setEmployee(employee);
+    
+    // Save to localStorage for persistence
+    localStorage.setItem('demo_user', JSON.stringify(user));
+    localStorage.setItem('demo_employee', JSON.stringify(employee));
   };
 
   const signOut = async () => {
-    try {
-      await api.logout();
-    } catch (error) {
-      console.error('Logout error:', error);
-    }
-
     setUser(null);
     setEmployee(null);
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('refresh_token');
+    localStorage.removeItem('demo_user');
+    localStorage.removeItem('demo_employee');
   };
 
   return (
