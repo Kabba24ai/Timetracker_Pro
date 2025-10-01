@@ -1,0 +1,15 @@
+{
+    "name": "time-tracking-api",
+    "description": "Time Tracking System API with Medoo",
+    "type": "project",
+    "require": {
+        "php": ">=7.4",
+        "catfan/medoo": "^2.1",
+        "firebase/php-jwt": "^6.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Api\\": "."
+        }
+    }
+}

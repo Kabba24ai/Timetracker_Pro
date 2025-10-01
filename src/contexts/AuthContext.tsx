@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
+import { api } from '../lib/api';
 
 interface User {
   id: string;
@@ -25,38 +26,6 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
 
-// Mock users for demo
-const mockUsers = [
-  {
-    id: '1',
-    email: 'john@demo.com',
-    password: 'demo123',
-    employee: {
-      id: '1',
-      user_id: '1',
-      first_name: 'John',
-      last_name: 'Doe',
-      email: 'john@demo.com',
-      role: 'employee' as const,
-      created_at: '2024-01-01T00:00:00Z',
-    }
-  },
-  {
-    id: '2',
-    email: 'admin@demo.com',
-    password: 'admin123',
-    employee: {
-      id: '2',
-      user_id: '2',
-      first_name: 'Admin',
-      last_name: 'User',
-      email: 'admin@demo.com',
-      role: 'admin' as const,
-      created_at: '2024-01-01T00:00:00Z',
-    }
-  }
-];
-
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {
@@ -71,41 +40,67 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check for existing session in localStorage
-    const savedUser = localStorage.getItem('demo_user');
-    const savedEmployee = localStorage.getItem('demo_employee');
-    
-    if (savedUser && savedEmployee) {
-      setUser(JSON.parse(savedUser));
-      setEmployee(JSON.parse(savedEmployee));
-    }
-    
-    setLoading(false);
+    const initAuth = async () => {
+      const token = localStorage.getItem('auth_token');
+
+      if (token) {
+        try {
+          const response = await api.get('/api/auth/me');
+          if (response.success && response.data) {
+            const emp = response.data;
+            setUser({ id: emp.id, email: emp.email });
+            setEmployee({
+              id: emp.id,
+              user_id: emp.id,
+              first_name: emp.first_name,
+              last_name: emp.last_name,
+              email: emp.email,
+              role: emp.role,
+              created_at: emp.created_at
+            });
+          }
+        } catch (error) {
+          console.error('Auth error:', error);
+          localStorage.removeItem('auth_token');
+        }
+      }
+
+      setLoading(false);
+    };
+
+    initAuth();
   }, []);
 
   const signIn = async (email: string, password: string) => {
-    const mockUser = mockUsers.find(u => u.email === email && u.password === password);
-    
-    if (!mockUser) {
-      throw new Error('Invalid email or password');
+    const response = await api.post('/api/auth/login', { email, password });
+
+    if (!response.success || !response.data) {
+      throw new Error(response.message || 'Invalid email or password');
     }
-    
-    const user = { id: mockUser.id, email: mockUser.email };
-    const employee = mockUser.employee;
-    
+
+    const { token, user: userData } = response.data;
+
+    api.setToken(token);
+
+    const user = { id: userData.id, email: userData.email };
+    const employee = {
+      id: userData.id,
+      user_id: userData.id,
+      first_name: userData.first_name,
+      last_name: userData.last_name,
+      email: userData.email,
+      role: userData.role,
+      created_at: userData.created_at
+    };
+
     setUser(user);
     setEmployee(employee);
-    
-    // Save to localStorage for persistence
-    localStorage.setItem('demo_user', JSON.stringify(user));
-    localStorage.setItem('demo_employee', JSON.stringify(employee));
   };
 
   const signOut = async () => {
     setUser(null);
     setEmployee(null);
-    localStorage.removeItem('demo_user');
-    localStorage.removeItem('demo_employee');
+    api.setToken(null);
   };
 
   return (
