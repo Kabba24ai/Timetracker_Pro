@@ -126,7 +126,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       .eq('user_id', data.user.id)
       .maybeSingle();
 
-    if (employeeError || !employee) {
+    if (employeeError) {
+      console.error('Employee query error:', employeeError);
+      throw new Error(`Employee record not found: ${employeeError.message}`);
+    }
+
+    if (!employee) {
       throw new Error('Employee record not found');
     }
 
