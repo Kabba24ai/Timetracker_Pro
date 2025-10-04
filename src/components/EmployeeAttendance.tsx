@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Trophy, Calendar, TrendingUp, Clock } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { DateRangeOption, dateRangeOptions, getDateRange } from '../lib/dateRanges';
 
 interface AchievementGoal {
   id: string;
@@ -9,18 +10,6 @@ interface AchievementGoal {
   icon: string;
   color: string;
   description: string;
-}
-
-interface MonthlySummary {
-  id: string;
-  year: number;
-  month: number;
-  days_present: number;
-  days_late: number;
-  days_missed: number;
-  days_excused: number;
-  total_minutes_late: number;
-  achievement: AchievementGoal | null;
 }
 
 interface AttendanceRecord {
@@ -31,64 +20,76 @@ interface AttendanceRecord {
   minutes_late: number;
 }
 
+interface AggregatedStats {
+  days_present: number;
+  days_late: number;
+  days_missed: number;
+  days_excused: number;
+  total_minutes_late: number;
+  achievement: AchievementGoal | null;
+}
+
 const EmployeeAttendance: React.FC = () => {
   const { employee } = useAuth();
-  const [currentSummary, setCurrentSummary] = useState<MonthlySummary | null>(null);
-  const [previousSummaries, setPreviousSummaries] = useState<MonthlySummary[]>([]);
+  const [currentStats, setCurrentStats] = useState<AggregatedStats | null>(null);
   const [recentRecords, setRecentRecords] = useState<AttendanceRecord[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth() + 1);
-  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
+  const [dateRangeOption, setDateRangeOption] = useState<DateRangeOption>('current-month');
+  const [selectedMonth, setSelectedMonth] = useState<Date>(new Date());
+  const [showMonthPicker, setShowMonthPicker] = useState(false);
 
   useEffect(() => {
     if (employee) {
       loadAttendanceData();
     }
-  }, [employee, selectedMonth, selectedYear]);
+  }, [employee, dateRangeOption, selectedMonth]);
 
   const loadAttendanceData = async () => {
     if (!employee) return;
     setLoading(true);
 
-    const { data: summary } = await supabase
-      .from('monthly_attendance_summary')
-      .select('*, achievement:achievement_goals(*)')
-      .eq('employee_id', employee.id)
-      .eq('year', selectedYear)
-      .eq('month', selectedMonth)
-      .maybeSingle();
-
-    if (summary) {
-      setCurrentSummary(summary as any);
-    } else {
-      setCurrentSummary(null);
-    }
-
-    const { data: previous } = await supabase
-      .from('monthly_attendance_summary')
-      .select('*, achievement:achievement_goals(*)')
-      .eq('employee_id', employee.id)
-      .order('year', { ascending: false })
-      .order('month', { ascending: false })
-      .limit(6);
-
-    if (previous) {
-      setPreviousSummaries(previous as any);
-    }
-
-    const startDate = new Date(selectedYear, selectedMonth - 1, 1);
-    const endDate = new Date(selectedYear, selectedMonth, 0);
+    const dateRange = getDateRange(dateRangeOption, selectedMonth);
+    const startDateStr = dateRange.startDate.toISOString().split('T')[0];
+    const endDateStr = dateRange.endDate.toISOString().split('T')[0];
 
     const { data: records } = await supabase
       .from('attendance_records')
       .select('*')
       .eq('employee_id', employee.id)
-      .gte('attendance_date', startDate.toISOString().split('T')[0])
-      .lte('attendance_date', endDate.toISOString().split('T')[0])
+      .gte('attendance_date', startDateStr)
+      .lte('attendance_date', endDateStr)
       .order('attendance_date', { ascending: false });
 
     if (records) {
       setRecentRecords(records);
+
+      const stats: AggregatedStats = {
+        days_present: records.filter((r) => r.status === 'present').length,
+        days_late: records.filter((r) => r.status === 'late').length,
+        days_missed: records.filter((r) => r.status === 'missed').length,
+        days_excused: records.filter((r) => r.status === 'excused').length,
+        total_minutes_late: records.reduce((sum, r) => sum + (r.minutes_late || 0), 0),
+        achievement: null,
+      };
+
+      const { data: goals } = await supabase
+        .from('achievement_goals')
+        .select('*')
+        .eq('is_active', true)
+        .order('display_order');
+
+      if (goals) {
+        const matchingGoal = goals.find((goal: AchievementGoal & { goal_type: string; days_missed_max: number; days_late_max: number }) => {
+          if (goal.goal_type === 'positive') {
+            return stats.days_missed <= goal.days_missed_max && stats.days_late <= goal.days_late_max;
+          } else {
+            return stats.days_missed >= goal.days_missed_max || stats.days_late >= goal.days_late_max;
+          }
+        });
+        stats.achievement = matchingGoal || null;
+      }
+
+      setCurrentStats(stats);
     }
 
     setLoading(false);
@@ -126,6 +127,8 @@ const EmployeeAttendance: React.FC = () => {
     });
   };
 
+  const currentDateRange = getDateRange(dateRangeOption, selectedMonth);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -136,47 +139,61 @@ const EmployeeAttendance: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between space-y-4 lg:space-y-0">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Attendance Overview</h2>
           <p className="text-gray-600 mt-1">Track your attendance and achievements</p>
         </div>
-        <div className="flex items-center space-x-2">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-2">
           <select
-            value={selectedMonth}
-            onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
+            value={dateRangeOption}
+            onChange={(e) => {
+              const newOption = e.target.value as DateRangeOption;
+              setDateRangeOption(newOption);
+              if (newOption === 'select-month') {
+                setShowMonthPicker(true);
+              } else {
+                setShowMonthPicker(false);
+              }
+            }}
             className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           >
-            {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => (
-              <option key={month} value={month}>
-                {new Date(2000, month - 1, 1).toLocaleString('default', { month: 'long' })}
+            {dateRangeOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
               </option>
             ))}
           </select>
-          <select
-            value={selectedYear}
-            onChange={(e) => setSelectedYear(parseInt(e.target.value))}
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          >
-            {Array.from({ length: 3 }, (_, i) => new Date().getFullYear() - i).map((year) => (
-              <option key={year} value={year}>
-                {year}
-              </option>
-            ))}
-          </select>
+
+          {(dateRangeOption === 'select-month' || showMonthPicker) && (
+            <input
+              type="month"
+              value={`${selectedMonth.getFullYear()}-${String(selectedMonth.getMonth() + 1).padStart(2, '0')}`}
+              onChange={(e) => {
+                const [year, month] = e.target.value.split('-');
+                setSelectedMonth(new Date(parseInt(year), parseInt(month) - 1, 1));
+              }}
+              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+          )}
         </div>
       </div>
 
-      {currentSummary && currentSummary.achievement && (
+      <div className="text-sm text-gray-600 flex items-center">
+        <Calendar className="inline h-4 w-4 mr-2" />
+        {currentDateRange.label}
+      </div>
+
+      {currentStats && currentStats.achievement && (
         <div className="bg-gradient-to-r from-blue-50 to-blue-100 rounded-xl p-6 border border-blue-200">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
-              <div className="text-6xl">{currentSummary.achievement.icon}</div>
+              <div className="text-6xl">{currentStats.achievement.icon}</div>
               <div>
-                <h3 className="text-2xl font-bold" style={{ color: currentSummary.achievement.color }}>
-                  {currentSummary.achievement.goal_name}
+                <h3 className="text-2xl font-bold" style={{ color: currentStats.achievement.color }}>
+                  {currentStats.achievement.goal_name}
                 </h3>
-                <p className="text-gray-700 mt-1">{currentSummary.achievement.description}</p>
+                <p className="text-gray-700 mt-1">{currentStats.achievement.description}</p>
               </div>
             </div>
             <Trophy className="h-16 w-16 text-blue-300" />
@@ -189,7 +206,7 @@ const EmployeeAttendance: React.FC = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Days Present</p>
-              <p className="text-3xl font-bold text-green-600 mt-2">{currentSummary?.days_present || 0}</p>
+              <p className="text-3xl font-bold text-green-600 mt-2">{currentStats?.days_present || 0}</p>
             </div>
             <Calendar className="h-10 w-10 text-green-200" />
           </div>
@@ -199,7 +216,7 @@ const EmployeeAttendance: React.FC = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Days Late</p>
-              <p className="text-3xl font-bold text-orange-600 mt-2">{currentSummary?.days_late || 0}</p>
+              <p className="text-3xl font-bold text-orange-600 mt-2">{currentStats?.days_late || 0}</p>
             </div>
             <Clock className="h-10 w-10 text-orange-200" />
           </div>
@@ -209,7 +226,7 @@ const EmployeeAttendance: React.FC = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Days Missed</p>
-              <p className="text-3xl font-bold text-red-600 mt-2">{currentSummary?.days_missed || 0}</p>
+              <p className="text-3xl font-bold text-red-600 mt-2">{currentStats?.days_missed || 0}</p>
             </div>
             <Calendar className="h-10 w-10 text-red-200" />
           </div>
@@ -219,7 +236,7 @@ const EmployeeAttendance: React.FC = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Total Minutes Late</p>
-              <p className="text-3xl font-bold text-blue-600 mt-2">{currentSummary?.total_minutes_late || 0}</p>
+              <p className="text-3xl font-bold text-blue-600 mt-2">{currentStats?.total_minutes_late || 0}</p>
             </div>
             <TrendingUp className="h-10 w-10 text-blue-200" />
           </div>
@@ -228,7 +245,7 @@ const EmployeeAttendance: React.FC = () => {
 
       <div className="bg-white rounded-lg border">
         <div className="px-6 py-4 border-b">
-          <h3 className="text-lg font-semibold text-gray-900">Recent Attendance Records</h3>
+          <h3 className="text-lg font-semibold text-gray-900">Attendance Records</h3>
         </div>
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
@@ -285,50 +302,6 @@ const EmployeeAttendance: React.FC = () => {
               )}
             </tbody>
           </table>
-        </div>
-      </div>
-
-      <div className="bg-white rounded-lg border">
-        <div className="px-6 py-4 border-b">
-          <h3 className="text-lg font-semibold text-gray-900">Achievement History</h3>
-        </div>
-        <div className="p-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {previousSummaries.slice(0, 6).map((summary) => (
-              <div key={summary.id} className="border rounded-lg p-4 hover:shadow-md transition-shadow">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="text-sm font-medium text-gray-600">
-                    {new Date(summary.year, summary.month - 1, 1).toLocaleString('default', {
-                      month: 'short',
-                      year: 'numeric',
-                    })}
-                  </div>
-                  {summary.achievement && <span className="text-2xl">{summary.achievement.icon}</span>}
-                </div>
-                <div className="space-y-1 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Present:</span>
-                    <span className="font-semibold text-green-600">{summary.days_present}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Late:</span>
-                    <span className="font-semibold text-orange-600">{summary.days_late}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Missed:</span>
-                    <span className="font-semibold text-red-600">{summary.days_missed}</span>
-                  </div>
-                </div>
-                {summary.achievement && (
-                  <div className="mt-2 pt-2 border-t">
-                    <p className="text-xs font-medium" style={{ color: summary.achievement.color }}>
-                      {summary.achievement.goal_name}
-                    </p>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
         </div>
       </div>
     </div>

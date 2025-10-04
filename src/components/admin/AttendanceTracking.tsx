@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Trophy, Frown, Angry, Calendar, TrendingUp, Users } from 'lucide-react';
+import { Trophy, Calendar, TrendingUp, Users, ChevronDown } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { DateRangeOption, dateRangeOptions, getDateRange } from '../../lib/dateRanges';
 
 interface AchievementGoal {
   id: string;
@@ -15,42 +16,53 @@ interface AchievementGoal {
   is_active: boolean;
 }
 
-interface MonthlySummary {
+interface AttendanceRecord {
   id: string;
   employee_id: string;
-  year: number;
-  month: number;
-  days_present: number;
-  days_late: number;
-  days_missed: number;
-  days_excused: number;
-  total_minutes_late: number;
-  achievement_id: string | null;
+  attendance_date: string;
+  status: string;
+  check_in_time: string | null;
+  minutes_late: number;
   employee: {
     first_name: string;
     last_name: string;
     email: string;
   };
+}
+
+interface EmployeeAggregatedStats {
+  employee_id: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  days_present: number;
+  days_late: number;
+  days_missed: number;
+  days_excused: number;
+  total_minutes_late: number;
   achievement: AchievementGoal | null;
 }
 
 const AttendanceTracking: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'goals' | 'summaries'>('summaries');
   const [goals, setGoals] = useState<AchievementGoal[]>([]);
-  const [summaries, setSummaries] = useState<MonthlySummary[]>([]);
+  const [aggregatedStats, setAggregatedStats] = useState<EmployeeAggregatedStats[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingGoal, setEditingGoal] = useState<AchievementGoal | null>(null);
+  const [dateRangeOption, setDateRangeOption] = useState<DateRangeOption>('current-month');
+  const [selectedMonth, setSelectedMonth] = useState<Date>(new Date());
+  const [showMonthPicker, setShowMonthPicker] = useState(false);
 
   useEffect(() => {
     loadData();
-  }, [activeTab]);
+  }, [activeTab, dateRangeOption, selectedMonth]);
 
   const loadData = async () => {
     setLoading(true);
     if (activeTab === 'goals') {
       await loadGoals();
     } else {
-      await loadSummaries();
+      await loadAggregatedAttendance();
     }
     setLoading(false);
   };
@@ -66,24 +78,79 @@ const AttendanceTracking: React.FC = () => {
     }
   };
 
-  const loadSummaries = async () => {
-    const currentDate = new Date();
-    const year = currentDate.getFullYear();
-    const month = currentDate.getMonth() + 1;
+  const loadAggregatedAttendance = async () => {
+    const dateRange = getDateRange(dateRangeOption, selectedMonth);
 
-    const { data, error } = await supabase
-      .from('monthly_attendance_summary')
+    const startDateStr = dateRange.startDate.toISOString().split('T')[0];
+    const endDateStr = dateRange.endDate.toISOString().split('T')[0];
+
+    const { data: records, error } = await supabase
+      .from('attendance_records')
       .select(`
         *,
-        employee:employees(first_name, last_name, email),
-        achievement:achievement_goals(*)
+        employee:employees(id, first_name, last_name, email)
       `)
-      .eq('year', year)
-      .eq('month', month);
+      .gte('attendance_date', startDateStr)
+      .lte('attendance_date', endDateStr)
+      .order('attendance_date', { ascending: false });
 
-    if (!error && data) {
-      setSummaries(data as any);
+    if (error || !records) {
+      setAggregatedStats([]);
+      return;
     }
+
+    const { data: allGoals } = await supabase
+      .from('achievement_goals')
+      .select('*')
+      .eq('is_active', true)
+      .order('display_order');
+
+    const employeeMap = new Map<string, EmployeeAggregatedStats>();
+
+    records.forEach((record: any) => {
+      const empId = record.employee.id;
+
+      if (!employeeMap.has(empId)) {
+        employeeMap.set(empId, {
+          employee_id: empId,
+          first_name: record.employee.first_name,
+          last_name: record.employee.last_name,
+          email: record.employee.email,
+          days_present: 0,
+          days_late: 0,
+          days_missed: 0,
+          days_excused: 0,
+          total_minutes_late: 0,
+          achievement: null,
+        });
+      }
+
+      const stats = employeeMap.get(empId)!;
+
+      if (record.status === 'present') stats.days_present++;
+      else if (record.status === 'late') stats.days_late++;
+      else if (record.status === 'missed') stats.days_missed++;
+      else if (record.status === 'excused') stats.days_excused++;
+
+      stats.total_minutes_late += record.minutes_late || 0;
+    });
+
+    const statsArray = Array.from(employeeMap.values());
+
+    statsArray.forEach((stats) => {
+      if (allGoals) {
+        const matchingGoal = allGoals.find((goal: AchievementGoal) => {
+          if (goal.goal_type === 'positive') {
+            return stats.days_missed <= goal.days_missed_max && stats.days_late <= goal.days_late_max;
+          } else {
+            return stats.days_missed >= goal.days_missed_max || stats.days_late >= goal.days_late_max;
+          }
+        });
+        stats.achievement = matchingGoal || null;
+      }
+    });
+
+    setAggregatedStats(statsArray);
   };
 
   const saveGoal = async (goal: Partial<AchievementGoal>) => {
@@ -130,16 +197,16 @@ const AttendanceTracking: React.FC = () => {
   };
 
   const recalculateAllSummaries = async () => {
-    const currentDate = new Date();
-    const year = currentDate.getFullYear();
-    const month = currentDate.getMonth() + 1;
-
     const { data: employees } = await supabase
       .from('employees')
       .select('id')
       .eq('is_active', true);
 
     if (employees) {
+      const currentDate = new Date();
+      const year = currentDate.getFullYear();
+      const month = currentDate.getMonth() + 1;
+
       for (const employee of employees) {
         await supabase.rpc('calculate_monthly_summary', {
           p_employee_id: employee.id,
@@ -147,9 +214,11 @@ const AttendanceTracking: React.FC = () => {
           p_month: month,
         });
       }
-      loadSummaries();
+      loadAggregatedAttendance();
     }
   };
+
+  const currentDateRange = getDateRange(dateRangeOption, selectedMonth);
 
   if (loading) {
     return (
@@ -178,7 +247,7 @@ const AttendanceTracking: React.FC = () => {
           >
             <div className="flex items-center space-x-2">
               <Users className="h-5 w-5" />
-              <span>Monthly Summaries</span>
+              <span>Attendance Summary</span>
             </div>
           </button>
           <button
@@ -199,17 +268,57 @@ const AttendanceTracking: React.FC = () => {
 
       {activeTab === 'summaries' && (
         <div>
-          <div className="mb-4 flex justify-between items-center">
-            <h3 className="text-lg font-semibold text-gray-900">
-              Current Month: {new Date().toLocaleString('default', { month: 'long', year: 'numeric' })}
-            </h3>
-            <button
-              onClick={recalculateAllSummaries}
-              className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              <TrendingUp className="h-4 w-4" />
-              <span>Recalculate All</span>
-            </button>
+          <div className="mb-4 flex flex-col sm:flex-row sm:justify-between sm:items-center space-y-4 sm:space-y-0">
+            <div className="flex items-center space-x-3">
+              <label className="text-sm font-medium text-gray-700">View:</label>
+              <select
+                value={dateRangeOption}
+                onChange={(e) => {
+                  const newOption = e.target.value as DateRangeOption;
+                  setDateRangeOption(newOption);
+                  if (newOption === 'select-month') {
+                    setShowMonthPicker(true);
+                  } else {
+                    setShowMonthPicker(false);
+                  }
+                }}
+                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                {dateRangeOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+
+              {(dateRangeOption === 'select-month' || showMonthPicker) && (
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="month"
+                    value={`${selectedMonth.getFullYear()}-${String(selectedMonth.getMonth() + 1).padStart(2, '0')}`}
+                    onChange={(e) => {
+                      const [year, month] = e.target.value.split('-');
+                      setSelectedMonth(new Date(parseInt(year), parseInt(month) - 1, 1));
+                    }}
+                    className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center space-x-3">
+              <div className="text-sm text-gray-600">
+                <Calendar className="inline h-4 w-4 mr-1" />
+                {currentDateRange.label}
+              </div>
+              <button
+                onClick={recalculateAllSummaries}
+                className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                <TrendingUp className="h-4 w-4" />
+                <span>Recalculate</span>
+              </button>
+            </div>
           </div>
 
           <div className="bg-white rounded-lg border overflow-hidden">
@@ -229,43 +338,49 @@ const AttendanceTracking: React.FC = () => {
                     Missed
                   </th>
                   <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Mins Late
+                  </th>
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Achievement
                   </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {summaries.length === 0 ? (
+                {aggregatedStats.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-6 py-8 text-center text-gray-500">
-                      No attendance data for this month yet
+                    <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
+                      No attendance data for this period
                     </td>
                   </tr>
                 ) : (
-                  summaries.map((summary) => (
-                    <tr key={summary.id} className="hover:bg-gray-50">
+                  aggregatedStats.map((stats) => (
+                    <tr key={stats.employee_id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div>
                           <div className="text-sm font-medium text-gray-900">
-                            {summary.employee.first_name} {summary.employee.last_name}
+                            {stats.first_name} {stats.last_name}
                           </div>
-                          <div className="text-sm text-gray-500">{summary.employee.email}</div>
+                          <div className="text-sm text-gray-500">{stats.email}</div>
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-center">
-                        <span className="text-sm font-semibold text-green-600">{summary.days_present}</span>
+                        <span className="text-sm font-semibold text-green-600">{stats.days_present}</span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-center">
-                        <span className="text-sm font-semibold text-orange-600">{summary.days_late}</span>
+                        <span className="text-sm font-semibold text-orange-600">{stats.days_late}</span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-center">
-                        <span className="text-sm font-semibold text-red-600">{summary.days_missed}</span>
+                        <span className="text-sm font-semibold text-red-600">{stats.days_missed}</span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-center">
-                        {summary.achievement ? (
+                        <span className="text-sm font-semibold text-blue-600">{stats.total_minutes_late}</span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-center">
+                        {stats.achievement ? (
                           <div className="flex items-center justify-center space-x-2">
-                            <span className="text-2xl">{summary.achievement.icon}</span>
-                            <span className="text-sm font-medium" style={{ color: summary.achievement.color }}>
-                              {summary.achievement.goal_name}
+                            <span className="text-2xl">{stats.achievement.icon}</span>
+                            <span className="text-sm font-medium" style={{ color: stats.achievement.color }}>
+                              {stats.achievement.goal_name}
                             </span>
                           </div>
                         ) : (
