@@ -1,302 +1,298 @@
-# Time Clock System - Production Ready
+# TimeTracker Pro V2
 
-A comprehensive time tracking and employee management system built with React, TypeScript, and Tailwind CSS. This system provides complete time tracking, vacation management, work scheduling, and administrative controls for rental companies and similar businesses.
+A comprehensive employee time tracking and attendance management system with achievement-based gamification.
 
-## 🚀 Features
+## Features
 
-### **Employee Time Tracking**
-- **Smart Clock In/Out**: Automatic time rounding and validation
-- **Lunch Break Management**: Automatic unpaid lunch deduction
-- **Unpaid Break Tracking**: Flexible break time recording
-- **Real-time Status Display**: Live employee status monitoring
-- **Mobile-Friendly Interface**: Works on all devices
+### Time Clock Management
+- Clock in/out functionality with real-time tracking
+- Today's time entries overview
+- Historical time entry viewing and reporting
+- Automatic attendance calculation from time entries
 
-### **Advanced Work Scheduling**
-- **Visual Calendar View**: Sunday-Saturday weekly calendar
-- **Store Location Color Coding**: Visual identification of work locations
-- **Bulk Schedule Templates**: Quick assignment for multiple employees
-- **Flexible Shift Management**: Custom start/end times per day
-- **Employee Filtering**: By role, store location, and availability
+### Attendance Tracking & Achievements
+- Automatic attendance calculation from time entries
+- Configurable achievement goals (trophies, badges, emojis)
+- Days missed and days late tracking
+- Monthly attendance summaries
+- Customizable achievement thresholds
+- Visual gamification with achievement display
 
-### **Vacation Management System**
-- **Automatic Accrual**: 1 hour per 26 hours worked (configurable)
-- **Request Workflow**: Employee requests → Admin approval
-- **Balance Tracking**: Real-time vacation hour calculations
-- **Holiday Management**: Configurable paid holidays by year
-- **Floating Holidays**: Custom company-specific holidays
+### Date Range Views
+- **Current Month to Date** - Shows attendance from first day of current month until today
+- **Last Month** - Complete attendance for the previous month
+- **Select Month** - Custom month picker to choose any specific month
+- **Current Year to Date** - All attendance from January 1st until today
+- **Last Year** - Complete attendance for the entire previous year
 
-### **Comprehensive Admin Dashboard**
-- **Employee Management**: Full CRUD operations
-- **Time Reports**: Detailed payroll-ready reports
-- **Pay Period Management**: Weekly/bi-weekly configurations
-- **System Settings**: Extensive customization options
-- **Data Export**: CSV export capabilities (UI ready)
+### Work Schedule Management
+- Flexible weekly schedules
+- Day-specific start/end times
+- Working day configuration
+- Break time management
 
-### **Smart System Settings**
-- **Pay Increments**: 5, 10, 15, or 30-minute rounding
-- **Automated Messaging**: Clock-in reminders and auto clock-out
-- **Shift Limits**: Optional start/end time restrictions
-- **Holiday Configuration**: Per-year holiday management
-- **Daily Shift Templates**: Different schedules per day of week
+### Vacation Management
+- Vacation request submission
+- Admin approval workflow
+- Vacation balance tracking
+- Leave history
 
-## 🛠 Technology Stack
+### Admin Dashboard
+- Employee management
+- Time reports and analytics
+- Attendance tracking with achievements
+- Achievement goal configuration
+- Work schedule configuration
+- Vacation request management
+- System settings
 
-- **Frontend**: React 18 with TypeScript
-- **Styling**: Tailwind CSS with custom components
-- **Icons**: Lucide React icon library
-- **Routing**: React Router DOM v7
-- **Build Tool**: Vite for fast development and builds
-- **State Management**: React Context API
-- **Data Storage**: localStorage (demo) / Supabase (production)
+### Employee Dashboard
+- Personal time clock
+- Today's time entries
+- Attendance overview with earned achievements
+- Vacation summary and request
+- Achievement history across multiple periods
+- Personal attendance statistics
 
-## 📦 Installation & Setup
+## Tech Stack
 
-### **Prerequisites**
-- Node.js 18+ and npm
-- Git for version control
+- **Frontend**: React 18 + TypeScript + Vite
+- **Styling**: Tailwind CSS
+- **Icons**: Lucide React
+- **Routing**: React Router DOM
+- **Database**: Supabase (PostgreSQL)
+- **Authentication**: Supabase Auth (Email/Password)
 
-### **Quick Start**
+## Database Schema
+
+### Tables
+- `employees` - Employee records with role-based access
+- `time_entries` - Clock in/out records
+- `vacation_requests` - Leave requests and approvals
+- `work_schedules` - Employee weekly schedules
+- `attendance_records` - Daily attendance status (present, late, missed, excused)
+- `achievement_goals` - Configurable achievement tiers
+- `monthly_attendance_summary` - Pre-calculated monthly stats
+
+### Security
+- Row Level Security (RLS) enabled on all tables
+- Role-based access control (admin/employee)
+- Secure authentication via Supabase Auth
+- Helper functions to prevent infinite recursion in RLS policies
+
+## Setup Instructions
+
+### Prerequisites
+- Node.js 18+
+- npm or yarn
+- Supabase account
+
+### Installation
+
+1. Clone the repository
 ```bash
-# Clone the repository
-git clone [repository-url]
-cd time-clock-system
+git clone <repository-url>
+cd Timetracker_Pro_V2
+```
 
-# Install dependencies
+2. Install dependencies
+```bash
 npm install
-
-# Start development server
-npm run dev
-
-# Build for production
-npm run build
-
-# Preview production build
-npm run preview
 ```
 
-### **Demo Access**
-The system includes demo data and accounts:
-
-**Employee Account:**
-- Email: `john@demo.com`
-- Password: `demo123`
-
-**Admin Account:**
-- Email: `admin@demo.com`  
-- Password: `admin123`
-
-## 🏗 Project Structure
-
+3. Configure environment variables
+Create a `.env` file in the root directory:
 ```
-src/
-├── components/           # Reusable UI components
-│   ├── admin/           # Admin-specific components
-│   │   ├── EmployeeManagement.tsx
-│   │   ├── TimeReports.tsx
-│   │   ├── WorkSchedule.tsx
-│   │   ├── VacationManagement.tsx
-│   │   └── SystemSettings.tsx
-│   ├── Header.tsx       # Navigation header
-│   ├── LoadingSpinner.tsx
-│   ├── ProtectedRoute.tsx
-│   ├── TimeClockCard.tsx
-│   ├── TodayTimeEntries.tsx
-│   └── VacationSummary.tsx
-├── contexts/            # React context providers
-│   ├── AuthContext.tsx  # Authentication state
-│   └── TimeClockContext.tsx # Time tracking state
-├── pages/               # Page components
-│   ├── AdminDashboard.tsx
-│   ├── EmployeeDashboard.tsx
-│   └── LoginPage.tsx
-├── lib/                 # Utility libraries
-│   └── supabase.ts     # Database client
-└── App.tsx             # Main application component
-```
-
-## 🎨 Key UI Features
-
-### **Work Schedule Calendar**
-- **Compact Design**: 50px employee column + 7 day columns + totals
-- **Store Color Coding**: 
-  - Main Store: Light Blue
-  - North Branch: Light Green  
-  - South Branch: Light Yellow
-  - East Location: Light Purple
-  - West Location: Light Pink
-  - Downtown: Light Orange
-- **Responsive Grid**: CSS Grid layout for perfect screen fitting
-- **Bulk Operations**: Templates, copy week, clear week functions
-
-### **Time Clock Interface**
-- **Visual Status Indicators**: Color-coded status badges
-- **One-Click Actions**: Large, accessible buttons
-- **Real-Time Updates**: Live time display and status
-- **Entry History**: Today's time entries with timestamps
-
-### **Admin Reports**
-- **Pay Period Selection**: Dropdown with date ranges
-- **Daily Breakdown View**: Detailed time analysis
-- **Time Adjustments**: 15-minute increment rounding display
-- **Export Ready**: Formatted for payroll systems
-
-## ⚙️ Configuration
-
-### **System Settings**
-All configurable through the Admin → Settings panel:
-
-- **Pay Increments**: Time rounding (5, 10, 15, 30 minutes)
-- **Pay Periods**: Weekly or bi-weekly cycles
-- **Lunch Duration**: Default unpaid lunch time
-- **Automated Messages**: Clock-in reminders and auto clock-out
-- **Holiday Management**: Per-year holiday configuration
-- **Daily Shifts**: Custom schedules for each day of week
-
-### **Environment Variables**
-For production deployment, configure:
-```env
-VITE_SUPABASE_URL=your_supabase_url
+VITE_SUPABASE_URL=your_supabase_project_url
 VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
 ```
 
-## 🚀 Production Deployment
+4. Run database migrations
+All migrations are located in `/supabase/migrations/` and should be applied in order:
+- `20251004134951_create_time_tracking_schema.sql` - Initial schema
+- `20251004135121_create_test_users.sql` - Test user setup
+- `20251004140007_create_demo_accounts.sql` - Demo accounts
+- `20251004141521_fix_rls_policies.sql` - RLS policy fixes
+- `20251004155201_create_attendance_tracking_schema.sql` - Attendance tables
+- `20251004155445_auto_attendance_tracking.sql` - Auto-calculation triggers
 
-### **Database Setup (Supabase)**
-1. Create a new Supabase project
-2. Run the provided SQL migrations in `/supabase/migrations`
-3. Configure Row Level Security (RLS) policies
-4. Update environment variables
-
-### **Build & Deploy**
+5. Start development server
 ```bash
-# Production build
+npm run dev
+```
+
+6. Build for production
+```bash
 npm run build
-
-# Deploy to your hosting platform
-# (Netlify, Vercel, AWS S3, etc.)
 ```
 
-### **Post-Deployment Checklist**
-- [ ] Database migrations applied
-- [ ] Environment variables configured
-- [ ] SSL certificate installed
-- [ ] Admin accounts created
-- [ ] Employee data imported
-- [ ] System settings configured
-- [ ] Backup procedures established
+## Default Demo Accounts
 
-## 📊 Data Models
+### Admin Account
+- Email: admin@demo.com
+- Password: admin123
 
-### **Core Entities**
-- **Users**: Authentication and basic info
-- **Employees**: Extended user profiles with work details
-- **Time Entries**: Clock in/out, lunch, unpaid break records
-- **Vacation Records**: Accrual, usage, and balance tracking
-- **Work Schedule**: Weekly scheduling with store assignments
-- **System Settings**: Configurable business rules
+### Employee Account
+- Email: john@demo.com
+- Password: demo123
 
-### **Key Relationships**
-- Users → Employees (1:1)
-- Employees → Time Entries (1:many)
-- Employees → Vacation Records (1:1)
-- Employees → Work Schedule (1:many)
+## Achievement System
 
-## 🔒 Security Features
+### Default Achievement Goals
 
-- **Row Level Security**: Database-level access control
-- **Role-Based Access**: Employee vs Admin permissions
-- **Protected Routes**: Authentication required for all features
-- **Input Validation**: Client and server-side validation
-- **Audit Trail**: All time entries are timestamped and immutable
+**Positive Achievements:**
+- 🏆 Gold Trophy: Zero days missed, zero days late
+- 🥈 Silver Trophy: Zero days missed, 1 day late
+- 🥉 Bronze Trophy: Zero days missed, 2 days late
 
-## 🧪 Testing
+**Negative Indicators:**
+- 😞 Sad Face: 2 days missed OR 5 days late
+- 😠 Angry Face: 3 days missed OR 8 days late
 
-### **Demo Data**
-The system includes comprehensive demo data:
-- 3 sample employees with different roles
-- 2 weeks of realistic time entries
-- Sample vacation requests and approvals
-- Configured system settings
-- Holiday calendar for 2025-2026
+### Customization
+Admins can fully customize achievement goals:
+- Change icons (any emoji or unicode character)
+- Modify colors (hex values)
+- Adjust thresholds (days missed/late)
+- Create new achievement tiers
+- Enable/disable goals
+- Set display order
 
-### **Test Scenarios**
-- Employee time tracking workflows
-- Admin approval processes
-- Vacation accrual calculations
-- Pay period report generation
-- Schedule template applications
+## Project Structure
 
-## 📈 Performance
-
-### **Optimizations**
-- **Lazy Loading**: Route-based code splitting
-- **Efficient Rendering**: React.memo and useMemo usage
-- **Local Storage**: Fast demo data access
-- **CSS Grid**: Hardware-accelerated layouts
-- **Tree Shaking**: Minimal bundle size
-
-### **Metrics**
-- **Bundle Size**: ~500KB gzipped
-- **First Paint**: <1s on modern browsers
-- **Interactive**: <2s on 3G networks
-- **Lighthouse Score**: 95+ across all categories
-
-## 🤝 Contributing
-
-### **Development Workflow**
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit changes (`git commit -m 'Add amazing feature'`)
-4. Push to branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-### **Code Standards**
-- **TypeScript**: Strict mode enabled
-- **ESLint**: Configured for React and TypeScript
-- **Prettier**: Consistent code formatting
-- **Component Structure**: Functional components with hooks
-- **File Organization**: Feature-based folder structure
-
-### **Commit Convention**
 ```
-feat: add new feature
-fix: bug fix
-docs: documentation update
-style: formatting changes
-refactor: code restructuring
-test: add or update tests
-chore: maintenance tasks
+src/
+├── components/
+│   ├── admin/                    # Admin-specific components
+│   │   ├── AttendanceTracking.tsx  # Attendance & achievement management
+│   │   ├── EmployeeManagement.tsx  # Employee CRUD
+│   │   ├── SystemSettings.tsx      # System configuration
+│   │   ├── TimeReports.tsx         # Time reporting
+│   │   ├── VacationManagement.tsx  # Vacation approvals
+│   │   └── WorkSchedule.tsx        # Schedule management
+│   ├── EmployeeAttendance.tsx    # Employee attendance view
+│   ├── Header.tsx                # Navigation header
+│   ├── TimeClockCard.tsx         # Clock in/out widget
+│   ├── TodayTimeEntries.tsx      # Today's entries
+│   └── VacationSummary.tsx       # Vacation balance
+├── contexts/                     # React contexts
+│   ├── AuthContext.tsx           # Authentication state
+│   └── TimeClockContext.tsx      # Time tracking state
+├── lib/                          # Utilities and configurations
+│   ├── api.ts                    # API helper functions
+│   ├── dateRanges.ts             # Date range calculations
+│   └── supabase.ts               # Supabase client
+├── pages/                        # Main page components
+│   ├── AdminDashboard.tsx        # Admin main page
+│   ├── EmployeeDashboard.tsx     # Employee main page
+│   └── LoginPage.tsx             # Login page
+└── main.tsx                      # Application entry point
+
+supabase/
+└── migrations/                   # Database migration files
 ```
 
-## 📞 Support & Documentation
+## Key Features Explained
 
-### **Getting Help**
-- **Issues**: Use GitHub Issues for bug reports
-- **Discussions**: GitHub Discussions for questions
-- **Documentation**: Comprehensive inline code comments
-- **Examples**: Demo data shows all features in action
+### Automatic Attendance Tracking
+The system automatically creates attendance records when employees clock in:
+- Calculates late arrivals based on work schedule (defaults to 9:00 AM)
+- Tracks missed days when no clock-in occurs
+- Accumulates total minutes late
+- Automatically determines achievement eligibility
+- Triggers on every time entry insert/update
 
-### **Common Tasks**
-- **Adding Employees**: Admin → Employees → Add Employee
-- **Configuring Holidays**: Admin → Settings → Holiday Management
-- **Generating Reports**: Admin → Time Reports → Select Pay Period
-- **Managing Schedules**: Admin → Work Schedule → Select Week
+### Flexible Date Range Reporting
+Both admin and employee views support five date range options:
+1. Current Month to Date
+2. Last Month
+3. Select Month (custom)
+4. Current Year to Date
+5. Last Year
 
-## 📄 License
+Statistics and achievements are calculated dynamically for any selected period.
 
-This project is provided as a demonstration system. Ensure you have appropriate licenses for any production use.
+### Achievement Gamification
+The configurable achievement system motivates employees through visual recognition:
+- Achievements automatically calculated based on attendance
+- Visual display with emoji icons and custom colors
+- Positive achievements (rewards) and negative indicators
+- Historical achievement tracking
+- Real-time achievement updates
+
+### Row Level Security (RLS)
+Comprehensive security policies ensure data protection:
+- Employees can only view their own records
+- Admins can view and manage all records
+- Helper function `is_admin()` prevents infinite recursion
+- All tables have restrictive default policies
+
+## API Reference
+
+### Database Functions
+
+#### `calculate_attendance_status(employee_id, date)`
+Calculates attendance status for a specific employee and date based on time entries and work schedule.
+
+#### `calculate_monthly_summary(employee_id, year, month)`
+Generates monthly attendance summary and assigns appropriate achievement based on goals.
+
+#### `recalculate_current_month_summaries()`
+Recalculates all monthly summaries for active employees for the current month.
+
+#### `mark_missed_attendance_days()`
+Should be run daily to mark missed days for employees who didn't clock in on working days.
+
+#### `is_admin()`
+Security definer function that checks if current user is an admin, used in RLS policies.
+
+## Troubleshooting
+
+### Common Issues
+
+**Login Error: "Employee record not found"**
+- Cause: RLS policies had infinite recursion
+- Fixed in migration: `20251004141521_fix_rls_policies.sql`
+- Solution: Uses `is_admin()` helper function
+
+**Attendance not calculating**
+- Ensure work schedules are set up for employees
+- Check that time entries have both clock_in and clock_out times
+- Run `recalculate_current_month_summaries()` to force recalculation
+
+**Achievements not showing**
+- Verify achievement goals are active (`is_active = true`)
+- Check that display_order is set correctly
+- Ensure thresholds (days_missed_max, days_late_max) are configured
+
+## Performance Considerations
+
+- Attendance calculations are triggered automatically on clock out
+- Monthly summaries are pre-calculated and cached
+- Date range queries use indexed columns for fast retrieval
+- Achievement calculation is done client-side for flexibility
+
+## Future Enhancements
+
+Potential features for V3:
+- Push notifications for achievements
+- Attendance leaderboards
+- Custom reporting export (CSV/PDF)
+- Mobile app version
+- Integration with payroll systems
+- Advanced analytics dashboard
+- Multi-language support
+
+## License
+
+Copyright © 2025 TimeTracker Pro. All rights reserved.
+
+## Support
+
+For issues or questions, please refer to the documentation or contact the development team.
 
 ---
 
-## 🎯 Ready for Production
-
-This Time Clock System is **production-ready** with:
-- ✅ Complete feature set for time tracking and employee management
-- ✅ Professional UI/UX with responsive design
-- ✅ Comprehensive admin controls and reporting
-- ✅ Scalable architecture with TypeScript and modern React
-- ✅ Extensive documentation and demo data
-- ✅ Security best practices and data validation
-- ✅ Performance optimizations and accessibility features
-
-**Perfect for rental companies, retail stores, restaurants, and any business needing employee time tracking with advanced scheduling and vacation management.**
+**Version**: 2.0.0
+**Last Updated**: October 2025
+**Status**: Production Ready
