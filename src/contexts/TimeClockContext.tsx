@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { useAuth } from './AuthContext';
-import { api } from '../lib/api';
+import { supabase } from '../lib/supabase';
 
 interface TimeEntry {
   id: string;
@@ -50,10 +50,20 @@ export const TimeClockProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     if (!employee) return;
 
     try {
-      const response = await api.get('/api/timeclock/active');
-      if (response.success) {
-        setActiveEntry(response.data);
-        setCurrentStatus(response.data ? 'clocked_in' : 'clocked_out');
+      const { data, error } = await supabase
+        .from('time_entries')
+        .select('*')
+        .eq('employee_id', employee.id)
+        .is('clock_out', null)
+        .eq('status', 'active')
+        .maybeSingle();
+
+      if (!error && data) {
+        setActiveEntry(data);
+        setCurrentStatus('clocked_in');
+      } else {
+        setActiveEntry(null);
+        setCurrentStatus('clocked_out');
       }
     } catch (error) {
       console.error('Error loading active entry:', error);
@@ -64,9 +74,21 @@ export const TimeClockProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     if (!employee) return;
 
     try {
-      const response = await api.get('/api/timeclock/today');
-      if (response.success) {
-        setTodayEntries(response.data || []);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+
+      const { data, error } = await supabase
+        .from('time_entries')
+        .select('*')
+        .eq('employee_id', employee.id)
+        .gte('clock_in', today.toISOString())
+        .lt('clock_in', tomorrow.toISOString())
+        .order('clock_in', { ascending: false });
+
+      if (!error && data) {
+        setTodayEntries(data);
       }
     } catch (error) {
       console.error('Error loading entries:', error);
@@ -77,11 +99,31 @@ export const TimeClockProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     if (!employee) return;
 
     try {
-      const response = await api.post('/api/timeclock/clock-in', { notes });
-      if (response.success) {
-        await loadActiveEntry();
-        await refreshEntries();
+      const { data: existingEntry } = await supabase
+        .from('time_entries')
+        .select('id')
+        .eq('employee_id', employee.id)
+        .is('clock_out', null)
+        .eq('status', 'active')
+        .maybeSingle();
+
+      if (existingEntry) {
+        throw new Error('Already clocked in');
       }
+
+      const { error } = await supabase
+        .from('time_entries')
+        .insert({
+          employee_id: employee.id,
+          clock_in: new Date().toISOString(),
+          notes: notes || null,
+          status: 'active',
+        });
+
+      if (error) throw error;
+
+      await loadActiveEntry();
+      await refreshEntries();
     } catch (error) {
       console.error('Error clocking in:', error);
       throw error;
@@ -89,15 +131,23 @@ export const TimeClockProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   };
 
   const clockOut = async (breakDuration: number = 0) => {
-    if (!employee) return;
+    if (!employee || !activeEntry) return;
 
     try {
-      const response = await api.post('/api/timeclock/clock-out', { break_duration: breakDuration });
-      if (response.success) {
-        setActiveEntry(null);
-        setCurrentStatus('clocked_out');
-        await refreshEntries();
-      }
+      const { error } = await supabase
+        .from('time_entries')
+        .update({
+          clock_out: new Date().toISOString(),
+          break_duration: breakDuration,
+          status: 'completed',
+        })
+        .eq('id', activeEntry.id);
+
+      if (error) throw error;
+
+      setActiveEntry(null);
+      setCurrentStatus('clocked_out');
+      await refreshEntries();
     } catch (error) {
       console.error('Error clocking out:', error);
       throw error;

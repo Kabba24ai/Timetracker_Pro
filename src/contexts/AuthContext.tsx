@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { api } from '../lib/api';
+import { supabase } from '../lib/supabase';
 
 interface User {
   id: string;
@@ -41,66 +41,111 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     const initAuth = async () => {
-      const token = localStorage.getItem('auth_token');
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
 
-      if (token) {
-        try {
-          const response = await api.get('/api/auth/me');
-          if (response.success && response.data) {
-            const emp = response.data;
-            setUser({ id: emp.id, email: emp.email });
+        if (session?.user) {
+          const { data: employee } = await supabase
+            .from('employees')
+            .select('*')
+            .eq('user_id', session.user.id)
+            .maybeSingle();
+
+          if (employee) {
+            setUser({ id: session.user.id, email: session.user.email || '' });
             setEmployee({
-              id: emp.id,
-              user_id: emp.id,
-              first_name: emp.first_name,
-              last_name: emp.last_name,
-              email: emp.email,
-              role: emp.role,
-              created_at: emp.created_at
+              id: employee.id,
+              user_id: employee.user_id,
+              first_name: employee.first_name,
+              last_name: employee.last_name,
+              email: employee.email,
+              role: employee.role,
+              created_at: employee.created_at
             });
           }
-        } catch (error) {
-          console.error('Auth error:', error);
-          localStorage.removeItem('auth_token');
         }
+      } catch (error) {
+        console.error('Auth error:', error);
+      } finally {
+        setLoading(false);
       }
-
-      setLoading(false);
     };
 
     initAuth();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      (async () => {
+        if (session?.user) {
+          const { data: employee } = await supabase
+            .from('employees')
+            .select('*')
+            .eq('user_id', session.user.id)
+            .maybeSingle();
+
+          if (employee) {
+            setUser({ id: session.user.id, email: session.user.email || '' });
+            setEmployee({
+              id: employee.id,
+              user_id: employee.user_id,
+              first_name: employee.first_name,
+              last_name: employee.last_name,
+              email: employee.email,
+              role: employee.role,
+              created_at: employee.created_at
+            });
+          }
+        } else {
+          setUser(null);
+          setEmployee(null);
+        }
+      })();
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   const signIn = async (email: string, password: string) => {
-    const response = await api.post('/api/auth/login', { email, password });
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
 
-    if (!response.success || !response.data) {
-      throw new Error(response.message || 'Invalid email or password');
+    if (error) {
+      throw new Error(error.message);
     }
 
-    const { token, user: userData } = response.data;
+    if (!data.user) {
+      throw new Error('Invalid email or password');
+    }
 
-    api.setToken(token);
+    const { data: employee, error: employeeError } = await supabase
+      .from('employees')
+      .select('*')
+      .eq('user_id', data.user.id)
+      .maybeSingle();
 
-    const user = { id: userData.id, email: userData.email };
-    const employee = {
-      id: userData.id,
-      user_id: userData.id,
-      first_name: userData.first_name,
-      last_name: userData.last_name,
-      email: userData.email,
-      role: userData.role,
-      created_at: userData.created_at
-    };
+    if (employeeError || !employee) {
+      throw new Error('Employee record not found');
+    }
 
-    setUser(user);
-    setEmployee(employee);
+    setUser({ id: data.user.id, email: data.user.email || '' });
+    setEmployee({
+      id: employee.id,
+      user_id: employee.user_id,
+      first_name: employee.first_name,
+      last_name: employee.last_name,
+      email: employee.email,
+      role: employee.role,
+      created_at: employee.created_at
+    });
   };
 
   const signOut = async () => {
+    await supabase.auth.signOut();
     setUser(null);
     setEmployee(null);
-    api.setToken(null);
   };
 
   return (
