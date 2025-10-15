@@ -200,6 +200,36 @@ const EmployeeScheduleView: React.FC = () => {
         </div>
       </div>
 
+      <div className="bg-white rounded-lg border p-6">
+        <h3 className="font-semibold text-gray-900 mb-4">Store Locations</h3>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          <div className={`${getStoreColor('Main Store')} rounded-lg p-3 flex items-center space-x-2`}>
+            <MapPin className="h-5 w-5 flex-shrink-0" />
+            <span className="font-semibold">Main Store</span>
+          </div>
+          <div className={`${getStoreColor('North Branch')} rounded-lg p-3 flex items-center space-x-2`}>
+            <MapPin className="h-5 w-5 flex-shrink-0" />
+            <span className="font-semibold">North Branch</span>
+          </div>
+          <div className={`${getStoreColor('South Branch')} rounded-lg p-3 flex items-center space-x-2`}>
+            <MapPin className="h-5 w-5 flex-shrink-0" />
+            <span className="font-semibold">South Branch</span>
+          </div>
+          <div className={`${getStoreColor('East Location')} rounded-lg p-3 flex items-center space-x-2`}>
+            <MapPin className="h-5 w-5 flex-shrink-0" />
+            <span className="font-semibold">East Location</span>
+          </div>
+          <div className={`${getStoreColor('West Location')} rounded-lg p-3 flex items-center space-x-2`}>
+            <MapPin className="h-5 w-5 flex-shrink-0" />
+            <span className="font-semibold">West Location</span>
+          </div>
+          <div className={`${getStoreColor('Downtown')} rounded-lg p-3 flex items-center space-x-2`}>
+            <MapPin className="h-5 w-5 flex-shrink-0" />
+            <span className="font-semibold">Downtown</span>
+          </div>
+        </div>
+      </div>
+
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
         <h3 className="font-semibold text-blue-900 mb-2">Schedule Information</h3>
         <ul className="text-sm text-blue-800 space-y-1">
