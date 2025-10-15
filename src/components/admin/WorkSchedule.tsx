@@ -99,7 +99,8 @@ const WorkSchedule: React.FC = () => {
         return roleMatch && emp.primary_store === assignStore;
       } else {
         const storeMatch = viewStoreFilters[emp.primary_store];
-        return roleMatch && storeMatch;
+        const employeeSelected = selectedEmployees.includes(emp.id);
+        return roleMatch && storeMatch && employeeSelected;
       }
     })
     .sort((a, b) => {
