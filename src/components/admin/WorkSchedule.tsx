@@ -1,7 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Clock, MapPin, CreditCard as Edit, Save, X, Plus, Copy, Trash2, Users, Eye } from 'lucide-react';
-
-type ViewMode = 'assign' | 'view';
+import { Calendar, Clock, MapPin, CreditCard as Edit, Save, X, Plus, Copy, Trash2, Users } from 'lucide-react';
 
 interface ScheduleTemplate {
   id: string;
@@ -65,7 +63,6 @@ const scheduleTemplates: ScheduleTemplate[] = [
 ];
 
 const WorkSchedule: React.FC = () => {
-  const [viewMode, setViewMode] = useState<ViewMode>('assign');
   const [selectedEmployees, setSelectedEmployees] = useState<string[]>([]);
   const [selectedWeek, setSelectedWeek] = useState<string>('');
   const [workDays, setWorkDays] = useState<{ [employeeId: string]: WorkDay[] }>({});
@@ -74,8 +71,6 @@ const WorkSchedule: React.FC = () => {
   const [editValues, setEditValues] = useState<Partial<WorkDay>>({});
   const [showBulkAssign, setShowBulkAssign] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<string>('');
-
-  const [assignStore, setAssignStore] = useState<string>('Main Store');
 
   const [viewStoreFilters, setViewStoreFilters] = useState<{ [store: string]: boolean }>({
     'Main Store': true,
@@ -94,14 +89,9 @@ const WorkSchedule: React.FC = () => {
   const filteredAndSortedEmployees = [...mockEmployees]
     .filter(emp => {
       const roleMatch = roleFilters[emp.role];
-
-      if (viewMode === 'assign') {
-        return roleMatch && emp.primary_store === assignStore;
-      } else {
-        const storeMatch = viewStoreFilters[emp.primary_store];
-        const employeeSelected = selectedEmployees.includes(emp.id);
-        return roleMatch && storeMatch && employeeSelected;
-      }
+      const storeMatch = viewStoreFilters[emp.primary_store];
+      const employeeSelected = selectedEmployees.includes(emp.id);
+      return roleMatch && storeMatch && employeeSelected;
     })
     .sort((a, b) => {
       if (a.role !== b.role) {
@@ -268,10 +258,6 @@ const WorkSchedule: React.FC = () => {
             break;
         }
 
-        if (viewMode === 'assign') {
-          newDay.store_location = assignStore;
-        }
-
         return newDay;
       });
 
@@ -344,31 +330,6 @@ const WorkSchedule: React.FC = () => {
         <p className="text-gray-600">Assign and view employee work schedules</p>
       </div>
 
-      <div className="mb-6 flex items-center space-x-4 border-b border-gray-200 pb-4">
-        <button
-          onClick={() => setViewMode('assign')}
-          className={`flex items-center space-x-2 px-4 py-2 rounded-lg font-medium transition-colors ${
-            viewMode === 'assign'
-              ? 'bg-blue-600 text-white'
-              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-          }`}
-        >
-          <Edit className="h-4 w-4" />
-          <span>Assign Mode</span>
-        </button>
-        <button
-          onClick={() => setViewMode('view')}
-          className={`flex items-center space-x-2 px-4 py-2 rounded-lg font-medium transition-colors ${
-            viewMode === 'view'
-              ? 'bg-blue-600 text-white'
-              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-          }`}
-        >
-          <Eye className="h-4 w-4" />
-          <span>View Mode</span>
-        </button>
-      </div>
-
       <div className="mb-6 grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">Week Starting</label>
@@ -380,41 +341,24 @@ const WorkSchedule: React.FC = () => {
           />
         </div>
 
-        {viewMode === 'assign' ? (
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Store Location</label>
-            <select
-              value={assignStore}
-              onChange={(e) => setAssignStore(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              {storeLocations.map((store) => (
-                <option key={store} value={store}>
-                  {store}
-                </option>
-              ))}
-            </select>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Store Locations</label>
+          <div className="flex flex-wrap gap-2">
+            {storeLocations.map((store) => (
+              <button
+                key={store}
+                onClick={() => setViewStoreFilters({ ...viewStoreFilters, [store]: !viewStoreFilters[store] })}
+                className={`px-3 py-1 text-xs rounded-full transition-colors ${
+                  viewStoreFilters[store]
+                    ? getStoreColor(store)
+                    : 'bg-gray-100 text-gray-400 border border-gray-200'
+                }`}
+              >
+                {store}
+              </button>
+            ))}
           </div>
-        ) : (
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Store Locations</label>
-            <div className="flex flex-wrap gap-2">
-              {storeLocations.map((store) => (
-                <button
-                  key={store}
-                  onClick={() => setViewStoreFilters({ ...viewStoreFilters, [store]: !viewStoreFilters[store] })}
-                  className={`px-3 py-1 text-xs rounded-full transition-colors ${
-                    viewStoreFilters[store]
-                      ? getStoreColor(store)
-                      : 'bg-gray-100 text-gray-400 border border-gray-200'
-                  }`}
-                >
-                  {store}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
+        </div>
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">Role Filters</label>
@@ -541,7 +485,16 @@ const WorkSchedule: React.FC = () => {
                 {(workDays[employee.id] || []).map((day, idx) => (
                   <td key={idx} className="px-2 py-2 border-r">
                     {editingCell?.employeeId === employee.id && editingCell?.date === day.date ? (
-                      <div className="p-2 bg-blue-50 rounded border border-blue-300 space-y-2">
+                      <div className="p-2 bg-blue-50 rounded border border-blue-300 space-y-2 min-w-[200px]">
+                        <select
+                          value={editValues.store_location || day.store_location || employee.primary_store}
+                          onChange={(e) => setEditValues({ ...editValues, store_location: e.target.value })}
+                          className="w-full px-2 py-1 text-xs border border-gray-300 rounded"
+                        >
+                          {storeLocations.map((store) => (
+                            <option key={store} value={store}>{store}</option>
+                          ))}
+                        </select>
                         <div className="flex items-center space-x-1">
                           <input
                             type="time"
@@ -560,6 +513,7 @@ const WorkSchedule: React.FC = () => {
                         <div className="flex space-x-1">
                           <button
                             onClick={() => {
+                              handleCellEdit(employee.id, day.date, 'store_location', editValues.store_location || day.store_location || employee.primary_store);
                               handleCellEdit(employee.id, day.date, 'start_time', editValues.start_time || day.start_time);
                               handleCellEdit(employee.id, day.date, 'end_time', editValues.end_time || day.end_time);
                               handleCellEdit(employee.id, day.date, 'is_scheduled', true);
@@ -585,54 +539,48 @@ const WorkSchedule: React.FC = () => {
                       <div className={`text-center p-2 rounded border ${getStoreColor(day.store_location)} relative group`}>
                         <div className="text-xs font-semibold">{day.start_time} - {day.end_time}</div>
                         <div className="text-xs mt-1">{day.hours.toFixed(1)}h</div>
-                        {viewMode === 'view' && (
-                          <div className="text-xs mt-1 font-medium">{day.store_location}</div>
-                        )}
-                        {viewMode === 'assign' && (
-                          <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity flex space-x-1">
-                            <button
-                              onClick={() => {
-                                setEditingCell({ employeeId: employee.id, date: day.date });
-                                setEditValues({ start_time: day.start_time, end_time: day.end_time });
-                              }}
-                              className="p-1 bg-blue-600 text-white rounded hover:bg-blue-700"
-                              title="Edit"
-                            >
-                              <Edit className="h-3 w-3" />
-                            </button>
-                            <button
-                              onClick={() => {
-                                handleCellEdit(employee.id, day.date, 'is_scheduled', false);
-                                handleCellEdit(employee.id, day.date, 'hours', 0);
-                              }}
-                              className="p-1 bg-red-600 text-white rounded hover:bg-red-700"
-                              title="Delete"
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </button>
-                          </div>
-                        )}
+                        <div className="text-xs mt-1 font-medium">{day.store_location}</div>
+                        <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity flex space-x-1">
+                          <button
+                            onClick={() => {
+                              setEditingCell({ employeeId: employee.id, date: day.date });
+                              setEditValues({ start_time: day.start_time, end_time: day.end_time, store_location: day.store_location });
+                            }}
+                            className="p-1 bg-blue-600 text-white rounded hover:bg-blue-700"
+                            title="Edit"
+                          >
+                            <Edit className="h-3 w-3" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              handleCellEdit(employee.id, day.date, 'is_scheduled', false);
+                              handleCellEdit(employee.id, day.date, 'hours', 0);
+                            }}
+                            className="p-1 bg-red-600 text-white rounded hover:bg-red-700"
+                            title="Delete"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        </div>
                       </div>
                     ) : (
                       <div className="text-center group relative">
                         <div className="text-gray-400 text-xs">Off</div>
-                        {viewMode === 'assign' && (
-                          <button
-                            onClick={() => {
-                              setEditingCell({ employeeId: employee.id, date: day.date });
-                              const savedSettings = localStorage.getItem('demo_system_settings');
-                              const settings = savedSettings ? JSON.parse(savedSettings) : null;
-                              const date = new Date(day.date);
-                              const dayName = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][date.getDay()];
-                              const dayShift = settings?.daily_shifts?.[dayName] || { start: '08:00', end: '17:00' };
-                              setEditValues({ start_time: dayShift.start, end_time: dayShift.end });
-                            }}
-                            className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 bg-blue-50 rounded transition-opacity"
-                            title="Add shift"
-                          >
-                            <Plus className="h-4 w-4 text-blue-600" />
-                          </button>
-                        )}
+                        <button
+                          onClick={() => {
+                            setEditingCell({ employeeId: employee.id, date: day.date });
+                            const savedSettings = localStorage.getItem('demo_system_settings');
+                            const settings = savedSettings ? JSON.parse(savedSettings) : null;
+                            const date = new Date(day.date);
+                            const dayName = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][date.getDay()];
+                            const dayShift = settings?.daily_shifts?.[dayName] || { start: '08:00', end: '17:00' };
+                            setEditValues({ start_time: dayShift.start, end_time: dayShift.end, store_location: employee.primary_store });
+                          }}
+                          className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 bg-blue-50 rounded transition-opacity"
+                          title="Add shift"
+                        >
+                          <Plus className="h-4 w-4 text-blue-600" />
+                        </button>
                       </div>
                     )}
                   </td>
