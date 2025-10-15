@@ -586,7 +586,7 @@ const WorkSchedule: React.FC = () => {
                       </div>
                     ) : day.is_scheduled ? (
                       <div className={`text-center p-2 rounded border ${getStoreColor(day.store_location)} relative group`}>
-                        <div className="text-xs font-semibold">{day.start_time} - {day.end_time}</div>
+                        <div className="text-xs font-semibold whitespace-nowrap">{day.start_time} - {day.end_time}</div>
                         <div className="text-xs mt-1">{day.hours.toFixed(1)}h</div>
                         <div className="text-xs mt-1 font-medium">{day.store_location}</div>
                         <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity flex space-x-1">
