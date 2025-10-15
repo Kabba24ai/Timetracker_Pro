@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Clock, MapPin, Edit, Save, X, Plus, Copy, Trash2, Users } from 'lucide-react';
+import { Calendar, Clock, MapPin, Edit, Save, X, Plus, Copy, Trash2, Users, Eye } from 'lucide-react';
+
+type ViewMode = 'assign' | 'view';
 
 interface ScheduleTemplate {
   id: string;
@@ -26,7 +28,6 @@ interface Employee {
   role: 'employee' | 'admin';
 }
 
-// Mock data for demo
 const mockEmployees: Employee[] = [
   { id: '2', name: 'Admin User', primary_store: 'Main Store', role: 'admin' },
   { id: '1', name: 'John Doe', primary_store: 'Main Store', role: 'employee' },
@@ -38,7 +39,8 @@ const storeLocations = [
   'North Branch',
   'South Branch',
   'East Location',
-  'West Location'
+  'West Location',
+  'Downtown'
 ];
 
 const scheduleTemplates: ScheduleTemplate[] = [
@@ -63,6 +65,7 @@ const scheduleTemplates: ScheduleTemplate[] = [
 ];
 
 const WorkSchedule: React.FC = () => {
+  const [viewMode, setViewMode] = useState<ViewMode>('assign');
   const [selectedEmployees, setSelectedEmployees] = useState<string[]>([]);
   const [selectedWeek, setSelectedWeek] = useState<string>('');
   const [workDays, setWorkDays] = useState<{ [employeeId: string]: WorkDay[] }>({});
@@ -71,11 +74,10 @@ const WorkSchedule: React.FC = () => {
   const [editValues, setEditValues] = useState<Partial<WorkDay>>({});
   const [showBulkAssign, setShowBulkAssign] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<string>('');
-  const [roleFilters, setRoleFilters] = useState<{ admin: boolean; employee: boolean }>({
-    admin: true,
-    employee: true
-  });
-  const [storeFilters, setStoreFilters] = useState<{ [store: string]: boolean }>({
+
+  const [assignStore, setAssignStore] = useState<string>('Main Store');
+
+  const [viewStoreFilters, setViewStoreFilters] = useState<{ [store: string]: boolean }>({
     'Main Store': true,
     'North Branch': true,
     'South Branch': true,
@@ -84,29 +86,36 @@ const WorkSchedule: React.FC = () => {
     'Downtown': true
   });
 
-  // Sort employees by role (admin first) then alphabetically
+  const [roleFilters, setRoleFilters] = useState<{ admin: boolean; employee: boolean }>({
+    admin: true,
+    employee: true
+  });
+
   const filteredAndSortedEmployees = [...mockEmployees]
     .filter(emp => {
       const roleMatch = roleFilters[emp.role];
-      const storeMatch = storeFilters[emp.primary_store];
-      return roleMatch && storeMatch;
+
+      if (viewMode === 'assign') {
+        return roleMatch && emp.primary_store === assignStore;
+      } else {
+        const storeMatch = viewStoreFilters[emp.primary_store];
+        return roleMatch && storeMatch;
+      }
     })
     .sort((a, b) => {
-    if (a.role !== b.role) {
-      return a.role === 'admin' ? -1 : 1;
-    }
-    return a.name.localeCompare(b.name);
-  });
+      if (a.role !== b.role) {
+        return a.role === 'admin' ? -1 : 1;
+      }
+      return a.name.localeCompare(b.name);
+    });
 
   useEffect(() => {
-    // Set current week as default (find the Sunday of current week)
     const today = new Date();
-    const currentDay = today.getDay(); // 0 = Sunday, 1 = Monday, etc.
+    const currentDay = today.getDay();
     const sunday = new Date(today);
-    sunday.setDate(today.getDate() - currentDay); // Go back to Sunday of current week
+    sunday.setDate(today.getDate() - currentDay);
     setSelectedWeek(sunday.toISOString().split('T')[0]);
-    
-    // Pre-check all employees by default
+
     setSelectedEmployees(mockEmployees.map(emp => emp.id));
   }, []);
 
@@ -121,35 +130,30 @@ const WorkSchedule: React.FC = () => {
     try {
       const weekStart = new Date(selectedWeek);
       const allWorkDays: { [employeeId: string]: WorkDay[] } = {};
-      
-      // Get system settings for default shift times
+
       const savedSettings = localStorage.getItem('demo_system_settings');
       const settings = savedSettings ? JSON.parse(savedSettings) : null;
       const dailyShifts = settings?.daily_shifts || {};
-      
+
       for (const employeeId of selectedEmployees) {
-        // Get saved schedule from localStorage
         const scheduleKey = `work_schedule_${employeeId}_${selectedWeek}`;
         const savedSchedule = localStorage.getItem(scheduleKey);
         const existingSchedule = savedSchedule ? JSON.parse(savedSchedule) : {};
 
-        // Get employee data
         const employee = mockEmployees.find(emp => emp.id === employeeId);
-        
+
         const weekDays: WorkDay[] = [];
-        
+
         for (let i = 0; i < 7; i++) {
           const date = new Date(weekStart);
           date.setDate(weekStart.getDate() + i);
           const dateStr = date.toISOString().split('T')[0];
           const dayName = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][date.getDay()];
-          
-          // Check if there's existing data for this day
+
           const existingDay = existingSchedule[dateStr];
-          
-          // Get default shift for this day
+
           const dayShift = dailyShifts[dayName] || { start: '08:00', end: '17:00', enabled: true };
-          
+
           weekDays.push({
             date: dateStr,
             employee_id: employeeId,
@@ -161,10 +165,10 @@ const WorkSchedule: React.FC = () => {
             notes: existingDay?.notes || ''
           });
         }
-        
+
         allWorkDays[employeeId] = weekDays;
       }
-      
+
       setWorkDays(allWorkDays);
     } catch (error) {
       console.error('Error fetching work schedule:', error);
@@ -177,31 +181,30 @@ const WorkSchedule: React.FC = () => {
     const start = new Date(`2000-01-01T${startTime}:00`);
     const end = new Date(`2000-01-01T${endTime}:00`);
     let hours = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
-    
-    // Subtract lunch if it's a full day (more than 6 hours) and includeLunch is true
+
     if (includeLunch && hours > 6) {
       const savedSettings = localStorage.getItem('demo_system_settings');
       const settings = savedSettings ? JSON.parse(savedSettings) : null;
       const lunchMinutes = settings?.default_lunch_duration_minutes || 60;
       hours -= lunchMinutes / 60;
     }
-    
+
     return Math.max(0, hours);
   };
 
   const saveWorkSchedule = async () => {
     if (selectedEmployees.length === 0 || !selectedWeek) return;
-    
+
     try {
       for (const employeeId of selectedEmployees) {
         const scheduleKey = `work_schedule_${employeeId}_${selectedWeek}`;
         const scheduleData: { [date: string]: WorkDay } = {};
-        
+
         const employeeWorkDays = workDays[employeeId] || [];
         employeeWorkDays.forEach(day => {
           scheduleData[day.date] = day;
         });
-        
+
         localStorage.setItem(scheduleKey, JSON.stringify(scheduleData));
       }
     } catch (error) {
@@ -211,28 +214,27 @@ const WorkSchedule: React.FC = () => {
 
   const applyTemplate = async () => {
     if (!selectedTemplate || selectedEmployees.length === 0) return;
-    
+
     const template = scheduleTemplates.find(t => t.id === selectedTemplate);
     if (!template) return;
-    
-    // Get system settings for shift times
+
     const savedSettings = localStorage.getItem('demo_system_settings');
     const settings = savedSettings ? JSON.parse(savedSettings) : null;
     const dailyShifts = settings?.daily_shifts || {};
-    
+
     const updatedWorkDays: { [employeeId: string]: WorkDay[] } = {};
-    
+
     for (const employeeId of selectedEmployees) {
       const employee = mockEmployees.find(emp => emp.id === employeeId);
       const employeeWorkDays = workDays[employeeId] || [];
-      
+
       const updatedEmployeeWorkDays = employeeWorkDays.map(day => {
         const date = new Date(day.date);
         const dayName = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][date.getDay()];
         const dayShift = dailyShifts[dayName] || { start: '08:00', end: '17:00', enabled: true };
-        
+
         let newDay = { ...day };
-        
+
         switch (template.type) {
           case 'every_day_full':
             newDay.is_scheduled = true;
@@ -240,658 +242,325 @@ const WorkSchedule: React.FC = () => {
             newDay.end_time = dayShift.end;
             newDay.hours = calculateHours(dayShift.start, dayShift.end);
             break;
-            
+
           case 'every_day_8hours':
             newDay.is_scheduled = true;
             newDay.start_time = dayShift.start;
-            // Calculate end time for 8 hours + lunch
             const startTime = new Date(`2000-01-01T${dayShift.start}:00`);
             const lunchMinutes = settings?.default_lunch_duration_minutes || 60;
-            const endTime = new Date(startTime.getTime() + (8 * 60 * 60 * 1000) + (lunchMinutes * 60 * 1000));
-            newDay.end_time = endTime.toTimeString().substring(0, 5);
+            const endTime = new Date(startTime.getTime() + ((8 * 60) + lunchMinutes) * 60000);
+            newDay.end_time = endTime.toTimeString().slice(0, 5);
             newDay.hours = 8;
             break;
-            
+
           case 'weekdays_only':
-            const isWeekday = date.getDay() >= 1 && date.getDay() <= 5;
-            newDay.is_scheduled = isWeekday;
-            if (isWeekday) {
+            const dayOfWeek = date.getDay();
+            if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+              newDay.is_scheduled = true;
               newDay.start_time = dayShift.start;
               newDay.end_time = dayShift.end;
               newDay.hours = calculateHours(dayShift.start, dayShift.end);
+            } else {
+              newDay.is_scheduled = false;
+              newDay.hours = 0;
             }
             break;
         }
-        
-        // Reset store to primary
-        newDay.store_location = employee?.primary_store || 'Main Store';
-        
+
+        if (viewMode === 'assign') {
+          newDay.store_location = assignStore;
+        }
+
         return newDay;
       });
-      
+
       updatedWorkDays[employeeId] = updatedEmployeeWorkDays;
     }
-    
-    setWorkDays(updatedWorkDays);
+
+    setWorkDays({ ...workDays, ...updatedWorkDays });
     setShowBulkAssign(false);
     setSelectedTemplate('');
-    
-    // Auto-save after applying template
-    setTimeout(() => {
-      saveWorkSchedule();
-    }, 100);
   };
 
-  const startEditing = (employeeId: string, date: string) => {
-    const employeeWorkDays = workDays[employeeId] || [];
-    const day = employeeWorkDays.find(d => d.date === date);
-    if (day) {
-      setEditingCell({ employeeId, date });
-      setEditValues(day);
-    }
-  };
-
-  const saveEdit = async () => {
-    if (!editingCell) return;
-    
+  const handleCellEdit = (employeeId: string, date: string, field: keyof WorkDay, value: any) => {
     const updatedWorkDays = { ...workDays };
-    
-    updatedWorkDays[editingCell.employeeId] = workDays[editingCell.employeeId].map(day => {
-      if (day.date === editingCell.date) {
-        const updatedDay = { ...day, ...editValues };
-        // Recalculate hours
-        updatedDay.hours = calculateHours(updatedDay.start_time, updatedDay.end_time);
-        return updatedDay;
+    const employeeWorkDays = updatedWorkDays[employeeId] || [];
+    const dayIndex = employeeWorkDays.findIndex(d => d.date === date);
+
+    if (dayIndex !== -1) {
+      employeeWorkDays[dayIndex] = {
+        ...employeeWorkDays[dayIndex],
+        [field]: value
+      };
+
+      if (field === 'start_time' || field === 'end_time') {
+        const day = employeeWorkDays[dayIndex];
+        day.hours = day.is_scheduled ? calculateHours(day.start_time, day.end_time) : 0;
       }
-      return day;
-    });
-    
-    setWorkDays(updatedWorkDays);
-    setEditingCell(null);
-    setEditValues({});
-    
-    // Auto-save
-    setTimeout(() => {
-      saveWorkSchedule();
-    }, 100);
-  };
 
-  const cancelEdit = () => {
-    setEditingCell(null);
-    setEditValues({});
-  };
-
-  const toggleScheduled = (employeeId: string, date: string) => {
-    const updatedWorkDays = { ...workDays };
-    updatedWorkDays[employeeId] = workDays[employeeId].map(day => {
-      if (day.date === date) {
-        return { ...day, is_scheduled: !day.is_scheduled };
-      }
-      return day;
-    });
-    
-    setWorkDays(updatedWorkDays);
-    
-    // Auto-save
-    setTimeout(() => {
-      saveWorkSchedule();
-    }, 100);
-  };
-
-  const copyWeek = () => {
-    alert('Copy week functionality - would copy current schedule to next week');
-  };
-
-  const clearWeek = () => {
-    if (confirm('Are you sure you want to clear all scheduled days for this week?')) {
-      const clearedWorkDays: { [employeeId: string]: WorkDay[] } = {};
-      
-      for (const employeeId of selectedEmployees) {
-        const employeeWorkDays = workDays[employeeId] || [];
-        clearedWorkDays[employeeId] = employeeWorkDays.map(day => ({
-          ...day,
-          is_scheduled: false,
-          notes: ''
-        }));
-      }
-      
-      setWorkDays(clearedWorkDays);
-      
-      setTimeout(() => {
-        saveWorkSchedule();
-      }, 100);
+      updatedWorkDays[employeeId] = employeeWorkDays;
+      setWorkDays(updatedWorkDays);
     }
   };
 
-  const toggleEmployeeSelection = (employeeId: string) => {
-    setSelectedEmployees(prev => 
-      prev.includes(employeeId)
-        ? prev.filter(id => id !== employeeId)
-        : [...prev, employeeId]
-    );
-  };
-
-  const handleRoleFilterChange = (role: 'admin' | 'employee', checked: boolean) => {
-    setRoleFilters(prev => ({ ...prev, [role]: checked }));
-    
-    // Update selected employees based on new filters
-    const newRoleFilters = { ...roleFilters, [role]: checked };
-    const filteredEmployees = mockEmployees.filter(emp => {
-      const roleMatch = newRoleFilters[emp.role];
-      const storeMatch = storeFilters[emp.primary_store];
-      return roleMatch && storeMatch;
-    });
-    setSelectedEmployees(filteredEmployees.map(emp => emp.id));
-  };
-
-  const handleStoreFilterChange = (store: string, checked: boolean) => {
-    setStoreFilters(prev => ({ ...prev, [store]: checked }));
-    
-    // Update selected employees based on new filters
-    const newStoreFilters = { ...storeFilters, [store]: checked };
-    const filteredEmployees = mockEmployees.filter(emp => {
-      const roleMatch = roleFilters[emp.role];
-      const storeMatch = newStoreFilters[emp.primary_store];
-      return roleMatch && storeMatch;
-    });
-    setSelectedEmployees(filteredEmployees.map(emp => emp.id));
-  };
-  
-  const getWeekDates = (weekStart: string) => {
-    const dates = [];
-    const start = new Date(weekStart);
-    
-    // Ensure we start on Sunday (day 0)
-    const currentDay = start.getDay();
-    if (currentDay !== 0) {
-      start.setDate(start.getDate() - currentDay);
-    }
-    
-    for (let i = 0; i < 7; i++) {
-      const date = new Date(start);
-      date.setDate(start.getDate() + i);
-      dates.push(date);
-    }
-    
-    return dates;
-  };
-
-  const formatDate = (date: Date) => {
-    return date.toLocaleDateString('en-US', { 
-      weekday: 'short', 
-      month: 'short', 
-      day: 'numeric' 
-    });
-  };
-
-  const getWeekRange = (weekStart: string) => {
-    const start = new Date(weekStart);
-    
-    // Ensure we start on Sunday
-    const currentDay = start.getDay();
-    if (currentDay !== 0) {
-      start.setDate(start.getDate() - currentDay);
-    }
-    
-    const end = new Date(start);
-    end.setDate(start.getDate() + 6); // Sunday + 6 days = Saturday
-    
-    return `${start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${end.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
-  };
-
-  const getEmployeeTotalHours = (employeeId: string) => {
-    const employeeWorkDays = workDays[employeeId] || [];
-    return employeeWorkDays.filter(d => d.is_scheduled).reduce((sum, day) => sum + day.hours, 0);
-  };
-
-  const getStoreColorClass = (storeLocation: string) => {
-    const storeColors: { [store: string]: string } = {
-      'Main Store': 'bg-blue-50 border-blue-200',
-      'North Branch': 'bg-green-50 border-green-200',
-      'South Branch': 'bg-yellow-50 border-yellow-200',
-      'East Location': 'bg-purple-50 border-purple-200',
-      'West Location': 'bg-pink-50 border-pink-200',
-      'Downtown': 'bg-orange-50 border-orange-200'
+  const getStoreColor = (store: string) => {
+    const colors: { [key: string]: string } = {
+      'Main Store': 'bg-blue-100 text-blue-800 border-blue-300',
+      'North Branch': 'bg-green-100 text-green-800 border-green-300',
+      'South Branch': 'bg-yellow-100 text-yellow-800 border-yellow-300',
+      'East Location': 'bg-purple-100 text-purple-800 border-purple-300',
+      'West Location': 'bg-pink-100 text-pink-800 border-pink-300',
+      'Downtown': 'bg-orange-100 text-orange-800 border-orange-300'
     };
-    return storeColors[storeLocation] || 'bg-gray-50 border-gray-200';
+    return colors[store] || 'bg-gray-100 text-gray-800 border-gray-300';
   };
 
-  const weekDates = selectedWeek ? getWeekDates(selectedWeek) : [];
+  const calculateWeekTotal = (employeeId: string) => {
+    const employeeWorkDays = workDays[employeeId] || [];
+    return employeeWorkDays.reduce((sum, day) => sum + (day.is_scheduled ? day.hours : 0), 0);
+  };
+
+  const getDayLabel = (dateStr: string) => {
+    const date = new Date(dateStr);
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const dayName = days[date.getDay()];
+    const monthDay = date.getDate();
+    return `${dayName}\n${monthDay}`;
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center space-x-3">
-          <Calendar className="h-6 w-6 text-gray-600" />
-          <h2 className="text-2xl font-bold text-gray-900">Work Schedule</h2>
-        </div>
+      <div className="mb-6">
+        <h2 className="text-2xl font-bold text-gray-900 mb-2">Work Schedule</h2>
+        <p className="text-gray-600">Assign and view employee work schedules</p>
       </div>
 
-      {/* Bulk Assignment Modal */}
-      {showBulkAssign && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-md mx-4">
-            <h3 className="text-xl font-bold text-gray-900 mb-6">Bulk Schedule Assignment</h3>
-            
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Schedule Template
-                </label>
-                <select
-                  value={selectedTemplate}
-                  onChange={(e) => setSelectedTemplate(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">Select a template...</option>
-                  {scheduleTemplates.map(template => (
-                    <option key={template.id} value={template.id}>
-                      {template.name}
-                    </option>
-                  ))}
-                </select>
-                {selectedTemplate && (
-                  <p className="text-sm text-gray-600 mt-2">
-                    {scheduleTemplates.find(t => t.id === selectedTemplate)?.description}
-                  </p>
-                )}
-              </div>
-            </div>
-            
-            <div className="flex items-center justify-end space-x-4 mt-6">
-              <button
-                onClick={() => {
-                  setShowBulkAssign(false);
-                  setSelectedTemplate('');
-                }}
-                className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={applyTemplate}
-                disabled={!selectedTemplate}
-                className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Save className="h-4 w-4" />
-                <span>Apply Template</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <div className="mb-6 flex items-center space-x-4 border-b border-gray-200 pb-4">
+        <button
+          onClick={() => setViewMode('assign')}
+          className={`flex items-center space-x-2 px-4 py-2 rounded-lg font-medium transition-colors ${
+            viewMode === 'assign'
+              ? 'bg-blue-600 text-white'
+              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+        >
+          <Edit className="h-4 w-4" />
+          <span>Assign Mode</span>
+        </button>
+        <button
+          onClick={() => setViewMode('view')}
+          className={`flex items-center space-x-2 px-4 py-2 rounded-lg font-medium transition-colors ${
+            viewMode === 'view'
+              ? 'bg-blue-600 text-white'
+              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+        >
+          <Eye className="h-4 w-4" />
+          <span>View Mode</span>
+        </button>
+      </div>
 
-      {/* Week Selection and Action Buttons */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6">
-        <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+      <div className="mb-6 grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Week Starting</label>
+          <input
+            type="date"
+            value={selectedWeek}
+            onChange={(e) => setSelectedWeek(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          />
+        </div>
+
+        {viewMode === 'assign' ? (
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Week Starting (Sunday)
-            </label>
-            <input
-              type="date"
-              value={selectedWeek}
-              onChange={(e) => setSelectedWeek(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          {selectedWeek && (
-            <div className="sm:mt-6">
-              <p className="text-sm text-gray-600">
-                Week: {getWeekRange(selectedWeek)}
-              </p>
-            </div>
-          )}
-        </div>
-        
-        <div className="flex items-center space-x-3">
-          <button
-            onClick={() => setShowBulkAssign(true)}
-            className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            <Plus className="h-4 w-4" />
-            <span>Bulk Assign</span>
-          </button>
-          <button
-            onClick={copyWeek}
-            className="flex items-center space-x-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
-          >
-            <Copy className="h-4 w-4" />
-            <span>Copy Week</span>
-          </button>
-          <button
-            onClick={clearWeek}
-            className="flex items-center space-x-2 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors"
-          >
-            <Trash2 className="h-4 w-4" />
-            <span>Clear Week</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Filters and Employee Selection */}
-      <div className="space-y-6 mb-6">
-        {/* Row 1: Role Filters */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-3">
-            By Role
-          </label>
-          <div className="flex items-center space-x-6 bg-gray-50 border border-gray-300 rounded-lg p-3">
-            <label className="flex items-center space-x-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={roleFilters.admin}
-                onChange={(e) => handleRoleFilterChange('admin', e.target.checked)}
-                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-              />
-              <span className="text-sm font-medium text-gray-900">Admins</span>
-            </label>
-            <label className="flex items-center space-x-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={roleFilters.employee}
-                onChange={(e) => handleRoleFilterChange('employee', e.target.checked)}
-                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-              />
-              <span className="text-sm font-medium text-gray-900">Employees</span>
-            </label>
-          </div>
-        </div>
-        
-        {/* Row 2: Employee Selection Grid */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-3">
-            Select Employees ({filteredAndSortedEmployees.length} shown, {selectedEmployees.filter(id => filteredAndSortedEmployees.find(emp => emp.id === id)).length} selected)
-          </label>
-          <div className="bg-gray-50 border border-gray-300 rounded-lg p-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3 min-h-[200px]">
-              {filteredAndSortedEmployees.map(employee => (
-                <label key={employee.id} className="flex items-start space-x-2 cursor-pointer hover:bg-white p-2 rounded border border-transparent hover:border-gray-200 transition-colors">
-                  <input
-                    type="checkbox"
-                    checked={selectedEmployees.includes(employee.id)}
-                    onChange={() => toggleEmployeeSelection(employee.id)}
-                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded mt-0.5 flex-shrink-0"
-                  />
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm font-medium text-gray-900 truncate" title={employee.name}>
-                      {employee.name}
-                    </div>
-                    <div className="flex items-center space-x-1 mt-1">
-                      <span className={`inline-flex px-1.5 py-0.5 text-xs font-medium rounded-full ${
-                        employee.role === 'admin'
-                          ? 'bg-purple-100 text-purple-800'
-                          : 'bg-blue-100 text-blue-800'
-                      }`}>
-                        {employee.role}
-                      </span>
-                    </div>
-                    <div className="text-xs text-gray-500 truncate mt-1" title={employee.primary_store}>
-                      {employee.primary_store}
-                    </div>
-                  </div>
-                </label>
-              ))}
-            </div>
-            {filteredAndSortedEmployees.length === 0 && (
-              <div className="text-center py-8 text-gray-500">
-                <Users className="h-8 w-8 text-gray-300 mx-auto mb-2" />
-                <p className="text-sm">No employees match the current filters.</p>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Row 3: Store Location Filters */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-3">
-            By Store Location
-          </label>
-          <div className="bg-gray-50 border border-gray-300 rounded-lg p-3">
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-4">
-              {Object.entries(storeFilters).map(([store, checked]) => (
-                <label key={store} className="flex items-center space-x-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    onChange={(e) => handleStoreFilterChange(store, e.target.checked)}
-                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                  />
-                  <span className="text-sm font-medium text-gray-900 truncate" title={store}>
-                    {store}
-                  </span>
-                </label>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Calendar View */}
-      {selectedEmployees.length > 0 && selectedWeek && (
-        <div className="bg-white rounded-xl shadow-sm border">
-          <div className="p-6 border-b">
-            <h3 className="text-lg font-semibold text-gray-900">
-              Work Schedule Calendar
-            </h3>
-            <p className="text-sm text-gray-600">
-              Week: {getWeekRange(selectedWeek)} (Sunday - Saturday)
-            </p>
-          </div>
-          
-          {loading ? (
-            <div className="p-8 text-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-              <p className="text-gray-600 mt-2">Loading schedule...</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full">
-                <thead>
-                  <tr className="border-b border-gray-200">
-                    <th className="text-left py-4 px-4 font-medium text-gray-900 bg-gray-50 sticky left-0 z-10 min-w-[200px]">
-                      Employee
-                    </th>
-                    {weekDates.map((date, index) => (
-                      <th key={index} className="text-center py-4 px-3 font-medium text-gray-900 bg-gray-50 min-w-[140px]">
-                        <div>
-                          <div className="text-sm font-semibold">
-                            {date.toLocaleDateString('en-US', { weekday: 'short' })}
-                          </div>
-                          <div className="text-xs text-gray-600">
-                            {date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                          </div>
-                        </div>
-                      </th>
-                    ))}
-                    <th className="text-center py-4 px-1 font-medium text-gray-900 bg-gray-50 min-w-[60px] w-[60px]">
-                      Total
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {selectedEmployees.map(employeeId => {
-                    const employee = filteredAndSortedEmployees.find(emp => emp.id === employeeId);
-                    if (!employee) return null; // Skip if employee is filtered out
-                    
-                    const employeeWorkDays = workDays[employeeId] || [];
-                    const totalHours = getEmployeeTotalHours(employeeId);
-                    
-                    return (
-                      <tr key={employeeId} className="border-b border-gray-100 hover:bg-gray-50">
-                        <td className="py-1 px-1 bg-white sticky left-0 z-10 border-r border-gray-200 w-[50px]">
-                          <div>
-                            <p className="font-medium text-gray-900 text-xs truncate" title={employee?.name}>{employee?.name}</p>
-                            <div className="mt-1">
-                              <span className={`inline-flex px-1 py-0.5 text-[10px] font-medium rounded-full ${
-                                employee?.role === 'admin'
-                                  ? 'bg-purple-100 text-purple-800'
-                                  : 'bg-blue-100 text-blue-800'
-                              }`}>
-                                {employee?.role}
-                              </span>
-                            </div>
-                            <p className="text-[10px] text-gray-500 truncate" title={employee?.primary_store}>{employee?.primary_store}</p>
-                          </div>
-                        </td>
-                        {weekDates.map((date, dayIndex) => {
-                          const dateStr = date.toISOString().split('T')[0];
-                          const dayData = employeeWorkDays.find(d => d.date === dateStr);
-                          const isEditing = editingCell?.employeeId === employeeId && editingCell?.date === dateStr;
-                          
-                          return (
-                            <td key={dayIndex} className="py-2 px-2 text-center">
-                              {dayData && (
-                                <div className={`p-2 rounded-lg border-2 ${
-                                  dayData.is_scheduled 
-                                    ? 'bg-green-50 border-green-200' 
-                                    : 'bg-gray-50 border-gray-200'
-                                }`}>
-                                  {isEditing ? (
-                                    <div className="space-y-2">
-                                      <div className="flex items-center justify-center">
-                                        <input
-                                          type="checkbox"
-                                          checked={editValues.is_scheduled || false}
-                                          onChange={(e) => setEditValues(prev => ({ ...prev, is_scheduled: e.target.checked }))}
-                                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                                        />
-                                      </div>
-                                      {editValues.is_scheduled && (
-                                        <>
-                                          <div className="space-y-1">
-                                            <input
-                                              type="time"
-                                              value={editValues.start_time || ''}
-                                              onChange={(e) => setEditValues(prev => ({ ...prev, start_time: e.target.value }))}
-                                              className="w-full px-1 py-1 border border-gray-300 rounded text-xs"
-                                            />
-                                            <input
-                                              type="time"
-                                              value={editValues.end_time || ''}
-                                              onChange={(e) => setEditValues(prev => ({ ...prev, end_time: e.target.value }))}
-                                              className="w-full px-1 py-1 border border-gray-300 rounded text-xs"
-                                            />
-                                          </div>
-                                          <select
-                                            value={editValues.store_location || ''}
-                                            onChange={(e) => setEditValues(prev => ({ ...prev, store_location: e.target.value }))}
-                                            className="w-full px-1 py-1 border border-gray-300 rounded text-xs"
-                                          >
-                                            {storeLocations.map(location => (
-                                              <option key={location} value={location}>
-                                                {location}
-                                              </option>
-                                            ))}
-                                          </select>
-                                        </>
-                                      )}
-                                      <div className="flex items-center justify-center space-x-1">
-                                        <button
-                                          onClick={saveEdit}
-                                          className="p-1 text-green-600 hover:bg-green-100 rounded"
-                                        >
-                                          <Save className="h-3 w-3" />
-                                        </button>
-                                        <button
-                                          onClick={cancelEdit}
-                                          className="p-1 text-gray-600 hover:bg-gray-100 rounded"
-                                        >
-                                          <X className="h-3 w-3" />
-                                        </button>
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    <div className="space-y-1">
-                                      <div className="flex items-center justify-center">
-                                        <input
-                                          type="checkbox"
-                                          checked={dayData.is_scheduled}
-                                          onChange={() => toggleScheduled(employeeId, dateStr)}
-                                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                                        />
-                                      </div>
-                                      {dayData.is_scheduled && (
-                                        <>
-                                          <div className="text-xs font-mono text-gray-700">
-                                            <div>{dayData.start_time}</div>
-                                            <div>{dayData.end_time}</div>
-                                          </div>
-                                          <div className="text-xs text-blue-600 font-semibold">
-                                            {dayData.hours.toFixed(1)}h
-                                          </div>
-                                          <div className="text-xs text-gray-600 truncate" title={dayData.store_location}>
-                                            {dayData.store_location.split(' ')[0]}
-                                          </div>
-                                          <button
-                                            onClick={() => startEditing(employeeId, dateStr)}
-                                            className="p-1 text-blue-600 hover:bg-blue-100 rounded"
-                                          >
-                                            <Edit className="h-3 w-3" />
-                                          </button>
-                                        </>
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                            </td>
-                          );
-                        })}
-                        <td className="py-2 px-1 text-center">
-                          <div className="text-lg font-bold text-blue-600">
-                            {totalHours.toFixed(1)}h
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-          
-          <div className="p-6 border-t">
-            <button
-              onClick={saveWorkSchedule}
-              className="flex items-center space-x-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
+            <label className="block text-sm font-medium text-gray-700 mb-2">Store Location</label>
+            <select
+              value={assignStore}
+              onChange={(e) => setAssignStore(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
-              <Save className="h-4 w-4" />
-              <span>Save Schedule</span>
+              {storeLocations.map((store) => (
+                <option key={store} value={store}>
+                  {store}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : (
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Store Locations</label>
+            <div className="flex flex-wrap gap-2">
+              {storeLocations.map((store) => (
+                <button
+                  key={store}
+                  onClick={() => setViewStoreFilters({ ...viewStoreFilters, [store]: !viewStoreFilters[store] })}
+                  className={`px-3 py-1 text-xs rounded-full transition-colors ${
+                    viewStoreFilters[store]
+                      ? getStoreColor(store)
+                      : 'bg-gray-100 text-gray-400 border border-gray-200'
+                  }`}
+                >
+                  {store}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Role Filters</label>
+          <div className="flex space-x-2">
+            <button
+              onClick={() => setRoleFilters({ ...roleFilters, admin: !roleFilters.admin })}
+              className={`px-3 py-1 text-sm rounded-lg transition-colors ${
+                roleFilters.admin
+                  ? 'bg-blue-100 text-blue-700 border border-blue-300'
+                  : 'bg-gray-100 text-gray-400 border border-gray-200'
+              }`}
+            >
+              Admin
+            </button>
+            <button
+              onClick={() => setRoleFilters({ ...roleFilters, employee: !roleFilters.employee })}
+              className={`px-3 py-1 text-sm rounded-lg transition-colors ${
+                roleFilters.employee
+                  ? 'bg-green-100 text-green-700 border border-green-300'
+                  : 'bg-gray-100 text-gray-400 border border-gray-200'
+              }`}
+            >
+              Employee
             </button>
           </div>
         </div>
-      )}
-      
-      {filteredAndSortedEmployees.length === 0 ? (
-        <div className="text-center py-8 text-gray-500">
-          <Users className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-          <p>No employees match the current filters.</p>
-          <p className="text-sm text-gray-400 mt-1">Try adjusting the role or store location filters.</p>
-        </div>
-      ) : selectedEmployees.filter(id => filteredAndSortedEmployees.find(emp => emp.id === id)).length === 0 && (
-        <div className="text-center py-8 text-gray-500">
-          <Users className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-          <p>Please select at least one employee to manage their work schedule.</p>
-        </div>
-      )}
+      </div>
 
-      {/* Information Panel */}
-      <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <div className="flex items-start space-x-3">
-          <Calendar className="h-5 w-5 text-blue-600 mt-0.5" />
-          <div>
-            <h4 className="text-sm font-semibold text-blue-900 mb-2">Calendar View Information</h4>
-            <div className="text-sm text-blue-800 space-y-1">
-              <p>• <strong>Traditional Calendar:</strong> Days run Sunday through Saturday across the top</p>
-              <p>• <strong>Employee Sorting:</strong> Admins listed first, then employees alphabetically</p>
-              <p>• <strong>Quick Edit:</strong> Click checkbox to enable/disable, click edit button for details</p>
-              <p>• <strong>Bulk Operations:</strong> Use templates to set schedules for all selected employees</p>
-              <p>• <strong>Store Locations:</strong> Defaults to primary store, can be changed per day</p>
-              <p>• <strong>Hours Calculation:</strong> Automatically includes lunch deduction for shifts over 6 hours</p>
+      <div className="mb-4 flex items-center space-x-2">
+        <button
+          onClick={() => setShowBulkAssign(!showBulkAssign)}
+          className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+        >
+          <Plus className="h-4 w-4" />
+          <span>Apply Template</span>
+        </button>
+        <button
+          onClick={saveWorkSchedule}
+          className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+        >
+          <Save className="h-4 w-4" />
+          <span>Save Schedule</span>
+        </button>
+      </div>
+
+      {showBulkAssign && (
+        <div className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+          <h3 className="text-sm font-semibold text-gray-900 mb-3">Apply Schedule Template</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Template</label>
+              <select
+                value={selectedTemplate}
+                onChange={(e) => setSelectedTemplate(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="">Select a template</option>
+                {scheduleTemplates.map((template) => (
+                  <option key={template.id} value={template.id}>
+                    {template.name} - {template.description}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex items-end space-x-2">
+              <button
+                onClick={applyTemplate}
+                disabled={!selectedTemplate}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
+              >
+                Apply to Selected Employees
+              </button>
+              <button
+                onClick={() => setShowBulkAssign(false)}
+                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+              >
+                Cancel
+              </button>
             </div>
           </div>
         </div>
+      )}
+
+      <div className="bg-white rounded-lg border overflow-x-auto">
+        <table className="min-w-full">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-r">
+                Employee
+              </th>
+              {workDays[filteredAndSortedEmployees[0]?.id]?.map((day, idx) => (
+                <th key={idx} className="px-2 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider border-r whitespace-pre-line">
+                  {getDayLabel(day.date)}
+                </th>
+              ))}
+              <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Total
+              </th>
+            </tr>
+          </thead>
+          <tbody className="bg-white divide-y divide-gray-200">
+            {filteredAndSortedEmployees.map((employee) => (
+              <tr key={employee.id} className="hover:bg-gray-50">
+                <td className="px-4 py-3 border-r">
+                  <div className="flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={selectedEmployees.includes(employee.id)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedEmployees([...selectedEmployees, employee.id]);
+                        } else {
+                          setSelectedEmployees(selectedEmployees.filter(id => id !== employee.id));
+                        }
+                      }}
+                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded mr-2"
+                    />
+                    <div>
+                      <div className="text-sm font-medium text-gray-900">{employee.name}</div>
+                      <div className="text-xs text-gray-500">{employee.primary_store}</div>
+                    </div>
+                  </div>
+                </td>
+                {(workDays[employee.id] || []).map((day, idx) => (
+                  <td key={idx} className="px-2 py-2 border-r">
+                    {day.is_scheduled ? (
+                      <div className={`text-center p-2 rounded border ${getStoreColor(day.store_location)}`}>
+                        <div className="text-xs font-semibold">{day.start_time} - {day.end_time}</div>
+                        <div className="text-xs mt-1">{day.hours.toFixed(1)}h</div>
+                        {viewMode === 'view' && (
+                          <div className="text-xs mt-1 font-medium">{day.store_location}</div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-center text-gray-400 text-xs">Off</div>
+                    )}
+                  </td>
+                ))}
+                <td className="px-4 py-3 text-center">
+                  <div className="text-sm font-bold text-gray-900">
+                    {calculateWeekTotal(employee.id).toFixed(1)}h
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );
