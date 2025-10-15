@@ -107,44 +107,50 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const signIn = async (email: string, password: string) => {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
-    if (error) {
-      throw new Error(error.message);
+      if (error) {
+        console.error('Auth error:', error);
+        throw new Error(error.message);
+      }
+
+      if (!data.user) {
+        throw new Error('Invalid email or password');
+      }
+
+      const { data: employee, error: employeeError } = await supabase
+        .from('employees')
+        .select('*')
+        .eq('user_id', data.user.id)
+        .maybeSingle();
+
+      if (employeeError) {
+        console.error('Employee query error:', employeeError);
+        throw new Error(`Employee record not found: ${employeeError.message}`);
+      }
+
+      if (!employee) {
+        throw new Error('Employee record not found for this user');
+      }
+
+      setUser({ id: data.user.id, email: data.user.email || '' });
+      setEmployee({
+        id: employee.id,
+        user_id: employee.user_id,
+        first_name: employee.first_name,
+        last_name: employee.last_name,
+        email: employee.email,
+        role: employee.role,
+        created_at: employee.created_at
+      });
+    } catch (err) {
+      console.error('Sign in error:', err);
+      throw err;
     }
-
-    if (!data.user) {
-      throw new Error('Invalid email or password');
-    }
-
-    const { data: employee, error: employeeError } = await supabase
-      .from('employees')
-      .select('*')
-      .eq('user_id', data.user.id)
-      .maybeSingle();
-
-    if (employeeError) {
-      console.error('Employee query error:', employeeError);
-      throw new Error(`Employee record not found: ${employeeError.message}`);
-    }
-
-    if (!employee) {
-      throw new Error('Employee record not found');
-    }
-
-    setUser({ id: data.user.id, email: data.user.email || '' });
-    setEmployee({
-      id: employee.id,
-      user_id: employee.user_id,
-      first_name: employee.first_name,
-      last_name: employee.last_name,
-      email: employee.email,
-      role: employee.role,
-      created_at: employee.created_at
-    });
   };
 
   const signOut = async () => {
