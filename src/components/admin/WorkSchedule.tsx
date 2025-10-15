@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Clock, MapPin, Edit, Save, X, Plus, Copy, Trash2, Users, Eye } from 'lucide-react';
+import { Calendar, Clock, MapPin, CreditCard as Edit, Save, X, Plus, Copy, Trash2, Users, Eye } from 'lucide-react';
 
 type ViewMode = 'assign' | 'view';
 
