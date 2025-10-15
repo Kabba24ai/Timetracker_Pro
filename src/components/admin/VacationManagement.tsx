@@ -95,6 +95,43 @@ const VacationManagement: React.FC = () => {
         }
       });
 
+      // If no requests exist, add demo requests
+      if (allRequests.length === 0) {
+        const demoRequests: VacationRequest[] = [
+          {
+            id: 'demo-1',
+            employee_id: '3',
+            employee_name: 'Jane Smith',
+            start_date: '2025-10-20',
+            end_date: '2025-10-24',
+            hours: 40,
+            status: 'pending',
+            created_at: new Date('2025-10-14').toISOString(),
+          },
+          {
+            id: 'demo-2',
+            employee_id: '1',
+            employee_name: 'John Doe',
+            start_date: '2025-11-01',
+            end_date: '2025-11-01',
+            hours: 8,
+            status: 'pending',
+            created_at: new Date('2025-10-13').toISOString(),
+          },
+          {
+            id: 'demo-3',
+            employee_id: '1',
+            employee_name: 'John Doe',
+            start_date: '2025-09-15',
+            end_date: '2025-09-16',
+            hours: 16,
+            status: 'approved',
+            created_at: new Date('2025-09-01').toISOString(),
+          },
+        ];
+        allRequests = demoRequests;
+      }
+
       // Sort by created date, newest first
       allRequests.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
       setVacationRequests(allRequests);
