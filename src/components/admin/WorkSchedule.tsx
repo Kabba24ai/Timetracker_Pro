@@ -496,7 +496,6 @@ const WorkSchedule: React.FC = () => {
                     />
                     <div>
                       <div className="text-sm font-medium text-gray-900">{employee.name}</div>
-                      <div className="text-xs text-gray-500">{employee.primary_store}</div>
                     </div>
                   </div>
                 </td>
