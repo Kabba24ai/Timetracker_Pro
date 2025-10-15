@@ -56,6 +56,13 @@ const EmployeeScheduleView: React.FC = () => {
     }
   }, [selectedWeek, employee]);
 
+  const formatTime12Hour = (time24: string): string => {
+    const [hours, minutes] = time24.split(':').map(Number);
+    const period = hours >= 12 ? 'PM' : 'AM';
+    const hours12 = hours % 12 || 12;
+    return `${hours12}:${minutes.toString().padStart(2, '0')} ${period}`;
+  };
+
   const generateDemoWeek = (weekStart: string): WorkDay[] => {
     const days: WorkDay[] = [];
     const startDate = new Date(weekStart);
@@ -78,8 +85,8 @@ const EmployeeScheduleView: React.FC = () => {
         days.push({
           date: date.toISOString().split('T')[0],
           is_scheduled: true,
-          start_time: '09:00',
-          end_time: '17:00',
+          start_time: '9:00 AM',
+          end_time: '5:00 PM',
           hours: 8,
           store_location: stores[storeIndex],
         });
@@ -186,11 +193,16 @@ const EmployeeScheduleView: React.FC = () => {
                         </div>
                       </div>
                     )}
-                    <div className="flex items-center space-x-2 text-sm justify-center">
-                      <Clock className="h-4 w-4 flex-shrink-0" />
-                      <span className="font-medium">
-                        {day.start_time} - {day.end_time}
-                      </span>
+                    <div className="text-center text-sm">
+                      <div className="flex items-center justify-center space-x-1 mb-0.5">
+                        <Clock className="h-4 w-4 flex-shrink-0" />
+                        <span className="font-medium">{day.start_time}</span>
+                      </div>
+                      <div className="text-xs text-gray-600 mb-0.5">to</div>
+                      <div className="flex items-center justify-center space-x-1">
+                        <Clock className="h-4 w-4 flex-shrink-0 opacity-0" />
+                        <span className="font-medium">{day.end_time}</span>
+                      </div>
                     </div>
                     <div className="mt-2 pt-2 border-t">
                       <div className="text-center">

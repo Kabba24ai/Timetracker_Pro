@@ -145,15 +145,17 @@ const WorkSchedule: React.FC = () => {
           const existingDay = existingSchedule[dateStr];
 
           const dayShift = dailyShifts[dayName] || { start: '08:00', end: '17:00', enabled: true };
+          const defaultStartTime = formatTime12Hour(dayShift.start);
+          const defaultEndTime = formatTime12Hour(dayShift.end);
 
           weekDays.push({
             date: dateStr,
             employee_id: employeeId,
-            start_time: existingDay?.start_time || dayShift.start,
-            end_time: existingDay?.end_time || dayShift.end,
+            start_time: existingDay?.start_time || defaultStartTime,
+            end_time: existingDay?.end_time || defaultEndTime,
             store_location: existingDay?.store_location || employee?.primary_store || 'Main Store',
             is_scheduled: existingDay?.is_scheduled !== undefined ? existingDay.is_scheduled : dayShift.enabled,
-            hours: existingDay?.hours || calculateHours(dayShift.start, dayShift.end),
+            hours: existingDay?.hours || calculateHours(defaultStartTime, defaultEndTime),
             notes: existingDay?.notes || ''
           });
         }
@@ -169,10 +171,36 @@ const WorkSchedule: React.FC = () => {
     }
   };
 
+  const parseTime12Hour = (time: string): { hours: number; minutes: number } => {
+    if (time.includes('AM') || time.includes('PM')) {
+      const match = time.match(/(\d+):(\d+)\s*(AM|PM)/i);
+      if (match) {
+        let hours = parseInt(match[1]);
+        const minutes = parseInt(match[2]);
+        const period = match[3].toUpperCase();
+        if (period === 'PM' && hours !== 12) hours += 12;
+        if (period === 'AM' && hours === 12) hours = 0;
+        return { hours, minutes };
+      }
+    }
+    const [hours, minutes] = time.split(':').map(Number);
+    return { hours, minutes };
+  };
+
+  const formatTime12Hour = (time: string): string => {
+    const { hours, minutes } = parseTime12Hour(time);
+    const period = hours >= 12 ? 'PM' : 'AM';
+    const hours12 = hours % 12 || 12;
+    return `${hours12}:${minutes.toString().padStart(2, '0')} ${period}`;
+  };
+
   const calculateHours = (startTime: string, endTime: string, includeLunch: boolean = true) => {
-    const start = new Date(`2000-01-01T${startTime}:00`);
-    const end = new Date(`2000-01-01T${endTime}:00`);
-    let hours = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
+    const start = parseTime12Hour(startTime);
+    const end = parseTime12Hour(endTime);
+
+    const startMinutes = start.hours * 60 + start.minutes;
+    const endMinutes = end.hours * 60 + end.minutes;
+    let hours = (endMinutes - startMinutes) / 60;
 
     if (includeLunch && hours > 6) {
       const savedSettings = localStorage.getItem('demo_system_settings');
@@ -230,19 +258,23 @@ const WorkSchedule: React.FC = () => {
         switch (template.type) {
           case 'every_day_full':
             newDay.is_scheduled = true;
-            newDay.start_time = dayShift.start;
-            newDay.end_time = dayShift.end;
-            newDay.hours = calculateHours(dayShift.start, dayShift.end);
+            newDay.start_time = formatTime12Hour(dayShift.start);
+            newDay.end_time = formatTime12Hour(dayShift.end);
+            newDay.hours = calculateHours(newDay.start_time, newDay.end_time);
             newDay.store_location = templateStore;
             break;
 
           case 'every_day_8hours':
             newDay.is_scheduled = true;
-            newDay.start_time = dayShift.start;
-            const startTime = new Date(`2000-01-01T${dayShift.start}:00`);
+            newDay.start_time = formatTime12Hour(dayShift.start);
+            const startParsed = parseTime12Hour(newDay.start_time);
             const lunchMinutes = settings?.default_lunch_duration_minutes || 60;
-            const endTime = new Date(startTime.getTime() + ((8 * 60) + lunchMinutes) * 60000);
-            newDay.end_time = endTime.toTimeString().slice(0, 5);
+            const endMinutes = (startParsed.hours * 60 + startParsed.minutes) + (8 * 60) + lunchMinutes;
+            const endHours = Math.floor(endMinutes / 60) % 24;
+            const endMins = endMinutes % 60;
+            const endPeriod = endHours >= 12 ? 'PM' : 'AM';
+            const endHours12 = endHours % 12 || 12;
+            newDay.end_time = `${endHours12}:${endMins.toString().padStart(2, '0')} ${endPeriod}`;
             newDay.hours = 8;
             newDay.store_location = templateStore;
             break;
@@ -251,9 +283,9 @@ const WorkSchedule: React.FC = () => {
             const dayOfWeek = date.getDay();
             if (dayOfWeek >= 1 && dayOfWeek <= 5) {
               newDay.is_scheduled = true;
-              newDay.start_time = dayShift.start;
-              newDay.end_time = dayShift.end;
-              newDay.hours = calculateHours(dayShift.start, dayShift.end);
+              newDay.start_time = formatTime12Hour(dayShift.start);
+              newDay.end_time = formatTime12Hour(dayShift.end);
+              newDay.hours = calculateHours(newDay.start_time, newDay.end_time);
               newDay.store_location = templateStore;
             } else {
               newDay.is_scheduled = false;
@@ -591,7 +623,7 @@ const WorkSchedule: React.FC = () => {
                             const date = new Date(day.date);
                             const dayName = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][date.getDay()];
                             const dayShift = settings?.daily_shifts?.[dayName] || { start: '08:00', end: '17:00' };
-                            setEditValues({ start_time: dayShift.start, end_time: dayShift.end, store_location: employee.primary_store });
+                            setEditValues({ start_time: formatTime12Hour(dayShift.start), end_time: formatTime12Hour(dayShift.end), store_location: employee.primary_store });
                           }}
                           className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 bg-blue-50 rounded transition-opacity"
                           title="Add shift"
