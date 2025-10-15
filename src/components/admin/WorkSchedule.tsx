@@ -398,19 +398,20 @@ const WorkSchedule: React.FC = () => {
         ) : (
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Store Locations</label>
-            <div className="flex flex-wrap gap-2">
+            <div className="grid grid-cols-2 gap-2">
               {storeLocations.map((store) => (
-                <button
+                <label
                   key={store}
-                  onClick={() => setViewStoreFilters({ ...viewStoreFilters, [store]: !viewStoreFilters[store] })}
-                  className={`px-3 py-1 text-xs rounded-full transition-colors ${
-                    viewStoreFilters[store]
-                      ? getStoreColor(store)
-                      : 'bg-gray-100 text-gray-400 border border-gray-200'
-                  }`}
+                  className="flex items-center space-x-2 cursor-pointer hover:bg-gray-50 p-2 rounded-lg transition-colors"
                 >
-                  {store}
-                </button>
+                  <input
+                    type="checkbox"
+                    checked={viewStoreFilters[store]}
+                    onChange={() => setViewStoreFilters({ ...viewStoreFilters, [store]: !viewStoreFilters[store] })}
+                    className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                  />
+                  <span className="text-sm text-gray-700">{store}</span>
+                </label>
               ))}
             </div>
           </div>
