@@ -1,18 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { Award } from 'lucide-react';
+import { Award, Calendar } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTimeClock } from '../contexts/TimeClockContext';
 import TimeClockCard from '../components/TimeClockCard';
 import TodayTimeEntries from '../components/TodayTimeEntries';
 import VacationSummary from '../components/VacationSummary';
 import EmployeeAttendance from '../components/EmployeeAttendance';
+import EmployeeScheduleView from '../components/EmployeeScheduleView';
 import Header from '../components/Header';
 
 const EmployeeDashboard: React.FC = () => {
   const { employee } = useAuth();
   const { refreshEntries } = useTimeClock();
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [activeTab, setActiveTab] = useState<'overview' | 'attendance'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'attendance' | 'schedule'>('overview');
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -72,6 +73,17 @@ const EmployeeDashboard: React.FC = () => {
               <span>Overview</span>
             </button>
             <button
+              onClick={() => setActiveTab('schedule')}
+              className={`flex items-center space-x-2 px-4 py-2 rounded-md font-medium transition-colors ${
+                activeTab === 'schedule'
+                  ? 'bg-blue-600 text-white'
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+              }`}
+            >
+              <Calendar className="h-5 w-5" />
+              <span>My Schedule</span>
+            </button>
+            <button
               onClick={() => setActiveTab('attendance')}
               className={`flex items-center space-x-2 px-4 py-2 rounded-md font-medium transition-colors ${
                 activeTab === 'attendance'
@@ -95,6 +107,8 @@ const EmployeeDashboard: React.FC = () => {
               <VacationSummary />
             </div>
           </div>
+        ) : activeTab === 'schedule' ? (
+          <EmployeeScheduleView />
         ) : (
           <EmployeeAttendance />
         )}
