@@ -540,16 +540,100 @@ const WorkSchedule: React.FC = () => {
                 </td>
                 {(workDays[employee.id] || []).map((day, idx) => (
                   <td key={idx} className="px-2 py-2 border-r">
-                    {day.is_scheduled ? (
-                      <div className={`text-center p-2 rounded border ${getStoreColor(day.store_location)}`}>
+                    {editingCell?.employeeId === employee.id && editingCell?.date === day.date ? (
+                      <div className="p-2 bg-blue-50 rounded border border-blue-300 space-y-2">
+                        <div className="flex items-center space-x-1">
+                          <input
+                            type="time"
+                            value={editValues.start_time || day.start_time}
+                            onChange={(e) => setEditValues({ ...editValues, start_time: e.target.value })}
+                            className="w-20 px-1 py-1 text-xs border border-gray-300 rounded"
+                          />
+                          <span className="text-xs">-</span>
+                          <input
+                            type="time"
+                            value={editValues.end_time || day.end_time}
+                            onChange={(e) => setEditValues({ ...editValues, end_time: e.target.value })}
+                            className="w-20 px-1 py-1 text-xs border border-gray-300 rounded"
+                          />
+                        </div>
+                        <div className="flex space-x-1">
+                          <button
+                            onClick={() => {
+                              handleCellEdit(employee.id, day.date, 'start_time', editValues.start_time || day.start_time);
+                              handleCellEdit(employee.id, day.date, 'end_time', editValues.end_time || day.end_time);
+                              handleCellEdit(employee.id, day.date, 'is_scheduled', true);
+                              setEditingCell(null);
+                              setEditValues({});
+                            }}
+                            className="flex-1 px-2 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700"
+                          >
+                            <Save className="h-3 w-3 mx-auto" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              setEditingCell(null);
+                              setEditValues({});
+                            }}
+                            className="flex-1 px-2 py-1 bg-gray-300 text-gray-700 text-xs rounded hover:bg-gray-400"
+                          >
+                            <X className="h-3 w-3 mx-auto" />
+                          </button>
+                        </div>
+                      </div>
+                    ) : day.is_scheduled ? (
+                      <div className={`text-center p-2 rounded border ${getStoreColor(day.store_location)} relative group`}>
                         <div className="text-xs font-semibold">{day.start_time} - {day.end_time}</div>
                         <div className="text-xs mt-1">{day.hours.toFixed(1)}h</div>
                         {viewMode === 'view' && (
                           <div className="text-xs mt-1 font-medium">{day.store_location}</div>
                         )}
+                        {viewMode === 'assign' && (
+                          <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity flex space-x-1">
+                            <button
+                              onClick={() => {
+                                setEditingCell({ employeeId: employee.id, date: day.date });
+                                setEditValues({ start_time: day.start_time, end_time: day.end_time });
+                              }}
+                              className="p-1 bg-blue-600 text-white rounded hover:bg-blue-700"
+                              title="Edit"
+                            >
+                              <Edit className="h-3 w-3" />
+                            </button>
+                            <button
+                              onClick={() => {
+                                handleCellEdit(employee.id, day.date, 'is_scheduled', false);
+                                handleCellEdit(employee.id, day.date, 'hours', 0);
+                              }}
+                              className="p-1 bg-red-600 text-white rounded hover:bg-red-700"
+                              title="Delete"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          </div>
+                        )}
                       </div>
                     ) : (
-                      <div className="text-center text-gray-400 text-xs">Off</div>
+                      <div className="text-center group relative">
+                        <div className="text-gray-400 text-xs">Off</div>
+                        {viewMode === 'assign' && (
+                          <button
+                            onClick={() => {
+                              setEditingCell({ employeeId: employee.id, date: day.date });
+                              const savedSettings = localStorage.getItem('demo_system_settings');
+                              const settings = savedSettings ? JSON.parse(savedSettings) : null;
+                              const date = new Date(day.date);
+                              const dayName = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][date.getDay()];
+                              const dayShift = settings?.daily_shifts?.[dayName] || { start: '08:00', end: '17:00' };
+                              setEditValues({ start_time: dayShift.start, end_time: dayShift.end });
+                            }}
+                            className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 bg-blue-50 rounded transition-opacity"
+                            title="Add shift"
+                          >
+                            <Plus className="h-4 w-4 text-blue-600" />
+                          </button>
+                        )}
+                      </div>
                     )}
                   </td>
                 ))}
