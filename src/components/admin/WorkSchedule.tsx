@@ -71,6 +71,7 @@ const WorkSchedule: React.FC = () => {
   const [editValues, setEditValues] = useState<Partial<WorkDay>>({});
   const [showBulkAssign, setShowBulkAssign] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<string>('');
+  const [templateStore, setTemplateStore] = useState<string>('Main Store');
 
   const [viewStoreFilters, setViewStoreFilters] = useState<{ [store: string]: boolean }>({
     'Main Store': true,
@@ -232,6 +233,7 @@ const WorkSchedule: React.FC = () => {
             newDay.start_time = dayShift.start;
             newDay.end_time = dayShift.end;
             newDay.hours = calculateHours(dayShift.start, dayShift.end);
+            newDay.store_location = templateStore;
             break;
 
           case 'every_day_8hours':
@@ -242,6 +244,7 @@ const WorkSchedule: React.FC = () => {
             const endTime = new Date(startTime.getTime() + ((8 * 60) + lunchMinutes) * 60000);
             newDay.end_time = endTime.toTimeString().slice(0, 5);
             newDay.hours = 8;
+            newDay.store_location = templateStore;
             break;
 
           case 'weekdays_only':
@@ -251,6 +254,7 @@ const WorkSchedule: React.FC = () => {
               newDay.start_time = dayShift.start;
               newDay.end_time = dayShift.end;
               newDay.hours = calculateHours(dayShift.start, dayShift.end);
+              newDay.store_location = templateStore;
             } else {
               newDay.is_scheduled = false;
               newDay.hours = 0;
@@ -407,7 +411,7 @@ const WorkSchedule: React.FC = () => {
       {showBulkAssign && (
         <div className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
           <h3 className="text-sm font-semibold text-gray-900 mb-3">Apply Schedule Template</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Template</label>
               <select
@@ -419,6 +423,20 @@ const WorkSchedule: React.FC = () => {
                 {scheduleTemplates.map((template) => (
                   <option key={template.id} value={template.id}>
                     {template.name} - {template.description}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Store Location</label>
+              <select
+                value={templateStore}
+                onChange={(e) => setTemplateStore(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                {storeLocations.map((store) => (
+                  <option key={store} value={store}>
+                    {store}
                   </option>
                 ))}
               </select>
