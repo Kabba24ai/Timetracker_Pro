@@ -49,25 +49,41 @@ const EmployeeScheduleView: React.FC = () => {
       if (employeeSchedule) {
         setWorkDays(employeeSchedule);
       } else {
-        setWorkDays(generateEmptyWeek(selectedWeek));
+        setWorkDays(generateDemoWeek(selectedWeek));
       }
     } else {
-      setWorkDays(generateEmptyWeek(selectedWeek));
+      setWorkDays(generateDemoWeek(selectedWeek));
     }
   }, [selectedWeek, employee]);
 
-  const generateEmptyWeek = (weekStart: string): WorkDay[] => {
+  const generateDemoWeek = (weekStart: string): WorkDay[] => {
     const days: WorkDay[] = [];
     const startDate = new Date(weekStart);
+
+    const stores = ['Main Store', 'North Branch', 'South Branch', 'East Location', 'Downtown'];
 
     for (let i = 0; i < 7; i++) {
       const date = new Date(startDate);
       date.setDate(startDate.getDate() + i);
-      days.push({
-        date: date.toISOString().split('T')[0],
-        is_scheduled: false,
-        hours: 0,
-      });
+      const dayOfWeek = date.getDay();
+
+      if (dayOfWeek === 0 || dayOfWeek === 6) {
+        days.push({
+          date: date.toISOString().split('T')[0],
+          is_scheduled: false,
+          hours: 0,
+        });
+      } else {
+        const storeIndex = i % stores.length;
+        days.push({
+          date: date.toISOString().split('T')[0],
+          is_scheduled: true,
+          start_time: '09:00',
+          end_time: '17:00',
+          hours: 8,
+          store_location: stores[storeIndex],
+        });
+      }
     }
 
     return days;
