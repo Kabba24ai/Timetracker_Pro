@@ -96,6 +96,18 @@ const EmployeeScheduleView: React.FC = () => {
 
   const totalHours = workDays.reduce((sum, day) => sum + day.hours, 0);
 
+  const getStoreColor = (store: string) => {
+    const colors: { [key: string]: string } = {
+      'Main Store': 'bg-blue-100 text-blue-800 border-blue-300',
+      'North Branch': 'bg-green-100 text-green-800 border-green-300',
+      'South Branch': 'bg-yellow-100 text-yellow-800 border-yellow-300',
+      'East Location': 'bg-purple-100 text-purple-800 border-purple-300',
+      'West Location': 'bg-pink-100 text-pink-800 border-pink-300',
+      'Downtown': 'bg-orange-100 text-orange-800 border-orange-300'
+    };
+    return colors[store] || 'bg-gray-100 text-gray-800 border-gray-300';
+  };
+
   return (
     <div className="space-y-6">
       <div className="bg-white rounded-lg border p-6">
@@ -127,16 +139,18 @@ const EmployeeScheduleView: React.FC = () => {
                 key={day.date}
                 className={`border rounded-lg p-4 ${
                   isToday(day.date)
-                    ? 'bg-blue-50 border-blue-300 ring-2 ring-blue-500'
+                    ? 'ring-2 ring-blue-500'
+                    : ''
+                } ${
+                  day.is_scheduled && day.store_location
+                    ? getStoreColor(day.store_location)
                     : day.is_scheduled
                     ? 'bg-white border-gray-300'
                     : 'bg-gray-50 border-gray-200'
                 }`}
               >
                 <div className="text-center mb-3">
-                  <div className={`text-sm font-semibold whitespace-pre-line ${
-                    isToday(day.date) ? 'text-blue-700' : 'text-gray-700'
-                  }`}>
+                  <div className="text-sm font-semibold whitespace-pre-line">
                     {getDayLabel(day.date)}
                   </div>
                   {isToday(day.date) && (
@@ -148,21 +162,23 @@ const EmployeeScheduleView: React.FC = () => {
 
                 {day.is_scheduled ? (
                   <div className="space-y-2">
-                    <div className="flex items-center space-x-2 text-sm">
-                      <Clock className="h-4 w-4 text-gray-500 flex-shrink-0" />
-                      <span className="text-gray-900 font-medium">
+                    {day.store_location && (
+                      <div className="text-center mb-2">
+                        <div className="flex items-center justify-center space-x-1">
+                          <MapPin className="h-4 w-4 flex-shrink-0" />
+                          <span className="font-bold text-sm">{day.store_location}</span>
+                        </div>
+                      </div>
+                    )}
+                    <div className="flex items-center space-x-2 text-sm justify-center">
+                      <Clock className="h-4 w-4 flex-shrink-0" />
+                      <span className="font-medium">
                         {day.start_time} - {day.end_time}
                       </span>
                     </div>
-                    {day.store_location && (
-                      <div className="flex items-center space-x-2 text-sm">
-                        <MapPin className="h-4 w-4 text-gray-500 flex-shrink-0" />
-                        <span className="text-gray-700">{day.store_location}</span>
-                      </div>
-                    )}
-                    <div className="mt-2 pt-2 border-t border-gray-200">
+                    <div className="mt-2 pt-2 border-t">
                       <div className="text-center">
-                        <span className="text-lg font-bold text-blue-600">{day.hours}h</span>
+                        <span className="text-lg font-bold">{day.hours}h</span>
                       </div>
                     </div>
                   </div>
