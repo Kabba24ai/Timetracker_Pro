@@ -97,26 +97,39 @@ const VacationManagement: React.FC = () => {
 
       // If no requests exist, add demo requests
       if (allRequests.length === 0) {
+        const today = new Date();
+        const thisWeekMonday = new Date(today);
+        thisWeekMonday.setDate(today.getDate() - today.getDay() + 1);
+
+        const nextWeekMonday = new Date(thisWeekMonday);
+        nextWeekMonday.setDate(thisWeekMonday.getDate() + 7);
+
+        const nextWeekFriday = new Date(nextWeekMonday);
+        nextWeekFriday.setDate(nextWeekMonday.getDate() + 4);
+
+        const thisWeekWednesday = new Date(thisWeekMonday);
+        thisWeekWednesday.setDate(thisWeekMonday.getDate() + 2);
+
         const demoRequests: VacationRequest[] = [
           {
             id: 'demo-1',
             employee_id: '3',
             employee_name: 'Jane Smith',
-            start_date: '2025-10-20',
-            end_date: '2025-10-24',
+            start_date: nextWeekMonday.toISOString().split('T')[0],
+            end_date: nextWeekFriday.toISOString().split('T')[0],
             hours: 40,
             status: 'pending',
-            created_at: new Date('2025-10-14').toISOString(),
+            created_at: new Date(Date.now() - 86400000).toISOString(),
           },
           {
             id: 'demo-2',
             employee_id: '1',
             employee_name: 'John Doe',
-            start_date: '2025-11-01',
-            end_date: '2025-11-01',
+            start_date: thisWeekWednesday.toISOString().split('T')[0],
+            end_date: thisWeekWednesday.toISOString().split('T')[0],
             hours: 8,
-            status: 'pending',
-            created_at: new Date('2025-10-13').toISOString(),
+            status: 'approved',
+            created_at: new Date(Date.now() - 172800000).toISOString(),
           },
           {
             id: 'demo-3',

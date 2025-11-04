@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Clock, MapPin, CreditCard as Edit, Save, X, Plus, Copy, Trash2, Users } from 'lucide-react';
+import { Calendar, Clock, MapPin, CreditCard as Edit, Save, X, Plus, Copy, Trash2, Users, Plane } from 'lucide-react';
 
 interface ScheduleTemplate {
   id: string;
@@ -17,6 +17,14 @@ interface WorkDay {
   is_scheduled: boolean;
   hours: number;
   notes?: string;
+}
+
+interface VacationRequest {
+  id: string;
+  employee_id: string;
+  start_date: string;
+  end_date: string;
+  status: 'pending' | 'approved' | 'denied';
 }
 
 interface Employee {
@@ -87,6 +95,8 @@ const WorkSchedule: React.FC = () => {
     employee: true
   });
 
+  const [vacationRequests, setVacationRequests] = useState<VacationRequest[]>([]);
+
   const filteredAndSortedEmployees = [...mockEmployees]
     .filter(emp => {
       const roleMatch = roleFilters[emp.role];
@@ -116,6 +126,40 @@ const WorkSchedule: React.FC = () => {
       fetchWorkSchedule();
     }
   }, [selectedEmployees, selectedWeek]);
+
+  useEffect(() => {
+    fetchVacationRequests();
+  }, []);
+
+  const fetchVacationRequests = () => {
+    try {
+      const employees = ['1', '2', '3'];
+      let allRequests: VacationRequest[] = [];
+
+      employees.forEach(employeeId => {
+        const requestsKey = `vacation_requests_${employeeId}`;
+        const savedRequests = localStorage.getItem(requestsKey);
+        if (savedRequests) {
+          const requests = JSON.parse(savedRequests).filter((req: VacationRequest) => req.status === 'approved');
+          allRequests = [...allRequests, ...requests];
+        }
+      });
+
+      setVacationRequests(allRequests);
+    } catch (error) {
+      console.error('Error fetching vacation requests:', error);
+    }
+  };
+
+  const isDateOnVacation = (employeeId: string, date: string): boolean => {
+    return vacationRequests.some(request => {
+      if (request.employee_id !== employeeId) return false;
+      const reqStart = new Date(request.start_date);
+      const reqEnd = new Date(request.end_date);
+      const checkDate = new Date(date);
+      return checkDate >= reqStart && checkDate <= reqEnd;
+    });
+  };
 
   const fetchWorkSchedule = async () => {
     setLoading(true);
@@ -586,6 +630,11 @@ const WorkSchedule: React.FC = () => {
                       </div>
                     ) : day.is_scheduled ? (
                       <div className={`text-center p-2 rounded border ${getStoreColor(day.store_location)} relative group`}>
+                        {isDateOnVacation(employee.id, day.date) && (
+                          <div className="absolute -top-1 -right-1 bg-blue-500 text-white rounded-full p-1" title="On Vacation">
+                            <Plane className="h-3 w-3" />
+                          </div>
+                        )}
                         <div className="text-xs font-semibold whitespace-nowrap">{day.start_time} - {day.end_time}</div>
                         <div className="text-xs mt-1">{day.hours.toFixed(1)}h</div>
                         <div className="text-xs mt-1 font-medium">{day.store_location}</div>
@@ -614,22 +663,31 @@ const WorkSchedule: React.FC = () => {
                       </div>
                     ) : (
                       <div className="text-center group relative">
-                        <div className="text-gray-400 text-xs">Off</div>
-                        <button
-                          onClick={() => {
-                            setEditingCell({ employeeId: employee.id, date: day.date });
-                            const savedSettings = localStorage.getItem('demo_system_settings');
-                            const settings = savedSettings ? JSON.parse(savedSettings) : null;
-                            const date = new Date(day.date);
-                            const dayName = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][date.getDay()];
-                            const dayShift = settings?.daily_shifts?.[dayName] || { start: '08:00', end: '17:00' };
-                            setEditValues({ start_time: formatTime12Hour(dayShift.start), end_time: formatTime12Hour(dayShift.end), store_location: employee.primary_store });
-                          }}
-                          className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 bg-blue-50 rounded transition-opacity"
-                          title="Add shift"
-                        >
-                          <Plus className="h-4 w-4 text-blue-600" />
-                        </button>
+                        {isDateOnVacation(employee.id, day.date) ? (
+                          <div className="flex flex-col items-center justify-center py-2">
+                            <Plane className="h-5 w-5 text-blue-500 mb-1" />
+                            <div className="text-xs text-blue-600 font-medium">Vacation</div>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="text-gray-400 text-xs">Off</div>
+                            <button
+                              onClick={() => {
+                                setEditingCell({ employeeId: employee.id, date: day.date });
+                                const savedSettings = localStorage.getItem('demo_system_settings');
+                                const settings = savedSettings ? JSON.parse(savedSettings) : null;
+                                const date = new Date(day.date);
+                                const dayName = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][date.getDay()];
+                                const dayShift = settings?.daily_shifts?.[dayName] || { start: '08:00', end: '17:00' };
+                                setEditValues({ start_time: formatTime12Hour(dayShift.start), end_time: formatTime12Hour(dayShift.end), store_location: employee.primary_store });
+                              }}
+                              className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 bg-blue-50 rounded transition-opacity"
+                              title="Add shift"
+                            >
+                              <Plus className="h-4 w-4 text-blue-600" />
+                            </button>
+                          </>
+                        )}
                       </div>
                     )}
                   </td>
