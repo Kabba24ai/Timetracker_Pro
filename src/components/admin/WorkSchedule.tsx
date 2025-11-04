@@ -17,6 +17,7 @@ interface WorkDay {
   is_scheduled: boolean;
   hours: number;
   notes?: string;
+  is_vacation?: boolean;
 }
 
 interface VacationRequest {
@@ -77,6 +78,7 @@ const WorkSchedule: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [editingCell, setEditingCell] = useState<{ employeeId: string; date: string } | null>(null);
   const [editValues, setEditValues] = useState<Partial<WorkDay>>({});
+  const [isVacationMode, setIsVacationMode] = useState(false);
   const [showBulkAssign, setShowBulkAssign] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<string>('');
   const [templateStore, setTemplateStore] = useState<string>('Main Store');
@@ -200,7 +202,8 @@ const WorkSchedule: React.FC = () => {
             store_location: existingDay?.store_location || employee?.primary_store || 'Main Store',
             is_scheduled: existingDay?.is_scheduled !== undefined ? existingDay.is_scheduled : dayShift.enabled,
             hours: existingDay?.hours || calculateHours(defaultStartTime, defaultEndTime),
-            notes: existingDay?.notes || ''
+            notes: existingDay?.notes || '',
+            is_vacation: existingDay?.is_vacation || false
           });
         }
 
@@ -579,39 +582,70 @@ const WorkSchedule: React.FC = () => {
                   <td key={idx} className="px-2 py-2 border-r">
                     {editingCell?.employeeId === employee.id && editingCell?.date === day.date ? (
                       <div className="p-2 bg-blue-50 rounded border border-blue-300 space-y-2 min-w-[200px]">
-                        <select
-                          value={editValues.store_location || day.store_location || employee.primary_store}
-                          onChange={(e) => setEditValues({ ...editValues, store_location: e.target.value })}
-                          className="w-full px-2 py-1 text-xs border border-gray-300 rounded"
-                        >
-                          {storeLocations.map((store) => (
-                            <option key={store} value={store}>{store}</option>
-                          ))}
-                        </select>
-                        <div className="flex items-center space-x-1">
-                          <input
-                            type="time"
-                            value={editValues.start_time || day.start_time}
-                            onChange={(e) => setEditValues({ ...editValues, start_time: e.target.value })}
-                            className="w-20 px-1 py-1 text-xs border border-gray-300 rounded"
-                          />
-                          <span className="text-xs">-</span>
-                          <input
-                            type="time"
-                            value={editValues.end_time || day.end_time}
-                            onChange={(e) => setEditValues({ ...editValues, end_time: e.target.value })}
-                            className="w-20 px-1 py-1 text-xs border border-gray-300 rounded"
-                          />
+                        <div className="flex space-x-2 mb-2">
+                          <button
+                            onClick={() => setIsVacationMode(false)}
+                            className={`flex-1 px-2 py-1 text-xs rounded ${!isVacationMode ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
+                          >
+                            Work Shift
+                          </button>
+                          <button
+                            onClick={() => setIsVacationMode(true)}
+                            className={`flex-1 px-2 py-1 text-xs rounded ${isVacationMode ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
+                          >
+                            Vacation
+                          </button>
                         </div>
+                        {!isVacationMode ? (
+                          <>
+                            <select
+                              value={editValues.store_location || day.store_location || employee.primary_store}
+                              onChange={(e) => setEditValues({ ...editValues, store_location: e.target.value })}
+                              className="w-full px-2 py-1 text-xs border border-gray-300 rounded"
+                            >
+                              {storeLocations.map((store) => (
+                                <option key={store} value={store}>{store}</option>
+                              ))}
+                            </select>
+                            <div className="flex items-center space-x-1">
+                              <input
+                                type="time"
+                                value={editValues.start_time || day.start_time}
+                                onChange={(e) => setEditValues({ ...editValues, start_time: e.target.value })}
+                                className="w-20 px-1 py-1 text-xs border border-gray-300 rounded"
+                              />
+                              <span className="text-xs">-</span>
+                              <input
+                                type="time"
+                                value={editValues.end_time || day.end_time}
+                                onChange={(e) => setEditValues({ ...editValues, end_time: e.target.value })}
+                                className="w-20 px-1 py-1 text-xs border border-gray-300 rounded"
+                              />
+                            </div>
+                          </>
+                        ) : (
+                          <div className="text-center py-3">
+                            <Plane className="h-6 w-6 text-blue-500 mx-auto mb-1" />
+                            <div className="text-xs text-gray-600">Mark as Vacation Day</div>
+                          </div>
+                        )}
                         <div className="flex space-x-1">
                           <button
                             onClick={() => {
-                              handleCellEdit(employee.id, day.date, 'store_location', editValues.store_location || day.store_location || employee.primary_store);
-                              handleCellEdit(employee.id, day.date, 'start_time', editValues.start_time || day.start_time);
-                              handleCellEdit(employee.id, day.date, 'end_time', editValues.end_time || day.end_time);
-                              handleCellEdit(employee.id, day.date, 'is_scheduled', true);
+                              if (isVacationMode) {
+                                handleCellEdit(employee.id, day.date, 'is_vacation', true);
+                                handleCellEdit(employee.id, day.date, 'is_scheduled', false);
+                                handleCellEdit(employee.id, day.date, 'hours', 0);
+                              } else {
+                                handleCellEdit(employee.id, day.date, 'store_location', editValues.store_location || day.store_location || employee.primary_store);
+                                handleCellEdit(employee.id, day.date, 'start_time', editValues.start_time || day.start_time);
+                                handleCellEdit(employee.id, day.date, 'end_time', editValues.end_time || day.end_time);
+                                handleCellEdit(employee.id, day.date, 'is_scheduled', true);
+                                handleCellEdit(employee.id, day.date, 'is_vacation', false);
+                              }
                               setEditingCell(null);
                               setEditValues({});
+                              setIsVacationMode(false);
                             }}
                             className="flex-1 px-2 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700"
                           >
@@ -621,10 +655,37 @@ const WorkSchedule: React.FC = () => {
                             onClick={() => {
                               setEditingCell(null);
                               setEditValues({});
+                              setIsVacationMode(false);
                             }}
                             className="flex-1 px-2 py-1 bg-gray-300 text-gray-700 text-xs rounded hover:bg-gray-400"
                           >
                             <X className="h-3 w-3 mx-auto" />
+                          </button>
+                        </div>
+                      </div>
+                    ) : day.is_vacation ? (
+                      <div className="text-center p-2 rounded border border-blue-200 bg-blue-50 relative group">
+                        <Plane className="h-5 w-5 text-blue-500 mx-auto mb-1" />
+                        <div className="text-xs text-blue-600 font-medium">Vacation</div>
+                        <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity flex space-x-1">
+                          <button
+                            onClick={() => {
+                              setEditingCell({ employeeId: employee.id, date: day.date });
+                              setIsVacationMode(true);
+                            }}
+                            className="p-1 bg-blue-600 text-white rounded hover:bg-blue-700"
+                            title="Edit"
+                          >
+                            <Edit className="h-3 w-3" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              handleCellEdit(employee.id, day.date, 'is_vacation', false);
+                            }}
+                            className="p-1 bg-red-600 text-white rounded hover:bg-red-700"
+                            title="Remove Vacation"
+                          >
+                            <Trash2 className="h-3 w-3" />
                           </button>
                         </div>
                       </div>
