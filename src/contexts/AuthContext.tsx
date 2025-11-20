@@ -42,111 +42,67 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     const initAuth = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
+        const savedUser = localStorage.getItem('demo_user');
+        const savedEmployee = localStorage.getItem('demo_employee');
 
-        if (session?.user) {
-          const { data: employee } = await supabase
-            .from('employees')
-            .select('*')
-            .eq('user_id', session.user.id)
-            .maybeSingle();
-
-          if (employee) {
-            setUser({ id: session.user.id, email: session.user.email || '' });
-            setEmployee({
-              id: employee.id,
-              user_id: employee.user_id,
-              first_name: employee.first_name,
-              last_name: employee.last_name,
-              email: employee.email,
-              role: employee.role,
-              created_at: employee.created_at
-            });
-          }
+        if (savedUser && savedEmployee) {
+          setUser(JSON.parse(savedUser));
+          setEmployee(JSON.parse(savedEmployee));
         }
       } catch (error) {
         console.error('Auth error:', error);
+        localStorage.removeItem('demo_user');
+        localStorage.removeItem('demo_employee');
       } finally {
         setLoading(false);
       }
     };
 
     initAuth();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      (async () => {
-        if (session?.user) {
-          const { data: employee } = await supabase
-            .from('employees')
-            .select('*')
-            .eq('user_id', session.user.id)
-            .maybeSingle();
-
-          if (employee) {
-            setUser({ id: session.user.id, email: session.user.email || '' });
-            setEmployee({
-              id: employee.id,
-              user_id: employee.user_id,
-              first_name: employee.first_name,
-              last_name: employee.last_name,
-              email: employee.email,
-              role: employee.role,
-              created_at: employee.created_at
-            });
-          }
-        } else {
-          setUser(null);
-          setEmployee(null);
-        }
-      })();
-    });
-
-    return () => {
-      subscription.unsubscribe();
-    };
   }, []);
 
   const signIn = async (email: string, password: string) => {
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      const demoAccounts: { [key: string]: { password: string; employee: Employee } } = {
+        'admin@demo.com': {
+          password: 'admin123',
+          employee: {
+            id: '2',
+            user_id: 'demo-admin-id',
+            first_name: 'Admin',
+            last_name: 'User',
+            email: 'admin@demo.com',
+            role: 'admin',
+            created_at: new Date().toISOString()
+          }
+        },
+        'john@demo.com': {
+          password: 'demo123',
+          employee: {
+            id: '1',
+            user_id: 'demo-employee-id',
+            first_name: 'John',
+            last_name: 'Doe',
+            email: 'john@demo.com',
+            role: 'employee',
+            created_at: new Date().toISOString()
+          }
+        }
+      };
 
-      if (error) {
-        console.error('Auth error:', error);
-        throw new Error(error.message);
-      }
+      const account = demoAccounts[email.toLowerCase()];
 
-      if (!data.user) {
+      if (!account || account.password !== password) {
         throw new Error('Invalid email or password');
       }
 
-      const { data: employee, error: employeeError } = await supabase
-        .from('employees')
-        .select('*')
-        .eq('user_id', data.user.id)
-        .maybeSingle();
+      const userData = { id: account.employee.user_id, email };
 
-      if (employeeError) {
-        console.error('Employee query error:', employeeError);
-        throw new Error(`Employee record not found: ${employeeError.message}`);
-      }
+      setUser(userData);
+      setEmployee(account.employee);
 
-      if (!employee) {
-        throw new Error('Employee record not found for this user');
-      }
-
-      setUser({ id: data.user.id, email: data.user.email || '' });
-      setEmployee({
-        id: employee.id,
-        user_id: employee.user_id,
-        first_name: employee.first_name,
-        last_name: employee.last_name,
-        email: employee.email,
-        role: employee.role,
-        created_at: employee.created_at
-      });
+      localStorage.setItem('demo_user', JSON.stringify(userData));
+      localStorage.setItem('demo_employee', JSON.stringify(account.employee));
     } catch (err) {
       console.error('Sign in error:', err);
       throw err;
@@ -154,7 +110,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    localStorage.removeItem('demo_user');
+    localStorage.removeItem('demo_employee');
     setUser(null);
     setEmployee(null);
   };
