@@ -50,14 +50,16 @@ const AdminDashboard: React.FC = () => {
         </div>
 
         <div className="mb-6">
-          <nav className="flex space-x-1 bg-gray-100 p-1 rounded-lg">
+          {/* <nav className="flex space-x-1 bg-gray-100 p-1 rounded-lg"> */}
+          <nav className="flex overflow-x-auto whitespace-nowrap bg-gray-100 p-1 rounded-lg scrollbar-hide">
+
             {tabs.map((tab) => {
               const Icon = tab.icon;
               return (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center space-x-2 px-4 py-2 rounded-md font-medium transition-colors ${
+                  className={`flex shrink-0 items-center space-x-2 px-4 py-2 rounded-md font-medium transition-colors ${
                     activeTab === tab.id
                       ? 'bg-white text-blue-600 shadow-sm'
                       : 'text-gray-600 hover:text-gray-900'

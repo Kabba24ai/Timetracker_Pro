@@ -1,4 +1,4 @@
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost/MedooApi';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 interface ApiResponse<T = any> {
   success: boolean;
@@ -46,7 +46,8 @@ class ApiClient {
     const data = await response.json();
 
     if (!response.ok) {
-      throw new Error(data.message || 'An error occurred');
+      // throw new Error(data.message || 'An error occurred');
+       throw data;
     }
 
     return data;
@@ -77,5 +78,9 @@ class ApiClient {
     });
   }
 }
+// console.log('API_BASE_URL');
+
+// console.log(API_BASE_URL);
+// console.log('API_BASE_URL');
 
 export const api = new ApiClient(API_BASE_URL);

@@ -1,20 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import { Trophy, Calendar, TrendingUp, Users, ChevronDown } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { api } from '../../lib/api';
+import { AchievementGoal } from '../../types/achievement';
+import { formatDateForApi } from '../../utils/date';
+
+
+import toast from 'react-hot-toast';
+
+
 import { DateRangeOption, dateRangeOptions, getDateRange } from '../../lib/dateRanges';
 
-interface AchievementGoal {
-  id: string;
-  goal_name: string;
-  goal_type: string;
-  display_order: number;
-  icon: string;
-  color: string;
-  days_missed_max: number;
-  days_late_max: number;
-  description: string;
-  is_active: boolean;
-}
 
 interface AttendanceRecord {
   id: string;
@@ -43,158 +39,133 @@ interface EmployeeAggregatedStats {
   achievement: AchievementGoal | null;
 }
 
+
 const AttendanceTracking: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'goals' | 'summaries'>('summaries');
   const [goals, setGoals] = useState<AchievementGoal[]>([]);
   const [aggregatedStats, setAggregatedStats] = useState<EmployeeAggregatedStats[]>([]);
+
+  const [page, setPage] = useState(1);
+const [perPage, setPerPage] = useState(10);
+const [lastPage, setLastPage] = useState(1);
+const [total, setTotal] = useState(0);
+
+
   const [loading, setLoading] = useState(true);
   const [editingGoal, setEditingGoal] = useState<AchievementGoal | null>(null);
   const [dateRangeOption, setDateRangeOption] = useState<DateRangeOption>('current-month');
   const [selectedMonth, setSelectedMonth] = useState<Date>(new Date());
   const [showMonthPicker, setShowMonthPicker] = useState(false);
+  const [isSavingGoal, setIsSavingGoal] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
 
   useEffect(() => {
-    loadData();
-  }, [activeTab, dateRangeOption, selectedMonth]);
+    loadGoals();
+  }, []);
 
-  const loadData = async () => {
-    setLoading(true);
-    if (activeTab === 'goals') {
-      await loadGoals();
-    } else {
-      await loadAggregatedAttendance();
-    }
-    setLoading(false);
-  };
+
+  useEffect(() => {
+  if (activeTab === 'goals') {
+    loadGoals();
+  }
+}, [activeTab]);
+
+
+useEffect(() => {
+  if (activeTab === 'summaries') {
+    loadAggregatedAttendance();
+  }
+}, [activeTab, page, perPage, dateRangeOption, selectedMonth]);
+
+useEffect(() => {
+  setPage(1);
+}, [perPage, dateRangeOption, selectedMonth]);
+
 
   const loadGoals = async () => {
-    const { data, error } = await supabase
-      .from('achievement_goals')
-      .select('*')
-      .order('display_order');
+    try {
+      const response = await api.get('/achievement-goals');
 
-    if (!error && data) {
-      setGoals(data);
-    }
-  };
-
-  const loadAggregatedAttendance = async () => {
-    const dateRange = getDateRange(dateRangeOption, selectedMonth);
-
-    const startDateStr = dateRange.startDate.toISOString().split('T')[0];
-    const endDateStr = dateRange.endDate.toISOString().split('T')[0];
-
-    const { data: records, error } = await supabase
-      .from('attendance_records')
-      .select(`
-        *,
-        employee:employees(id, first_name, last_name, email)
-      `)
-      .gte('attendance_date', startDateStr)
-      .lte('attendance_date', endDateStr)
-      .order('attendance_date', { ascending: false });
-
-    if (error || !records) {
-      setAggregatedStats([]);
-      return;
-    }
-
-    const { data: allGoals } = await supabase
-      .from('achievement_goals')
-      .select('*')
-      .eq('is_active', true)
-      .order('display_order');
-
-    const employeeMap = new Map<string, EmployeeAggregatedStats>();
-
-    records.forEach((record: any) => {
-      const empId = record.employee.id;
-
-      if (!employeeMap.has(empId)) {
-        employeeMap.set(empId, {
-          employee_id: empId,
-          first_name: record.employee.first_name,
-          last_name: record.employee.last_name,
-          email: record.employee.email,
-          days_present: 0,
-          days_late: 0,
-          days_missed: 0,
-          days_excused: 0,
-          total_minutes_late: 0,
-          achievement: null,
-        });
+      if (response.success == true) {
+        setGoals(response.data);
+      } else {
+        setGoals([]);
       }
 
-      const stats = employeeMap.get(empId)!;
+    } catch (error) {
+      console.error('Failed to load achievement goals', error);
+      setGoals([]);
+    }
 
-      if (record.status === 'present') stats.days_present++;
-      else if (record.status === 'late') stats.days_late++;
-      else if (record.status === 'missed') stats.days_missed++;
-      else if (record.status === 'excused') stats.days_excused++;
-
-      stats.total_minutes_late += record.minutes_late || 0;
-    });
-
-    const statsArray = Array.from(employeeMap.values());
-
-    statsArray.forEach((stats) => {
-      if (allGoals) {
-        const matchingGoal = allGoals.find((goal: AchievementGoal) => {
-          if (goal.goal_type === 'positive') {
-            return stats.days_missed <= goal.days_missed_max && stats.days_late <= goal.days_late_max;
-          } else {
-            return stats.days_missed >= goal.days_missed_max || stats.days_late >= goal.days_late_max;
-          }
-        });
-        stats.achievement = matchingGoal || null;
-      }
-    });
-
-    setAggregatedStats(statsArray);
   };
+
+const loadAggregatedAttendance = async () => {
+  setLoading(true);
+
+  const dateRange = getDateRange(dateRangeOption, selectedMonth);
+
+  const start = formatDateForApi(dateRange.startDate);
+  const end   = formatDateForApi(dateRange.endDate);
+
+  const res = await api.get(
+    `/users/attendance/summary` +
+    `?start_date=${start}` +
+    `&end_date=${end}` +
+    `&page=${page}` +
+    `&per_page=${perPage}`
+  );
+
+  if (!res.success) {
+    toast.error('Failed to load attendance summary');
+    setAggregatedStats([]);
+    setLoading(false);
+    return;
+  }
+
+  setAggregatedStats(res.data);
+  setPage(res.meta.current_page);
+  setLastPage(res.meta.last_page);
+  setTotal(res.meta.total);
+  setLoading(false);
+};
+
+
+
+
 
   const saveGoal = async (goal: Partial<AchievementGoal>) => {
-    if (goal.id) {
-      const { error } = await supabase
-        .from('achievement_goals')
-        .update({
-          goal_name: goal.goal_name,
-          goal_type: goal.goal_type,
-          display_order: goal.display_order,
-          icon: goal.icon,
-          color: goal.color,
-          days_missed_max: goal.days_missed_max,
-          days_late_max: goal.days_late_max,
-          description: goal.description,
-          is_active: goal.is_active,
-        })
-        .eq('id', goal.id);
+    setIsSavingGoal(true);
+    setFieldErrors({}); // clear previous errors
 
-      if (!error) {
-        setEditingGoal(null);
-        loadGoals();
+    try {
+      if (goal.id) {
+        await api.put(`/achievement-goals/update/${goal.id}`, goal);
+        toast.success('Achievement goal updated successfully');
+      } else {
+        await api.post('/achievement-goals/store', goal);
+        toast.success('Achievement goal created successfully');
       }
-    } else {
-      const { error } = await supabase
-        .from('achievement_goals')
-        .insert({
-          goal_name: goal.goal_name,
-          goal_type: goal.goal_type,
-          display_order: goal.display_order,
-          icon: goal.icon,
-          color: goal.color,
-          days_missed_max: goal.days_missed_max,
-          days_late_max: goal.days_late_max,
-          description: goal.description,
-          is_active: goal.is_active ?? true,
-        });
 
-      if (!error) {
-        setEditingGoal(null);
-        loadGoals();
+      setEditingGoal(null);
+      await loadGoals();
+
+    } catch (error: any) {
+      console.error('Failed to save goal', error);
+
+      //  Laravel validation error (fetch-style)
+      if (error?.errors) {
+        setFieldErrors(error.errors);
+        toast.error(error.message || 'Validation failed');
+      } else {
+        toast.error(error?.message || 'Something went wrong');
       }
+
+    } finally {
+      setIsSavingGoal(false);
     }
   };
+
+
 
   const recalculateAllSummaries = async () => {
     const { data: employees } = await supabase
@@ -220,6 +191,10 @@ const AttendanceTracking: React.FC = () => {
 
   const currentDateRange = getDateRange(dateRangeOption, selectedMonth);
 
+  const from = total === 0 ? 0 : Math.min((page - 1) * perPage + 1, total);
+  const to = Math.min(page * perPage, total);
+
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -239,11 +214,10 @@ const AttendanceTracking: React.FC = () => {
         <nav className="flex space-x-8">
           <button
             onClick={() => setActiveTab('summaries')}
-            className={`pb-4 px-1 border-b-2 font-medium text-sm transition-colors ${
-              activeTab === 'summaries'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
+            className={`pb-4 px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === 'summaries'
+              ? 'border-blue-500 text-blue-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
           >
             <div className="flex items-center space-x-2">
               <Users className="h-5 w-5" />
@@ -252,11 +226,10 @@ const AttendanceTracking: React.FC = () => {
           </button>
           <button
             onClick={() => setActiveTab('goals')}
-            className={`pb-4 px-1 border-b-2 font-medium text-sm transition-colors ${
-              activeTab === 'goals'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
+            className={`pb-4 px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === 'goals'
+              ? 'border-blue-500 text-blue-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
           >
             <div className="flex items-center space-x-2">
               <Trophy className="h-5 w-5" />
@@ -321,7 +294,7 @@ const AttendanceTracking: React.FC = () => {
             </div>
           </div>
 
-          <div className="bg-white rounded-lg border overflow-hidden">
+          <div className="bg-white rounded-lg border overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
@@ -393,6 +366,49 @@ const AttendanceTracking: React.FC = () => {
               </tbody>
             </table>
           </div>
+
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-4">
+            <p className="text-sm text-gray-600">
+              Showing <span className="font-medium">{from}</span> to{' '}
+              <span className="font-medium">{to}</span> of{' '}
+              <span className="font-medium">{total}</span> results
+            </p>
+
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <label className="text-sm text-gray-600">Rows:</label>
+                <select
+                  value={perPage}
+                  onChange={(e) => setPerPage(Number(e.target.value))}
+                  className="px-2 py-1 border border-gray-300 rounded-md text-sm"
+                >
+                  {[5, 10, 30, 50, 100, 500].map(size => (
+                    <option key={size} value={size}>{size}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  disabled={page === 1}
+                  onClick={() => setPage(p => Math.max(p - 1, 1))}
+                  className="px-3 py-1 rounded border text-sm disabled:opacity-50"
+                >
+                  Prev
+                </button>
+
+                <button
+                  disabled={page === lastPage}
+                  onClick={() => setPage(p => Math.min(p + 1, lastPage))}
+                  className="px-3 py-1 rounded border text-sm disabled:opacity-50"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          </div>
+
+
         </div>
       )}
 
@@ -467,13 +483,33 @@ const AttendanceTracking: React.FC = () => {
 
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Goal Name</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Goal Name *</label>
                     <input
                       type="text"
                       value={editingGoal.goal_name}
-                      onChange={(e) => setEditingGoal({ ...editingGoal, goal_name: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      onChange={(e) => {
+                        setEditingGoal({ ...editingGoal, goal_name: e.target.value });
+
+                        // clear field error on change
+                        setFieldErrors((prev) => {
+                          const copy = { ...prev };
+                          delete copy.goal_name;
+                          return copy;
+                        });
+                      }}
+                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:border-transparent
+                      ${fieldErrors.goal_name
+                          ? 'border-red-500 focus:ring-red-500'
+                          : 'border-gray-300 focus:ring-blue-500'
+                        }`}
                     />
+
+
+                    {fieldErrors.goal_name && (
+                      <p className="mt-1 text-sm text-red-600">
+                        {fieldErrors.goal_name[0]}
+                      </p>
+                    )}
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
@@ -490,59 +526,169 @@ const AttendanceTracking: React.FC = () => {
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Display Order</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Display Order *</label>
                       <input
                         type="number"
                         value={editingGoal.display_order}
-                        onChange={(e) => setEditingGoal({ ...editingGoal, display_order: parseInt(e.target.value) })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      
+
+                        onChange={(e) => {
+                        setEditingGoal({ ...editingGoal, display_order: parseInt(e.target.value) });
+
+                        // clear field error on change
+                        setFieldErrors((prev) => {
+                          const copy = { ...prev };
+                          delete copy.display_order;
+                          return copy;
+                        });
+                      }}
+
+
+                         className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:border-transparent
+                      ${fieldErrors.goal_name
+                          ? 'border-red-500 focus:ring-red-500'
+                          : 'border-gray-300 focus:ring-blue-500'
+                        }`}
                       />
+                       {fieldErrors.display_order && (
+                      <p className="mt-1 text-sm text-red-600">
+                        {fieldErrors.display_order[0]}
+                      </p>
+                    )}
                     </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Icon (Emoji)</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Icon (Emoji) *</label>
                       <input
                         type="text"
                         value={editingGoal.icon}
-                        onChange={(e) => setEditingGoal({ ...editingGoal, icon: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+
+                        onChange={(e) => {
+                        setEditingGoal({ ...editingGoal, icon: e.target.value });
+
+                        // clear field error on change
+                        setFieldErrors((prev) => {
+                          const copy = { ...prev };
+                          delete copy.icon;
+                          return copy;
+                        });
+                      }}
+
+                        className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:border-transparent
+                      ${fieldErrors.goal_name
+                          ? 'border-red-500 focus:ring-red-500'
+                          : 'border-gray-300 focus:ring-blue-500'
+                        }`}
+
                       />
+
+                    {fieldErrors.icon && (
+                      <p className="mt-1 text-sm text-red-600">
+                        {fieldErrors.icon[0]}
+                      </p>
+                    )}
+
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Color (Hex)</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Color (Hex) *</label>
                       <input
                         type="text"
                         value={editingGoal.color}
-                        onChange={(e) => setEditingGoal({ ...editingGoal, color: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        
+                        onChange={(e) => {
+                        setEditingGoal({ ...editingGoal, color: e.target.value });
+
+                        // clear field error on change
+                        setFieldErrors((prev) => {
+                          const copy = { ...prev };
+                          delete copy.color;
+                          return copy;
+                        });
+                      }}
+
+                         className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:border-transparent
+                      ${fieldErrors.goal_name
+                          ? 'border-red-500 focus:ring-red-500'
+                          : 'border-gray-300 focus:ring-blue-500'
+                        }`}
+
                       />
+                          {fieldErrors.color && (
+                      <p className="mt-1 text-sm text-red-600">
+                        {fieldErrors.color[0]}
+                      </p>
+                    )}
                     </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Max Days Missed</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Max Days Missed *</label>
                       <input
                         type="number"
                         value={editingGoal.days_missed_max}
-                        onChange={(e) =>
-                          setEditingGoal({ ...editingGoal, days_missed_max: parseInt(e.target.value) })
-                        }
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
+                        onChange={(e) => {
+                          setEditingGoal({
+                            ...editingGoal,
+                            days_missed_max: parseInt(e.target.value),
+                          });
+
+                          setFieldErrors((prev) => {
+                            const copy = { ...prev };
+                            delete copy.days_missed_max;
+                            return copy;
+                          });
+                        }}
+                        className={`w-full px-3 py-2 border rounded-lg
+                         ${fieldErrors.days_missed_max
+                            ? 'border-red-500 focus:ring-red-500'
+                            : 'border-gray-300 focus:ring-blue-500'
+                          }`} />
+
+                      {fieldErrors.days_missed_max && (
+                        <p className="mt-1 text-sm text-red-600">
+                          {fieldErrors.days_missed_max[0]}
+                        </p>
+                      )}
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Max Days Late</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Max Days Late *</label>
                       <input
                         type="number"
                         value={editingGoal.days_late_max}
-                        onChange={(e) => setEditingGoal({ ...editingGoal, days_late_max: parseInt(e.target.value) })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        // onChange={(e) => setEditingGoal({ ...editingGoal, days_late_max: parseInt(e.target.value) })}
+                        // className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+
+                         onChange={(e) => {
+                          setEditingGoal({
+                            ...editingGoal,
+                            days_late_max: parseInt(e.target.value),
+                          });
+
+                          setFieldErrors((prev) => {
+                            const copy = { ...prev };
+                            delete copy.days_late_max;
+                            return copy;
+                          });
+                        }}
+                        className={`w-full px-3 py-2 border rounded-lg
+                         ${fieldErrors.days_late_max
+                            ? 'border-red-500 focus:ring-red-500'
+                            : 'border-gray-300 focus:ring-blue-500'
+                          }`} 
+
                       />
+
+                        {fieldErrors.days_late_max && (
+                        <p className="mt-1 text-sm text-red-600">
+                          {fieldErrors.days_late_max[0]}
+                        </p>
+                      )}
+
                     </div>
                   </div>
 
@@ -576,10 +722,38 @@ const AttendanceTracking: React.FC = () => {
                   </button>
                   <button
                     onClick={() => saveGoal(editingGoal)}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                    disabled={isSavingGoal}
+                    className={`px-4 py-2 rounded-lg text-white flex items-center gap-2 ${isSavingGoal
+                      ? 'bg-blue-400 cursor-not-allowed'
+                      : 'bg-blue-600 hover:bg-blue-700'
+                      }`}
                   >
-                    Save Goal
+                    {isSavingGoal && (
+                      // <span className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <svg
+                      className="animate-spin h-4 w-4 text-white"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8v8H4z"
+                      />
+                    </svg>
+                    )}
+                    {isSavingGoal ? 'Saving...' : 'Save Goal'}
                   </button>
+
                 </div>
               </div>
             </div>

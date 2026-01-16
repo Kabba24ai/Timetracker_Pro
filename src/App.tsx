@@ -6,12 +6,19 @@ import LoginPage from './pages/LoginPage';
 import EmployeeDashboard from './pages/EmployeeDashboard';
 import AdminDashboard from './pages/AdminDashboard';
 import ProtectedRoute from './components/ProtectedRoute';
+import { Toaster } from 'react-hot-toast';
 
 function App() {
   return (
     <AuthProvider>
       <TimeClockProvider>
         <Router>
+           <Toaster
+            position="top-right"
+            toastOptions={{
+              duration: 3000,
+            }}
+          />
           <div className="min-h-screen bg-gray-50">
             <Routes>
               <Route path="/login" element={<LoginPage />} />

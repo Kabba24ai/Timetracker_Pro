@@ -1,22 +1,24 @@
 import React, { useEffect, useState } from 'react';
 import { Calendar, TrendingUp, Clock, Plus, X, Save } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { api } from '../lib/api';
+import toast from 'react-hot-toast';
+import {
+  VacationRequest
+} from '../types';
+
+interface VacationRequestHour {
+  id: number;
+  name: string;
+  hours: number;
+}
+
 
 interface VacationData {
   allotted_hours: number;
   accrued_hours: number;
   used_hours: number;
   hours_worked_this_year: number;
-}
-
-interface VacationRequest {
-  id: string;
-  employee_id: string;
-  start_date: string;
-  end_date: string;
-  hours: number;
-  status: 'pending' | 'approved' | 'denied';
-  created_at: string;
 }
 
 const VacationSummary: React.FC = () => {
@@ -30,48 +32,33 @@ const VacationSummary: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [showRequestForm, setShowRequestForm] = useState(false);
   const [vacationRequests, setVacationRequests] = useState<VacationRequest[]>([]);
+  const [hourOptions, setHourOptions] = useState<VacationRequestHour[]>([]);
+
   const [newRequest, setNewRequest] = useState({
     start_date: '',
-    end_date: '',
-    hours: 8,
+    vacation_request_hour_id: '',
   });
+
 
   useEffect(() => {
     if (employee) {
       fetchVacationData();
       fetchVacationRequests();
+      fetchVacationRequestHours();
     }
   }, [employee]);
 
   const fetchVacationData = async () => {
     try {
-      // Get demo vacation data from localStorage
-      const vacationKey = `vacation_${employee.id}`;
-      const savedVacation = localStorage.getItem(vacationKey);
-      const vacation = savedVacation ? JSON.parse(savedVacation) : null;
-      
-      // Get time entries for this year
-      const entriesKey = `time_entries_${employee.id}`;
-      const savedEntries = localStorage.getItem(entriesKey);
-      const currentYear = new Date().getFullYear();
-      
-      let timeEntries: any[] = [];
-      if (savedEntries) {
-        const allEntries = JSON.parse(savedEntries);
-        timeEntries = allEntries.filter((entry: any) => 
-          entry.timestamp.startsWith(currentYear.toString())
-        );
-      }
-      
-      const hoursWorked = calculateHoursWorked(timeEntries);
-      const accruedHours = calculateAccruedHours(hoursWorked);
 
-      setVacationData({
-        allotted_hours: vacation?.allotted_hours || 80, // Default 2 weeks
-        accrued_hours: accruedHours,
-        used_hours: vacation?.used_hours || 0,
-        hours_worked_this_year: hoursWorked,
-      });
+      setLoading(true);
+
+      const res = await api.get<VacationData>('/vacation-summary/get');
+
+      if (res.success && res.data) {
+        setVacationData(res.data);
+      }
+
     } catch (error) {
       console.error('Error fetching vacation data:', error);
     } finally {
@@ -81,81 +68,94 @@ const VacationSummary: React.FC = () => {
 
   const fetchVacationRequests = async () => {
     try {
-      const requestsKey = `vacation_requests_${employee.id}`;
-      const savedRequests = localStorage.getItem(requestsKey);
-      const requests = savedRequests ? JSON.parse(savedRequests) : [];
-      setVacationRequests(requests);
+      const res = await api.get('/vacation-summary/my-vacation-request');
+
+      if (res.success) {
+        setVacationRequests(res.data);
+      }
     } catch (error) {
-      console.error('Error fetching vacation requests:', error);
+      console.error('Error fetching vacation requests', error);
     }
   };
+
+  const fetchVacationRequestHours = async () => {
+    try {
+      const res = await api.get<{
+        hours: VacationRequestHour[];
+      }>('/vacation-summary/get/vacation-request-hour');
+
+      if (res.success) {
+        setHourOptions(res.data.hours);
+      }
+    } catch (error) {
+      console.error('Failed to fetch vacation request hours', error);
+    }
+  };
+
 
   const handleSubmitRequest = async () => {
-    if (!employee || !newRequest.start_date || newRequest.hours <= 0) return;
-
-    const endDate = calculateEndDate(newRequest.start_date, newRequest.hours);
-
-    const request: VacationRequest = {
-      id: Date.now().toString(),
-      employee_id: employee.id,
-      start_date: newRequest.start_date,
-      end_date: endDate,
-      hours: newRequest.hours,
-      status: 'pending',
-      created_at: new Date().toISOString(),
-    };
+    if (!employee || !newRequest.start_date || !newRequest.vacation_request_hour_id) {
+      return;
+    }
 
     try {
-      const requestsKey = `vacation_requests_${employee.id}`;
-      const savedRequests = localStorage.getItem(requestsKey);
-      const requests = savedRequests ? JSON.parse(savedRequests) : [];
-      requests.push(request);
-      localStorage.setItem(requestsKey, JSON.stringify(requests));
+      const res = await api.post('/vacation-summary/vacation-request/store', {
+        start_date: newRequest.start_date,
+        vacation_request_hour_id: newRequest.vacation_request_hour_id,
+      });
 
-      setVacationRequests(requests);
-      setShowRequestForm(false);
-      setNewRequest({ start_date: '', end_date: '', hours: 8 });
+      if (res.success) {
+        toast.success('Vacation request submitted');
+        setShowRequestForm(false);
+        setNewRequest({ start_date: '', vacation_request_hour_id: '' });
+        fetchVacationRequests();
+      }
     } catch (error) {
-      console.error('Error submitting vacation request:', error);
+      console.error('Error submitting vacation request', error);
     }
   };
+
 
   const handleCancelRequest = () => {
     setShowRequestForm(false);
-    setNewRequest({ start_date: '', end_date: '', hours: 8 });
+    setNewRequest({
+      start_date: '',
+      vacation_request_hour_id: '',
+    });
   };
+
 
   const calculateEndDate = (startDate: string, hours: number) => {
     const start = new Date(startDate);
     const workDaysNeeded = Math.ceil(hours / 8); // 8 hours per work day
     let currentDate = new Date(start);
     let workDaysAdded = 0;
-    
+
     // Get holiday settings
     const savedSettings = localStorage.getItem('demo_system_settings');
     const settings = savedSettings ? JSON.parse(savedSettings) : null;
     const year = start.getFullYear().toString();
     const holidays = settings?.holidays?.[year] || {};
-    
+
     // Get holiday dates for the year
     const holidayDates = getHolidayDates(year, holidays);
-    
+
     // Add work days, skipping weekends
     while (workDaysAdded < workDaysNeeded) {
       const dayOfWeek = currentDate.getDay();
       const dateString = currentDate.toISOString().split('T')[0];
-      
+
       // If it's a weekday (Monday = 1, Friday = 5) and not a holiday, count it
       if (dayOfWeek >= 1 && dayOfWeek <= 5 && !holidayDates.includes(dateString)) {
         workDaysAdded++;
       }
-      
+
       // If we haven't reached the required work days, move to next day
       if (workDaysAdded < workDaysNeeded) {
         currentDate.setDate(currentDate.getDate() + 1);
       }
     }
-    
+
     return currentDate.toLocaleDateString('en-US', {
       weekday: 'short',
       year: 'numeric',
@@ -167,11 +167,11 @@ const VacationSummary: React.FC = () => {
   const getHolidayDates = (year: string, holidays: any) => {
     const yearNum = parseInt(year);
     const dates: string[] = [];
-    
+
     if (holidays.new_years_day) {
       dates.push(`${year}-01-01`);
     }
-    
+
     if (holidays.memorial_day) {
       // Last Monday in May
       const may = new Date(yearNum, 4, 31);
@@ -179,11 +179,11 @@ const VacationSummary: React.FC = () => {
       lastMonday.setDate(31 - (may.getDay() + 6) % 7);
       dates.push(lastMonday.toISOString().split('T')[0]);
     }
-    
+
     if (holidays.independence_day) {
       dates.push(`${year}-07-04`);
     }
-    
+
     if (holidays.labor_day) {
       // First Monday in September
       const sept = new Date(yearNum, 8, 1);
@@ -191,7 +191,7 @@ const VacationSummary: React.FC = () => {
       firstMonday.setDate(1 + (8 - sept.getDay()) % 7);
       dates.push(firstMonday.toISOString().split('T')[0]);
     }
-    
+
     if (holidays.thanksgiving_day) {
       // Fourth Thursday in November
       const nov = new Date(yearNum, 10, 1);
@@ -201,11 +201,11 @@ const VacationSummary: React.FC = () => {
       fourthThursday.setDate(firstThursday.getDate() + 21);
       dates.push(fourthThursday.toISOString().split('T')[0]);
     }
-    
+
     if (holidays.christmas_day) {
       dates.push(`${year}-12-25`);
     }
-    
+
     // Add floating holidays
     if (holidays.floating_holidays) {
       Object.entries(holidays.floating_holidays).forEach(([date, holiday]: [string, any]) => {
@@ -214,7 +214,7 @@ const VacationSummary: React.FC = () => {
         }
       });
     }
-    
+
     return dates;
   };
 
@@ -269,6 +269,13 @@ const VacationSummary: React.FC = () => {
     return Math.floor(hoursWorked / 26);
   };
 
+  const selectedHourOption = hourOptions.find(
+    h => h.id === Number(newRequest.vacation_request_hour_id)
+  );
+
+  const selectedHours = selectedHourOption?.hours ?? 0;
+
+
   const availableHours = vacationData.accrued_hours - vacationData.used_hours;
 
   if (loading) {
@@ -310,45 +317,45 @@ const VacationSummary: React.FC = () => {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Hours</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">  </label>
               <select
-                value={newRequest.hours}
-                onChange={(e) => setNewRequest(prev => ({ ...prev, hours: Number(e.target.value) }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                value={newRequest.vacation_request_hour_id}
+                onChange={(e) =>
+                  setNewRequest(prev => ({
+                    ...prev,
+                    vacation_request_hour_id: e.target.value,
+                  }))
+                }
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg
+                          focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                <option value={1}>1 hour</option>
-                <option value={2}>2 hours</option>
-                <option value={3}>3 hours</option>
-                <option value={4}>4 hours (Half day)</option>
-                <option value={5}>5 hours</option>
-                <option value={6}>6 hours</option>
-                <option value={7}>7 hours</option>
-                <option value={8}>8 hours (Full day)</option>
-                <option value={16}>16 hours (2 days)</option>
-                <option value={24}>24 hours (3 days)</option>
-                <option value={32}>32 hours (4 days)</option>
-                <option value={40}>40 hours (5 days)</option>
-                <option value={48}>48 hours (6 days)</option>
-                <option value={56}>56 hours (7 days)</option>
-                <option value={64}>64 hours (8 days)</option>
-                <option value={72}>72 hours (9 days)</option>
-                <option value={80}>80 hours (10 days)</option>
+                <option value="">Select duration</option>
+
+                {hourOptions.map(option => (
+                  <option key={option.id} value={option.id}>
+                    {option.name}
+                  </option>
+                ))}
               </select>
+
             </div>
-            {newRequest.start_date && newRequest.hours > 0 && (
+            {newRequest.start_date && selectedHours > 0 && (
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                 <p className="text-sm text-blue-800">
-                  <strong>Calculated End Date:</strong> {calculateEndDate(newRequest.start_date, newRequest.hours)}
-                </p>
-                <p className="text-xs text-blue-600 mt-1">
-                  Based on 8 hours per work day, excluding weekends
+                  <strong>Calculated End Date:</strong>{' '}
+                  {calculateEndDate(newRequest.start_date, selectedHours)}
                 </p>
               </div>
             )}
+
             <div className="flex items-center space-x-3">
               <button
                 onClick={handleSubmitRequest}
-                disabled={!newRequest.start_date || newRequest.hours <= 0 || availableHours < newRequest.hours}
+                disabled={
+                  !newRequest.start_date ||
+                  !newRequest.vacation_request_hour_id ||
+                  selectedHours > availableHours
+                }
                 className="flex items-center space-x-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Save className="h-4 w-4" />
@@ -362,11 +369,12 @@ const VacationSummary: React.FC = () => {
                 <span>Cancel</span>
               </button>
             </div>
-            {availableHours < newRequest.hours && (
+            {availableHours < selectedHours && (
               <p className="text-sm text-red-600">
                 Insufficient vacation hours available. You have {availableHours.toFixed(1)} hours available.
               </p>
             )}
+
           </div>
         </div>
       )}
@@ -405,25 +413,53 @@ const VacationSummary: React.FC = () => {
 
         {vacationRequests.length > 0 && (
           <div className="p-4 bg-gray-50 rounded-lg border">
-            <h4 className="text-sm font-medium text-gray-900 mb-3">Recent Requests</h4>
+            <h4 className="text-sm font-medium text-gray-900 mb-3">
+              Recent Requests
+            </h4>
+
             <div className="space-y-2">
-              {vacationRequests.slice(-3).reverse().map((request) => (
-                <div key={request.id} className="flex items-center justify-between p-2 bg-white rounded border">
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">
-                      {new Date(request.start_date).toLocaleDateString()} - {new Date(request.end_date).toLocaleDateString()} ({request.hours} hours)
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      Requested {new Date(request.created_at).toLocaleDateString()}
-                    </p>
+              {vacationRequests.slice(-10).reverse().map((request) => (
+                <div
+                  key={request.id}
+                  className="p-3 bg-white rounded border space-y-1"
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">
+                        {new Date(request.start_date).toLocaleDateString()} –{' '}
+                        {new Date(request.end_date).toLocaleDateString()} ({request.hours} hours)
+                      </p>
+
+                      <p className="text-xs text-gray-500">
+                        Requested {new Date(request.created_at).toLocaleDateString()}
+                      </p>
+                    </div>
+
+                    <span
+                      className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
+                        request.status === 'approved'
+                          ? 'bg-green-100 text-green-800'
+                          : request.status === 'denied'
+                          ? 'bg-red-100 text-red-800'
+                          : 'bg-yellow-100 text-yellow-800'
+                      }`}
+                    >
+                      {/* {request.status} */}
+                      {request.status.charAt(0).toUpperCase() + request.status.slice(1)}
+                    </span>
                   </div>
-                  <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
-                    request.status === 'approved' ? 'bg-green-100 text-green-800' :
-                    request.status === 'denied' ? 'bg-red-100 text-red-800' :
-                    'bg-yellow-100 text-yellow-800'
-                  }`}>
-                    {request.status}
-                  </span>
+
+                  {/* Denial reason (only for denied) */}
+                  {request.status === 'denied' && request.denial_reason && (
+                    <div className="mt-1 rounded-md bg-red-50 border border-red-200 px-2 py-1">
+                      <p className="text-xs font-semibold text-red-700">
+                        Reason
+                      </p>
+                      <p className="text-xs text-red-600 italic">
+                        {request.denial_reason}
+                      </p>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

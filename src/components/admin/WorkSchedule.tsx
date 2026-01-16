@@ -724,7 +724,7 @@ const WorkSchedule: React.FC = () => {
                             <p className="font-medium text-gray-900 text-xs truncate" title={employee?.name}>{employee?.name}</p>
                             <div className="mt-1">
                               <span className={`inline-flex px-1 py-0.5 text-[10px] font-medium rounded-full ${
-                                employee?.role === 'admin'
+                                employee?.roles?.includes('admin')
                                   ? 'bg-purple-100 text-purple-800'
                                   : 'bg-blue-100 text-blue-800'
                               }`}>

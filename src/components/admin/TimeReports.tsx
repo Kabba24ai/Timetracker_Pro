@@ -918,11 +918,11 @@ const TimeReports: React.FC = () => {
         </button>
       </div>
 
-      <div className="mb-4 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+      {/* <div className="mb-4 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
         <p className="text-sm text-yellow-800">
           <strong>Demo Mode:</strong> Showing sample time report data. Select a pay period and click "Edit" to manage individual employee time entries.
         </p>
-      </div>
+      </div> */}
 
       <div className="mb-6 bg-gray-50 p-4 rounded-lg">
         <div className="flex items-center space-x-2">

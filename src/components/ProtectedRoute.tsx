@@ -6,6 +6,7 @@ import LoadingSpinner from './LoadingSpinner';
 interface ProtectedRouteProps {
   children: React.ReactNode;
   adminOnly?: boolean;
+  allowedRoles?: string[];
 }
 
 const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, adminOnly = false }) => {
@@ -19,9 +20,17 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, adminOnly = f
     return <Navigate to="/login" />;
   }
 
-  if (adminOnly && employee.role !== 'admin') {
+  // if (adminOnly && employee.role !== 'admin') {
+  //   return <Navigate to="/" />;
+  // }
+
+  const isAdmin = employee.roles?.includes('admin');
+
+  if (adminOnly && !isAdmin) {
     return <Navigate to="/" />;
   }
+  
+
 
   return <>{children}</>;
 };

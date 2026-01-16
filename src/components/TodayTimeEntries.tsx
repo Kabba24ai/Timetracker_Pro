@@ -2,8 +2,39 @@ import React from 'react';
 import { useTimeClock } from '../contexts/TimeClockContext';
 import { Clock, Coffee, Pause, Play, StopCircle } from 'lucide-react';
 
+
+type TimeEvent = {
+  id: string;
+  entry_type: 'clock_in' | 'clock_out';
+  timestamp: string;
+};
+
+
 const TodayTimeEntries: React.FC = () => {
   const { todayEntries } = useTimeClock();
+
+    const timeEvents: TimeEvent[] = todayEntries.flatMap((entry) => {
+    const events: TimeEvent[] = [];
+
+    if (entry.clock_in) {
+      events.push({
+        id: `${entry.id}-in`,
+        entry_type: 'clock_in',
+        timestamp: entry.clock_in,
+      });
+    }
+
+    if (entry.clock_out) {
+      events.push({
+        id: `${entry.id}-out`,
+        entry_type: 'clock_out',
+        timestamp: entry.clock_out,
+      });
+    }
+
+    return events;
+  });
+
 
   const getEntryIcon = (entryType: string) => {
     switch (entryType) {
@@ -52,12 +83,16 @@ const TodayTimeEntries: React.FC = () => {
   };
 
   const formatTime = (timestamp: string) => {
-    return new Date(timestamp).toLocaleTimeString('en-US', {
+    const date = new Date(timestamp);
+    if (isNaN(date.getTime())) return '--:--';
+
+    return date.toLocaleTimeString('en-US', {
       hour: 'numeric',
       minute: '2-digit',
       hour12: true,
     });
   };
+
 
   return (
     <div className="bg-white rounded-xl shadow-sm border p-6">
@@ -76,7 +111,7 @@ const TodayTimeEntries: React.FC = () => {
         </div>
       ) : (
         <div className="space-y-3">
-          {todayEntries.map((entry, index) => (
+       {timeEvents.map((entry, index) => (
             <div
               key={entry.id}
               className={`flex items-center justify-between p-4 rounded-lg border ${getEntryColor(
@@ -92,9 +127,12 @@ const TodayTimeEntries: React.FC = () => {
               </div>
               <div className="text-right">
                 <p className="font-mono text-lg text-gray-900">{formatTime(entry.timestamp)}</p>
-                <p className="text-xs text-gray-500">
-                  {new Date(entry.timestamp).toLocaleDateString()}
+               <p className="text-xs text-gray-500">
+                  {isNaN(new Date(entry.timestamp).getTime())
+                    ? '--'
+                    : new Date(entry.timestamp).toLocaleDateString()}
                 </p>
+
               </div>
             </div>
           ))}

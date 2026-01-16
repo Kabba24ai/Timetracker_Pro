@@ -1,20 +1,17 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase';
+import { api } from '../lib/api';
+import { Employee } from '../types/employee';
 
 interface User {
-  id: string;
+  id: number;
+  unique_id: string;
+  full_name: string;
   email: string;
+  role: string;   
+  status: string;
+  token: string;
 }
 
-interface Employee {
-  id: string;
-  user_id: string;
-  first_name: string;
-  last_name: string;
-  email: string;
-  role: 'employee' | 'admin';
-  created_at: string;
-}
 
 interface AuthContextType {
   user: User | null;
@@ -39,116 +36,72 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [employee, setEmployee] = useState<Employee | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Restore session on page load
   useEffect(() => {
-    const initAuth = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
+    const storedUser = localStorage.getItem('auth_user');
+    const storedEmployee = localStorage.getItem('auth_employee');
+    const token = localStorage.getItem('auth_token');
 
-        if (session?.user) {
-          const { data: employee } = await supabase
-            .from('employees')
-            .select('*')
-            .eq('user_id', session.user.id)
-            .maybeSingle();
+    if (storedUser && storedEmployee && token) {
+      setUser(JSON.parse(storedUser));
+      setEmployee(JSON.parse(storedEmployee));
+      api.setToken(token);
+    }
 
-          if (employee) {
-            setUser({ id: session.user.id, email: session.user.email || '' });
-            setEmployee({
-              id: employee.id,
-              user_id: employee.user_id,
-              first_name: employee.first_name,
-              last_name: employee.last_name,
-              email: employee.email,
-              role: employee.role,
-              created_at: employee.created_at
-            });
-          }
-        }
-      } catch (error) {
-        console.error('Auth error:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    initAuth();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      (async () => {
-        if (session?.user) {
-          const { data: employee } = await supabase
-            .from('employees')
-            .select('*')
-            .eq('user_id', session.user.id)
-            .maybeSingle();
-
-          if (employee) {
-            setUser({ id: session.user.id, email: session.user.email || '' });
-            setEmployee({
-              id: employee.id,
-              user_id: employee.user_id,
-              first_name: employee.first_name,
-              last_name: employee.last_name,
-              email: employee.email,
-              role: employee.role,
-              created_at: employee.created_at
-            });
-          }
-        } else {
-          setUser(null);
-          setEmployee(null);
-        }
-      })();
-    });
-
-    return () => {
-      subscription.unsubscribe();
-    };
+    setLoading(false);
   }, []);
 
+
+  // LOGIN
   const signIn = async (email: string, password: string) => {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    try {
+      const response = await api.post('/login', { email, password });
 
-    if (error) {
-      throw new Error(error.message);
+      if (!response.success) {
+        if (response.errors) {
+          throw {
+            type: 'validation',
+            message: response.message,
+            errors: response.errors,
+          };
+        }
+        throw new Error(response.message);
+      }
+
+      const userData: User = response.user;
+      const employeeData: Employee = response.employee;
+      const token = userData.token;
+
+      api.setToken(token);
+
+      localStorage.setItem('auth_user', JSON.stringify(userData));
+      localStorage.setItem('auth_employee', JSON.stringify(employeeData));
+      localStorage.setItem('auth_token', token);
+
+      setUser(userData);
+      setEmployee(employeeData);
+
+    } catch (err: any) {
+      if (err.errors) {
+        throw {
+          type: 'validation',
+          message: err.message || 'Validation failed.',
+          errors: err.errors,
+        };
+      }
+      throw {
+        type: 'generic',
+        message: err.message || 'Login failed',
+      };
     }
-
-    if (!data.user) {
-      throw new Error('Invalid email or password');
-    }
-
-    const { data: employee, error: employeeError } = await supabase
-      .from('employees')
-      .select('*')
-      .eq('user_id', data.user.id)
-      .maybeSingle();
-
-    if (employeeError) {
-      console.error('Employee query error:', employeeError);
-      throw new Error(`Employee record not found: ${employeeError.message}`);
-    }
-
-    if (!employee) {
-      throw new Error('Employee record not found');
-    }
-
-    setUser({ id: data.user.id, email: data.user.email || '' });
-    setEmployee({
-      id: employee.id,
-      user_id: employee.user_id,
-      first_name: employee.first_name,
-      last_name: employee.last_name,
-      email: employee.email,
-      role: employee.role,
-      created_at: employee.created_at
-    });
   };
 
+
+  // LOGOUT
   const signOut = async () => {
-    await supabase.auth.signOut();
+    api.setToken(null);
+    localStorage.removeItem('auth_user');
+    localStorage.removeItem('auth_token');
     setUser(null);
     setEmployee(null);
   };

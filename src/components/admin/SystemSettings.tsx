@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Settings, Clock, Save, Calendar, Plus, X } from 'lucide-react';
+import { api } from '../../lib/api';
+import toast from 'react-hot-toast';
+import { SystemSettingsType } from '../../types/systemsettings';
 
-const initialDefaultSettings: SystemSettings = {
+const initialDefaultSettings: SystemSettingsType = {
   pay_increments: 15,
   pay_period_type: 'biweekly',
   pay_period_start_date: '2025-01-05',
@@ -45,45 +48,8 @@ const initialDefaultSettings: SystemSettings = {
   },
 };
 
-interface SystemSettings {
-  pay_increments: number;
-  pay_period_type: 'weekly' | 'biweekly';
-  pay_period_start_date: string;
-  default_lunch_duration_minutes: number;
-  limit_start_time_to_shift: boolean;
-  limit_end_time_to_shift: boolean;
-  // Automated messaging settings
-  first_clock_in_reminder_minutes: number;
-  second_clock_in_reminder_minutes: number;
-  auto_clock_out_limit_minutes: number;
-  clock_in_message_1: string;
-  clock_in_message_2: string;
-  auto_clock_out_message: string;
-  // Holiday settings
-  holidays: {
-    [year: string]: {
-      new_years_day: boolean;
-      memorial_day: boolean;
-      independence_day: boolean;
-      labor_day: boolean;
-      thanksgiving_day: boolean;
-      christmas_day: boolean;
-      floating_holidays?: { [date: string]: { name: string; enabled: boolean } };
-    };
-  };
-  daily_shifts: {
-    monday: { start: string; end: string; enabled: boolean; lunch_required: boolean };
-    tuesday: { start: string; end: string; enabled: boolean; lunch_required: boolean };
-    wednesday: { start: string; end: string; enabled: boolean; lunch_required: boolean };
-    thursday: { start: string; end: string; enabled: boolean; lunch_required: boolean };
-    friday: { start: string; end: string; enabled: boolean; lunch_required: boolean };
-    saturday: { start: string; end: string; enabled: boolean; lunch_required: boolean };
-    sunday: { start: string; end: string; enabled: boolean; lunch_required: boolean };
-  };
-}
-
 const SystemSettings: React.FC = () => {
-  const [settings, setSettings] = useState<SystemSettings>(initialDefaultSettings);
+  const [settings, setSettings] = useState<SystemSettingsType>(initialDefaultSettings);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [selectedHolidayYear, setSelectedHolidayYear] = useState('2025');
@@ -97,25 +63,25 @@ const SystemSettings: React.FC = () => {
     fetchSettings();
   }, []);
 
+
   const fetchSettings = async () => {
     try {
-      // Load settings from localStorage for demo
-      const savedSettings = localStorage.getItem('demo_system_settings');
-      if (savedSettings) {
-        const parsedSettings = JSON.parse(savedSettings);
-        setSettings({
-          ...initialDefaultSettings,
-          ...parsedSettings,
-          holidays: {
-            ...initialDefaultSettings.holidays,
-            ...(parsedSettings.holidays || {})
-          },
-          daily_shifts: {
-            ...initialDefaultSettings.daily_shifts,
-            ...(parsedSettings.daily_shifts || {})
-          }
-        });
-      }
+      const res = await api.get('/system/settings');
+
+      if (!res.success || !res.data) return;
+
+      setSettings({
+        ...initialDefaultSettings,
+        ...res.data,
+        holidays: {
+          ...initialDefaultSettings.holidays,
+          ...(res.data.holidays || {}),
+        },
+        daily_shifts: {
+          ...initialDefaultSettings.daily_shifts,
+          ...(res.data.daily_shifts || {}),
+        },
+      });
     } catch (error) {
       console.error('Error fetching settings:', error);
     } finally {
@@ -123,17 +89,27 @@ const SystemSettings: React.FC = () => {
     }
   };
 
+
   const saveSettings = async () => {
     setSaving(true);
+
     try {
-      // Save to localStorage for demo
-      localStorage.setItem('demo_system_settings', JSON.stringify(settings));
+      const res = await api.put('/system/settings/update', settings);
+
+      if (!res.success) {
+        toast.error('Failed to save settings');
+        return;
+      }
+
+      toast.success('Settings saved successfully');
     } catch (error) {
       console.error('Error saving settings:', error);
+      toast.error('Something went wrong');
     } finally {
       setSaving(false);
     }
   };
+
 
   const handleInputChange = (field: keyof SystemSettings, value: string | number) => {
     setSettings(prev => ({ ...prev, [field]: value }));
@@ -235,14 +211,14 @@ const SystemSettings: React.FC = () => {
 
   const addFloatingHoliday = () => {
     if (!newFloatingHoliday.date || !newFloatingHoliday.name.trim()) return;
-    
+
     // Validate date is in selected year
     const holidayYear = new Date(newFloatingHoliday.date).getFullYear().toString();
     if (holidayYear !== selectedHolidayYear) {
       alert(`Please select a date in ${selectedHolidayYear}`);
       return;
     }
-    
+
     setSettings(prev => ({
       ...prev,
       holidays: {
@@ -259,7 +235,7 @@ const SystemSettings: React.FC = () => {
         }
       }
     }));
-    
+
     setNewFloatingHoliday({ date: '', name: '' });
     setShowAddFloatingHoliday(false);
   };
@@ -268,7 +244,7 @@ const SystemSettings: React.FC = () => {
     setSettings(prev => {
       const updatedFloatingHolidays = { ...prev.holidays[selectedHolidayYear]?.floating_holidays };
       delete updatedFloatingHolidays[date];
-      
+
       return {
         ...prev,
         holidays: {
@@ -304,7 +280,7 @@ const SystemSettings: React.FC = () => {
   const getAllHolidaysChronological = () => {
     const yearHolidays = settings.holidays[selectedHolidayYear];
     if (!yearHolidays) return [];
-    
+
     const holidays: Array<{
       date: string;
       name: string;
@@ -312,7 +288,7 @@ const SystemSettings: React.FC = () => {
       type: 'standard' | 'floating';
       key: string;
     }> = [];
-    
+
     // Add standard holidays
     Object.entries(yearHolidays).forEach(([holiday, enabled]) => {
       if (holiday !== 'floating_holidays' && typeof enabled === 'boolean') {
@@ -330,7 +306,7 @@ const SystemSettings: React.FC = () => {
         }
       }
     });
-    
+
     // Add floating holidays
     if (yearHolidays.floating_holidays) {
       Object.entries(yearHolidays.floating_holidays).forEach(([date, holiday]) => {
@@ -343,10 +319,10 @@ const SystemSettings: React.FC = () => {
         });
       });
     }
-    
+
     // Sort chronologically
     holidays.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-    
+
     return holidays;
   };
 
@@ -358,9 +334,9 @@ const SystemSettings: React.FC = () => {
 
   const formatDisplayDate = (dateString: string) => {
     const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { 
+    return date.toLocaleDateString('en-US', {
       weekday: 'short',
-      month: 'long', 
+      month: 'long',
       day: 'numeric',
       year: 'numeric'
     });
@@ -397,17 +373,17 @@ const SystemSettings: React.FC = () => {
         </button>
       </div>
 
-      <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+      {/* <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
         <p className="text-sm text-yellow-800">
           <strong>Demo Mode:</strong> Settings are saved locally and will persist during your session.
         </p>
-      </div>
+      </div> */}
 
       <div className="space-y-6">
         {/* Main Settings Grid */}
-        <div className="bg-gray-50 rounded-lg p-6">
+        <div className="bg-gray-50 rounded-lg ">
           <h3 className="text-lg font-semibold text-gray-900 mb-6">System Configuration</h3>
-          
+
           {/* First Row - 4 columns */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
             <div>
@@ -436,7 +412,7 @@ const SystemSettings: React.FC = () => {
                 </label>
               </div>
             </div>
-            
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Pay Period Type
@@ -461,7 +437,7 @@ const SystemSettings: React.FC = () => {
                 </label>
               </div>
             </div>
-            
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Pay Period Start Date
@@ -473,7 +449,7 @@ const SystemSettings: React.FC = () => {
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
-            
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Default Lunch Duration (minutes)
@@ -487,7 +463,7 @@ const SystemSettings: React.FC = () => {
               />
             </div>
           </div>
-          
+
           {/* Second Row - Clock-in reminders */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
             <div>
@@ -506,7 +482,7 @@ const SystemSettings: React.FC = () => {
                 <option value={30}>30 minutes after shift start</option>
               </select>
             </div>
-            
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 2nd Clock-In Reminder
@@ -524,7 +500,7 @@ const SystemSettings: React.FC = () => {
               </select>
             </div>
           </div>
-          
+
           {/* Third Row - Reminder messages */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
             <div>
@@ -543,7 +519,7 @@ const SystemSettings: React.FC = () => {
                 {160 - settings.clock_in_message_1.length} characters remaining
               </p>
             </div>
-            
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 2nd Reminder Message
@@ -561,7 +537,7 @@ const SystemSettings: React.FC = () => {
               </p>
             </div>
           </div>
-          
+
           {/* Fourth Row - Auto clock-out settings */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
             <div>
@@ -581,7 +557,7 @@ const SystemSettings: React.FC = () => {
               </select>
             </div>
           </div>
-          
+
           {/* Fifth Row - Auto clock-out message */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -592,7 +568,7 @@ const SystemSettings: React.FC = () => {
               onChange={(e) => handleInputChange('auto_clock_out_message', e.target.value)}
               maxLength={160}
               rows={3}
-              className="w-[550px] px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-none"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-none"
               placeholder="Enter auto clock-out message..."
             />
             <p className="text-xs text-gray-500 mt-1">
@@ -602,7 +578,7 @@ const SystemSettings: React.FC = () => {
         </div>
 
         {/* Holiday Management */}
-        <div className="bg-gray-50 rounded-lg p-6">
+        <div className="bg-gray-50 rounded-lg ">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold text-gray-900">Holiday Management</h3>
             <button
@@ -613,7 +589,7 @@ const SystemSettings: React.FC = () => {
               <span>Add Floating Holiday</span>
             </button>
           </div>
-          
+
           <div className="mb-4">
             <div className="flex items-center space-x-4">
               <label className="block text-sm font-medium text-gray-700">
@@ -725,11 +701,10 @@ const SystemSettings: React.FC = () => {
                   </div>
                 </div>
                 <div className="flex items-center space-x-2">
-                  <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
-                    holiday.enabled 
-                      ? 'bg-green-100 text-green-800' 
+                  <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${holiday.enabled
+                      ? 'bg-green-100 text-green-800'
                       : 'bg-red-100 text-red-800'
-                  }`}>
+                    }`}>
                     {holiday.enabled ? 'Paid Holiday' : 'Work Day'}
                   </span>
                   {holiday.type === 'floating' && (
@@ -745,10 +720,10 @@ const SystemSettings: React.FC = () => {
               </div>
             ))}
           </div>
-          
+
           <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
             <div className="flex items-start space-x-3">
-              <Calendar className="h-5 w-5 text-blue-600 mt-0.5" />
+              <Calendar className="h-6 w-6 text-blue-600 mt-0.5 shrink-0" />
               <div>
                 <h4 className="text-sm font-semibold text-blue-900 mb-2">Holiday Information</h4>
                 <div className="text-sm text-blue-800 space-y-1">
@@ -766,11 +741,11 @@ const SystemSettings: React.FC = () => {
         </div>
 
         {/* Daily Shift Settings */}
-        <div className="bg-gray-50 rounded-lg p-6">
+        <div className="bg-gray-50  rounded-lg ">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Daily Shift Hours</h3>
           <div className="space-y-4">
             {Object.entries(settings.daily_shifts).map(([day, shift]) => (
-              <div key={day} className="flex items-center space-x-4 p-4 bg-white rounded-lg border">
+              <div key={day} className="flex items-center space-x-4 p-4 bg-white rounded-lg border overflow-x-auto">
                 <div className="flex items-center space-x-3 w-28">
                   <input
                     type="checkbox"
@@ -782,7 +757,7 @@ const SystemSettings: React.FC = () => {
                     {getDayLabel(day)}
                   </label>
                 </div>
-                
+
                 <div className="flex items-center space-x-4 flex-1">
                   <div className="flex-1">
                     <label className="block text-xs text-gray-500 mb-1">Start Time</label>
@@ -794,7 +769,7 @@ const SystemSettings: React.FC = () => {
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-400"
                     />
                   </div>
-                  
+
                   <div className="flex-1">
                     <label className="block text-xs text-gray-500 mb-1">End Time</label>
                     <input
@@ -805,7 +780,7 @@ const SystemSettings: React.FC = () => {
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-400"
                     />
                   </div>
-                  
+
                   <div className="flex-1">
                     <label className="block text-xs text-gray-500 mb-1">Lunch Required</label>
                     <div className="flex items-center space-x-2 h-10">
@@ -819,7 +794,7 @@ const SystemSettings: React.FC = () => {
                       <span className="text-sm text-gray-700">Required</span>
                     </div>
                   </div>
-                  
+
                   <div className="w-20 text-right">
                     {shift.enabled && (
                       <div className="text-sm text-gray-600">
@@ -839,10 +814,10 @@ const SystemSettings: React.FC = () => {
               </div>
             ))}
           </div>
-          
+
           <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
             <div className="flex items-start space-x-3">
-              <Clock className="h-5 w-5 text-blue-600 mt-0.5" />
+              <Clock className="h-6 w-6 text-blue-600 mt-0.5 shrink-0" />
               <div>
                 <h4 className="text-sm font-semibold text-blue-900 mb-2">Daily Shift Information</h4>
                 <div className="text-sm text-blue-800 space-y-1">
@@ -863,7 +838,7 @@ const SystemSettings: React.FC = () => {
         {/* Time Limits Information Panel */}
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
           <div className="flex items-start space-x-3">
-            <Clock className="h-6 w-6 text-blue-600 mt-0.5" />
+            <Clock className="h-6 w-6 text-blue-600 mt-0.5 shrink-0" />
             <div>
               <h4 className="text-sm font-semibold text-blue-900 mb-2">Time Limit Settings</h4>
               <div className="text-sm text-blue-800 space-y-1">

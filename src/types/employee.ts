@@ -1,0 +1,37 @@
+export interface Employee {
+  id: string;
+  user_id: string;
+  unique_id?: string;
+
+  first_name: string;
+  last_name: string;
+  email: string;
+
+  role: string;        // "employee" | "admin" | "master_admin"
+  roles: string[];     // ["admin", "sales"]
+    roles_name:string[];   // ["Admin", "Master Admin"]
+  created_at: string;
+
+  shift_start_time?: string | null;
+  shift_end_time?: string | null;
+
+  pay_start_buffer?: number | null;
+  pay_end_buffer?: number | null;
+
+
+  vacation_eligible?: boolean | null;
+
+   // Related objects (for display)
+  vacation_allotment_hour?: {
+    id: number;
+    hours: number;
+    name: string;
+  } | null;
+
+  vacation_start_day?: {
+    id: number;
+    day_number: number;
+    name: string;
+  } | null;
+  
+}

@@ -1,99 +1,95 @@
 import React, { useEffect, useState } from 'react';
 import { Trophy, Calendar, TrendingUp, Clock } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { api } from '../lib/api';
+import { formatDateForApi } from '../utils/date';
+
 import { useAuth } from '../contexts/AuthContext';
 import { DateRangeOption, dateRangeOptions, getDateRange } from '../lib/dateRanges';
-
-interface AchievementGoal {
-  id: string;
-  goal_name: string;
-  icon: string;
-  color: string;
-  description: string;
-}
-
-interface AttendanceRecord {
-  id: string;
-  attendance_date: string;
-  status: string;
-  check_in_time: string | null;
-  minutes_late: number;
-}
-
-interface AggregatedStats {
-  days_present: number;
-  days_late: number;
-  days_missed: number;
-  days_excused: number;
-  total_minutes_late: number;
-  achievement: AchievementGoal | null;
-}
+import {
+  AttendanceRecord,
+  AttendanceStats,
+  AchievementGoal,
+} from '../types';
 
 const EmployeeAttendance: React.FC = () => {
   const { employee } = useAuth();
-  const [currentStats, setCurrentStats] = useState<AggregatedStats | null>(null);
-  const [recentRecords, setRecentRecords] = useState<AttendanceRecord[]>([]);
+
+    const [currentStats, setCurrentStats] = useState<AttendanceStats | null>(null);
+const [recentRecords, setRecentRecords] = useState<AttendanceRecord[]>([]);
+
+
   const [loading, setLoading] = useState(true);
   const [dateRangeOption, setDateRangeOption] = useState<DateRangeOption>('current-month');
   const [selectedMonth, setSelectedMonth] = useState<Date>(new Date());
   const [showMonthPicker, setShowMonthPicker] = useState(false);
 
-  useEffect(() => {
-    if (employee) {
-      loadAttendanceData();
-    }
-  }, [employee, dateRangeOption, selectedMonth]);
+const [page, setPage] = useState(1);
+const [perPage, setPerPage] = useState(10);
+const [lastPage, setLastPage] = useState(1);
+const [total, setTotal] = useState(0);
 
-  const loadAttendanceData = async () => {
-    if (!employee) return;
-    setLoading(true);
 
-    const dateRange = getDateRange(dateRangeOption, selectedMonth);
-    const startDateStr = dateRange.startDate.toISOString().split('T')[0];
-    const endDateStr = dateRange.endDate.toISOString().split('T')[0];
+// useEffect(() => {
+//   if (!employee) return;
 
-    const { data: records } = await supabase
-      .from('attendance_records')
-      .select('*')
-      .eq('employee_id', employee.id)
-      .gte('attendance_date', startDateStr)
-      .lte('attendance_date', endDateStr)
-      .order('attendance_date', { ascending: false });
+//   if (dateRangeOption === 'select-month' && !selectedMonth) {
+//     return;
+//   }
 
-    if (records) {
-      setRecentRecords(records);
+//   loadAttendanceData();
+// }, [employee, dateRangeOption, selectedMonth]);
 
-      const stats: AggregatedStats = {
-        days_present: records.filter((r) => r.status === 'present').length,
-        days_late: records.filter((r) => r.status === 'late').length,
-        days_missed: records.filter((r) => r.status === 'missed').length,
-        days_excused: records.filter((r) => r.status === 'excused').length,
-        total_minutes_late: records.reduce((sum, r) => sum + (r.minutes_late || 0), 0),
-        achievement: null,
-      };
 
-      const { data: goals } = await supabase
-        .from('achievement_goals')
-        .select('*')
-        .eq('is_active', true)
-        .order('display_order');
+useEffect(() => {
+  if (!employee) return;
+  loadAttendanceData();
+}, [employee, page, perPage, dateRangeOption, selectedMonth]);
 
-      if (goals) {
-        const matchingGoal = goals.find((goal: AchievementGoal & { goal_type: string; days_missed_max: number; days_late_max: number }) => {
-          if (goal.goal_type === 'positive') {
-            return stats.days_missed <= goal.days_missed_max && stats.days_late <= goal.days_late_max;
-          } else {
-            return stats.days_missed >= goal.days_missed_max || stats.days_late >= goal.days_late_max;
-          }
-        });
-        stats.achievement = matchingGoal || null;
-      }
+useEffect(() => {
+  setPage(1);
+}, [dateRangeOption, selectedMonth]);
 
-      setCurrentStats(stats);
-    }
 
+
+
+
+const loadAttendanceData = async () => {
+  if (!employee) return;
+
+  setLoading(true);
+
+  const dateRange = getDateRange(dateRangeOption, selectedMonth);
+
+  const startDate = formatDateForApi(dateRange.startDate);
+  const endDate   = formatDateForApi(dateRange.endDate);
+
+  const res = await api.get<{
+    data: AttendanceRecord[];
+    meta: {
+      current_page: number;
+      last_page: number;
+      per_page: number;
+      total: number;
+    };
+  }>(
+    `/attendance?start_date=${startDate}&end_date=${endDate}&page=${page}&per_page=${perPage}`
+  );
+
+  if (!res.success) {
     setLoading(false);
-  };
+    return;
+  }
+
+  setRecentRecords(res.data);
+  setLastPage(res.meta.last_page);
+  setTotal(res.meta.total);
+setCurrentStats(res.stats);
+  setLoading(false);
+};
+
+
+
+
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -110,13 +106,16 @@ const EmployeeAttendance: React.FC = () => {
     }
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-    });
-  };
+const formatDate = (dateString: string) => {
+  const date = new Date(dateString);
+
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const year = date.getFullYear();
+
+  return `${month}/${day}/${year}`;
+};
+
 
   const formatTime = (dateString: string | null) => {
     if (!dateString) return 'N/A';
@@ -150,10 +149,12 @@ const EmployeeAttendance: React.FC = () => {
             onChange={(e) => {
               const newOption = e.target.value as DateRangeOption;
               setDateRangeOption(newOption);
+
               if (newOption === 'select-month') {
                 setShowMonthPicker(true);
               } else {
                 setShowMonthPicker(false);
+                setSelectedMonth(new Date()); // ✅ reset to current
               }
             }}
             className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -303,6 +304,31 @@ const EmployeeAttendance: React.FC = () => {
             </tbody>
           </table>
         </div>
+
+        <div className="flex items-center justify-between  px-6 py-4">
+          <p className="text-sm text-gray-600">
+            Showing {(page - 1) * perPage + 1} to {Math.min(page * perPage, total)} of {total}
+          </p>
+
+          <div className="flex gap-2">
+            <button
+              disabled={page === 1}
+              onClick={() => setPage(p => Math.max(p - 1, 1))}
+              className="px-3 py-1 border rounded text-sm disabled:opacity-50"
+            >
+              Prev
+            </button>
+
+            <button
+              disabled={page === lastPage}
+              onClick={() => setPage(p => Math.min(p + 1, lastPage))}
+              className="px-3 py-1 border rounded text-sm disabled:opacity-50"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+
       </div>
     </div>
   );

@@ -1,21 +1,17 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { useAuth } from './AuthContext';
-import { supabase } from '../lib/supabase';
+import { api } from '../lib/api';
+import { TimeEntry } from '../types/time-entry';
+import toast from 'react-hot-toast';
 
-interface TimeEntry {
-  id: string;
-  employee_id: string;
-  clock_in: string;
-  clock_out: string | null;
-  break_duration: number;
-  notes: string | null;
-  status: string;
-  total_hours: number;
-  created_at: string;
-}
+
+/* =====================
+   Types
+===================== */
+
 
 interface TimeClockContextType {
-  currentStatus: string;
+  currentStatus: 'clocked_in' | 'clocked_out';
   todayEntries: TimeEntry[];
   activeEntry: TimeEntry | null;
   clockIn: (notes?: string) => Promise<void>;
@@ -23,7 +19,16 @@ interface TimeClockContextType {
   refreshEntries: () => Promise<void>;
 }
 
-const TimeClockContext = createContext<TimeClockContextType>({} as TimeClockContextType);
+
+/* =====================
+   Context
+===================== */
+
+
+
+const TimeClockContext = createContext<TimeClockContextType>(
+  {} as TimeClockContextType
+);
 
 export const useTimeClock = () => {
   const context = useContext(TimeClockContext);
@@ -33,126 +38,122 @@ export const useTimeClock = () => {
   return context;
 };
 
-export const TimeClockProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+/* =====================
+   Provider
+===================== */
+
+export const TimeClockProvider: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
   const { employee } = useAuth();
+
   const [todayEntries, setTodayEntries] = useState<TimeEntry[]>([]);
   const [activeEntry, setActiveEntry] = useState<TimeEntry | null>(null);
-  const [currentStatus, setCurrentStatus] = useState('clocked_out');
+  const [currentStatus, setCurrentStatus] =
+    useState<'clocked_in' | 'clocked_out'>('clocked_out');
+
+
+  /* =====================
+     Load data on login
+  ===================== */
 
   useEffect(() => {
     if (employee) {
-      refreshEntries();
       loadActiveEntry();
+      refreshEntries();
+    } else {
+      resetState();
     }
   }, [employee]);
 
+  const resetState = () => {
+    setActiveEntry(null);
+    setTodayEntries([]);
+    setCurrentStatus('clocked_out');
+  };
+
+
+  
+  /* =====================
+     API Calls
+  ===================== */
+
   const loadActiveEntry = async () => {
-    if (!employee) return;
-
     try {
-      const { data, error } = await supabase
-        .from('time_entries')
-        .select('*')
-        .eq('employee_id', employee.id)
-        .is('clock_out', null)
-        .eq('status', 'active')
-        .maybeSingle();
+      const response = await api.get('/time-clock/active');
 
-      if (!error && data) {
-        setActiveEntry(data);
+      const entry = response?.data ?? null;
+
+      if (entry) {
+        setActiveEntry(entry);
         setCurrentStatus('clocked_in');
       } else {
         setActiveEntry(null);
         setCurrentStatus('clocked_out');
       }
     } catch (error) {
-      console.error('Error loading active entry:', error);
+      console.error('Failed to load active entry', error);
     }
   };
-
   const refreshEntries = async () => {
-    if (!employee) return;
-
     try {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const tomorrow = new Date(today);
-      tomorrow.setDate(tomorrow.getDate() + 1);
-
-      const { data, error } = await supabase
-        .from('time_entries')
-        .select('*')
-        .eq('employee_id', employee.id)
-        .gte('clock_in', today.toISOString())
-        .lt('clock_in', tomorrow.toISOString())
-        .order('clock_in', { ascending: false });
-
-      if (!error && data) {
-        setTodayEntries(data);
-      }
+      const response = await api.get('/time-clock/today');
+      setTodayEntries(response?.data?.entries ?? []);
     } catch (error) {
-      console.error('Error loading entries:', error);
+      console.error('Failed to load today entries', error);
     }
   };
 
-  const clockIn = async (notes?: string) => {
-    if (!employee) return;
+const clockIn = async (notes?: string) => {
+  try {
+    const res = await api.post('/time-clock/clock-in', { notes });
 
-    try {
-      const { data: existingEntry } = await supabase
-        .from('time_entries')
-        .select('id')
-        .eq('employee_id', employee.id)
-        .is('clock_out', null)
-        .eq('status', 'active')
-        .maybeSingle();
+    toast.success(res.message || 'Clock-in successful');
 
-      if (existingEntry) {
-        throw new Error('Already clocked in');
-      }
+    await loadActiveEntry();
+    await refreshEntries();
+  } catch (error: any) {
+    console.error('Clock-in failed', error);
 
-      const { error } = await supabase
-        .from('time_entries')
-        .insert({
-          employee_id: employee.id,
-          clock_in: new Date().toISOString(),
-          notes: notes || null,
-          status: 'active',
-        });
+    const message =
+      error?.response?.data?.message ||
+      error?.message ||
+      'Clock-in failed. Please try again.';
 
-      if (error) throw error;
+    toast.error(message);
 
-      await loadActiveEntry();
-      await refreshEntries();
-    } catch (error) {
-      console.error('Error clocking in:', error);
-      throw error;
-    }
-  };
+    throw error; // keep if caller needs to react
+  }
+};
 
   const clockOut = async (breakDuration: number = 0) => {
-    if (!employee || !activeEntry) return;
+  try {
+    const res = await api.post('/time-clock/clock-out', {
+      break_duration: breakDuration,
+    });
 
-    try {
-      const { error } = await supabase
-        .from('time_entries')
-        .update({
-          clock_out: new Date().toISOString(),
-          break_duration: breakDuration,
-          status: 'completed',
-        })
-        .eq('id', activeEntry.id);
+    toast.success(res.message || 'Clock-out successful');
 
-      if (error) throw error;
+    setActiveEntry(null);
+    setCurrentStatus('clocked_out');
+    await refreshEntries();
+  } catch (error: any) {
+    console.error('Clock-out failed', error);
 
-      setActiveEntry(null);
-      setCurrentStatus('clocked_out');
-      await refreshEntries();
-    } catch (error) {
-      console.error('Error clocking out:', error);
-      throw error;
-    }
-  };
+    const message =
+      error?.response?.data?.message ||
+      error?.message ||
+      'Clock-out failed. Please try again.';
+
+    toast.error(message);
+
+    throw error; // keep this if caller needs to react
+  }
+};
+
+  /* =====================
+     Provider
+  ===================== */
 
   return (
     <TimeClockContext.Provider

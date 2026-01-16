@@ -1,5 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Calendar, Edit, Save, X, Check, AlertCircle } from 'lucide-react';
+import { api } from '../../lib/api';
+import { Confirm } from '../../lib/confirm';
+import {
+  VacationRequest
+} from '../../types';
+
+import toast from 'react-hot-toast';
 
 interface VacationRecord {
   id?: string;
@@ -8,223 +15,265 @@ interface VacationRecord {
   allotted_hours: number;
   accrued_hours: number;
   used_hours: number;
+  vacation_allotment_hour_id?: number | null;
 }
-
-interface VacationRequest {
-  id: string;
-  employee_id: string;
-  employee_name?: string;
-  start_date: string;
-  end_date: string;
-  hours: number;
-  status: 'pending' | 'approved' | 'denied';
-  created_at: string;
-}
-
-// Mock vacation data for demo
-const mockVacationRecords: VacationRecord[] = [
-  {
-    id: '1',
-    employee_id: '1',
-    employee_name: 'John Doe',
-    allotted_hours: 80,
-    accrued_hours: 24.5,
-    used_hours: 8.0,
-  },
-  {
-    id: '2',
-    employee_id: '3',
-    employee_name: 'Jane Smith',
-    allotted_hours: 80,
-    accrued_hours: 32.0,
-    used_hours: 16.0,
-  },
-  {
-    id: '3',
-    employee_id: '2',
-    employee_name: 'Admin User',
-    allotted_hours: 120,
-    accrued_hours: 28.0,
-    used_hours: 0.0,
-  }
-];
 
 const VacationManagement: React.FC = () => {
   const [vacationRecords, setVacationRecords] = useState<VacationRecord[]>([]);
   const [vacationRequests, setVacationRequests] = useState<VacationRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editValues, setEditValues] = useState<{ allotted_hours: number; used_hours: number }>({
-    allotted_hours: 0,
-    used_hours: 0,
-  });
+  const [editValues, setEditValues] = useState<{
+  vacation_allotment_hour_id: number | null;
+  allotted_hours: number;
+  used_hours: number;
+}>({
+  vacation_allotment_hour_id: null,
+  allotted_hours: 0,
+  used_hours: 0,
+});
+
   const [activeTab, setActiveTab] = useState<'balances' | 'requests'>('balances');
+const [vacationHours, setVacationHours] = useState<any[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [lastPage, setLastPage] = useState(1);
+
+    const [perPage, setPerPage] = useState(10);
+
+    const [total, setTotal] = useState(0);
 
   useEffect(() => {
-    fetchVacationRecords();
     fetchVacationRequests();
   }, []);
 
+  useEffect(() => {
+    fetchVacationRecords();
+  }, [currentPage, perPage]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [perPage]);
+
+useEffect(() => {
+  fetchVacationOptions();
+}, []);
+
+const fetchVacationOptions = async () => {
+  try {
+    const res = await api.get('/users/vacation-Option');
+
+    if (!res.success) {
+      toast.error(res.message || 'Failed to load vacation options');
+      return;
+    }
+
+    setVacationHours(res.data.hours);
+  } catch (error) {
+    console.error('Vacation options error:', error);
+  }
+};
+
+
+
   const fetchVacationRecords = async () => {
     try {
-      // Use mock data for demo
-      setVacationRecords(mockVacationRecords);
+      setLoading(true);
+
+      const response = await api.get(
+        `/vacation/get-vacation-balances?page=${currentPage}&per_page=${perPage}`
+      );
+
+      if (response.success) {
+        setVacationRecords(response.data);
+        setCurrentPage(response.meta.current_page);
+        setLastPage(response.meta.last_page);
+        setTotal(response.meta.total);
+      } else {
+        setVacationRecords([]);
+      }
     } catch (error) {
       console.error('Error fetching vacation records:', error);
+      setVacationRecords([]);
     } finally {
       setLoading(false);
     }
   };
 
+
+
   const fetchVacationRequests = async () => {
     try {
-      // Fetch all vacation requests from all employees
-      const employees = ['1', '2', '3'];
-      const employeeNames = { '1': 'John Doe', '2': 'Admin User', '3': 'Jane Smith' };
-      let allRequests: VacationRequest[] = [];
-
-      employees.forEach(employeeId => {
-        const requestsKey = `vacation_requests_${employeeId}`;
-        const savedRequests = localStorage.getItem(requestsKey);
-        if (savedRequests) {
-          const requests = JSON.parse(savedRequests).map((req: VacationRequest) => ({
-            ...req,
-            employee_name: employeeNames[employeeId as keyof typeof employeeNames]
-          }));
-          allRequests = [...allRequests, ...requests];
-        }
-      });
-
-      // Sort by created date, newest first
-      allRequests.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-      setVacationRequests(allRequests);
+      const res = await api.get('/vacation/all/vacation-requests');
+      if (res.success) {
+        setVacationRequests(res.data);
+      }
     } catch (error) {
-      console.error('Error fetching vacation requests:', error);
+      console.error('Error fetching vacation requests', error);
     }
   };
 
-  const handleApproveRequest = async (requestId: string, employeeId: string, hours: number) => {
-    try {
-      // Update request status
-      const requestsKey = `vacation_requests_${employeeId}`;
-      const savedRequests = localStorage.getItem(requestsKey);
-      if (savedRequests) {
-        const requests = JSON.parse(savedRequests);
-        const updatedRequests = requests.map((req: VacationRequest) =>
-          req.id === requestId ? { ...req, status: 'approved' } : req
-        );
-        localStorage.setItem(requestsKey, JSON.stringify(updatedRequests));
-      }
 
-      // Update used hours in vacation records
-      setVacationRecords(prev =>
-        prev.map(record =>
-          record.employee_id === employeeId
-            ? { ...record, used_hours: record.used_hours + hours }
-            : record
-        )
+  const handleApproveRequest = async (requestId: string) => {
+
+      const result = await Confirm.fire({
+            title: 'Approve Vacation?',
+            text: 'Are you sure you want to approve this vacation request?',
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Yes, approve',
+            cancelButtonText: 'Cancel',
+            confirmButtonColor: '#16a34a',
+          });
+
+          if (!result.isConfirmed) return;
+
+  try {
+    const res = await api.post(
+      `/vacation/vacation-requests/${requestId}/approve`
+    );
+
+    if (!res.success) {
+      console.error(res.message);
+       toast.error(res.message || 'Failed to approve vacation request');
+      return;
+    }
+
+     toast.success('Vacation request approve');
+
+    // Refresh data from backend
+    await fetchVacationRequests();
+    await fetchVacationRecords();
+  } catch (error) {
+    console.error('Error approving vacation request:', error);
+  }
+};
+
+
+  const handleDenyRequest = async (requestId: string) => {
+
+      const result = await Confirm.fire({
+          title: 'Deny Vacation Request',
+          input: 'textarea',
+          inputLabel: 'Reason for denial',
+          inputPlaceholder: 'Enter reason...',
+          inputAttributes: {
+            maxlength: '255',
+          },
+          showCancelButton: true,
+          confirmButtonText: 'Deny Request',
+          confirmButtonColor: '#dc2626',
+          cancelButtonText: 'Cancel',
+          preConfirm: (reason) => {
+            if (!reason || reason.trim().length < 3) {
+              Confirm.showValidationMessage('Please provide a valid reason');
+              return false;
+            }
+            return reason;
+          },
+        });
+
+        if (!result.isConfirmed) return;
+
+    try {
+
+      const res = await api.post(
+        `/vacation/vacation-requests/${requestId}/deny`,
+        {
+          reason: result.value,
+        }
       );
 
-      // Refresh requests
+      if (!res.success) {
+        toast.error(res.message || 'Failed to deny vacation request');
+        return;
+      }
+
+      toast.success('Vacation request denied');
+
       await fetchVacationRequests();
+      await fetchVacationRecords();
     } catch (error) {
-      console.error('Error approving request:', error);
+      console.error('Error denying vacation request:', error);
+      toast.error('Something went wrong');
     }
   };
 
-  const handleDenyRequest = async (requestId: string, employeeId: string) => {
-    try {
-      const requestsKey = `vacation_requests_${employeeId}`;
-      const savedRequests = localStorage.getItem(requestsKey);
-      if (savedRequests) {
-        const requests = JSON.parse(savedRequests);
-        const updatedRequests = requests.map((req: VacationRequest) =>
-          req.id === requestId ? { ...req, status: 'denied' } : req
-        );
-        localStorage.setItem(requestsKey, JSON.stringify(updatedRequests));
-      }
 
-      await fetchVacationRequests();
-    } catch (error) {
-      console.error('Error denying request:', error);
-    }
-  };
 
-  const calculateHoursWorked = (entries: any[]) => {
-    let totalHours = 0;
-    let clockInTime: Date | null = null;
-    let lunchStartTime: Date | null = null;
-    let unpaidStartTime: Date | null = null;
+const startEditing = (record: VacationRecord) => {
+  setEditingId(record.employee_id);
 
-    entries.forEach((entry) => {
-      const entryTime = new Date(entry.timestamp);
+  setEditValues({
+    vacation_allotment_hour_id: record.vacation_allotment_hour_id ?? null,
+    allotted_hours: record.allotted_hours,
+    used_hours: record.used_hours,
+  });
+};
 
-      switch (entry.entry_type) {
-        case 'clock_in':
-          clockInTime = entryTime;
-          break;
-        case 'clock_out':
-          if (clockInTime) {
-            const hoursWorked = (entryTime.getTime() - clockInTime.getTime()) / (1000 * 60 * 60);
-            totalHours += hoursWorked;
-            clockInTime = null;
-          }
-          break;
-        case 'lunch_out':
-          lunchStartTime = entryTime;
-          break;
-        case 'lunch_in':
-          if (lunchStartTime) {
-            const lunchHours = (entryTime.getTime() - lunchStartTime.getTime()) / (1000 * 60 * 60);
-            totalHours -= lunchHours;
-            lunchStartTime = null;
-          }
-          break;
-        case 'unpaid_out':
-          unpaidStartTime = entryTime;
-          break;
-        case 'unpaid_in':
-          if (unpaidStartTime) {
-            const unpaidHours = (entryTime.getTime() - unpaidStartTime.getTime()) / (1000 * 60 * 60);
-            totalHours -= unpaidHours;
-            unpaidStartTime = null;
-          }
-          break;
-      }
-    });
 
-    return Math.max(0, totalHours);
-  };
+  // const saveChanges = async (employeeId: string) => {
+  //   try {
+  //     // In demo mode, just update local state
+  //     setVacationRecords(prev =>
+  //       prev.map(record =>
+  //         record.employee_id === employeeId
+  //           ? { ...record, ...editValues }
+  //           : record
+  //       )
+  //     );
 
-  const startEditing = (record: VacationRecord) => {
-    setEditingId(record.employee_id);
-    setEditValues({
-      allotted_hours: record.allotted_hours,
-      used_hours: record.used_hours,
-    });
-  };
+  //     setEditingId(null);
+  //   } catch (error) {
+  //     console.error('Error saving vacation data:', error);
+  //   }
+  // };
+
 
   const saveChanges = async (employeeId: string) => {
     try {
-      // In demo mode, just update local state
-      setVacationRecords(prev => 
-        prev.map(record => 
-          record.employee_id === employeeId 
-            ? { ...record, ...editValues }
-            : record
-        )
+      if (!editValues.vacation_allotment_hour_id) {
+        toast.error('Please select allotted hours');
+        return;
+      }
+
+      const res = await api.post(
+        `/vacation/update-user-vacation/${employeeId}`,
+        {
+          vacation_allotment_hour_id: editValues.vacation_allotment_hour_id,
+          used_hours: editValues.used_hours,
+        }
       );
+
+      if (!res.success) {
+        toast.error(res.message || 'Failed to update vacation balance');
+        return;
+      }
+
+      toast.success('Vacation balance updated');
+
+      // Refresh from backend (SOURCE OF TRUTH)
+      await fetchVacationRecords();
 
       setEditingId(null);
     } catch (error) {
       console.error('Error saving vacation data:', error);
+      toast.error('Something went wrong');
     }
   };
+
+
+
+
 
   const cancelEditing = () => {
     setEditingId(null);
     setEditValues({ allotted_hours: 0, used_hours: 0 });
   };
+
+  const from = total === 0 ? 0 : Math.min((currentPage - 1) * perPage + 1, total);
+
+  const to = Math.min(currentPage * perPage, total);
+
 
   if (loading) {
     return (
@@ -248,32 +297,24 @@ const VacationManagement: React.FC = () => {
         <h2 className="text-2xl font-bold text-gray-900">Vacation Management</h2>
       </div>
 
-      <div className="mb-4 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-        <p className="text-sm text-yellow-800">
-          <strong>Demo Mode:</strong> Changes are temporary and will reset on page refresh.
-        </p>
-      </div>
-
       <div className="mb-6">
         <nav className="flex space-x-1 bg-gray-100 p-1 rounded-lg">
           <button
             onClick={() => setActiveTab('balances')}
-            className={`flex items-center space-x-2 px-4 py-2 rounded-md font-medium transition-colors ${
-              activeTab === 'balances'
-                ? 'bg-white text-blue-600 shadow-sm'
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
+            className={`flex items-center space-x-2 px-4 py-2 rounded-md font-medium transition-colors ${activeTab === 'balances'
+              ? 'bg-white text-blue-600 shadow-sm'
+              : 'text-gray-600 hover:text-gray-900'
+              }`}
           >
             <Calendar className="h-5 w-5" />
             <span>Vacation Balances</span>
           </button>
           <button
             onClick={() => setActiveTab('requests')}
-            className={`flex items-center space-x-2 px-4 py-2 rounded-md font-medium transition-colors ${
-              activeTab === 'requests'
-                ? 'bg-white text-blue-600 shadow-sm'
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
+            className={`flex items-center space-x-2 px-4 py-2 rounded-md font-medium transition-colors ${activeTab === 'requests'
+              ? 'bg-white text-blue-600 shadow-sm'
+              : 'text-gray-600 hover:text-gray-900'
+              }`}
           >
             <AlertCircle className="h-5 w-5" />
             <span>Vacation Requests</span>
@@ -289,7 +330,7 @@ const VacationManagement: React.FC = () => {
       {activeTab === 'requests' && (
         <div className="bg-gray-50 rounded-lg p-4">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Vacation Requests</h3>
-          
+
           {vacationRequests.length === 0 ? (
             <div className="text-center py-8">
               <Calendar className="h-12 w-12 text-gray-300 mx-auto mb-4" />
@@ -315,28 +356,37 @@ const VacationManagement: React.FC = () => {
                           </p>
                         </div>
                         <div>
-                          <span className={`inline-flex px-3 py-1 text-sm font-medium rounded-full ${
-                            request.status === 'approved' ? 'bg-green-100 text-green-800' :
+                          <span className={`inline-flex px-3 py-1 text-sm font-medium rounded-full ${request.status === 'approved' ? 'bg-green-100 text-green-800' :
                             request.status === 'denied' ? 'bg-red-100 text-red-800' :
-                            'bg-yellow-100 text-yellow-800'
-                          }`}>
+                              'bg-yellow-100 text-yellow-800'
+                            }`}>
                             {request.status.charAt(0).toUpperCase() + request.status.slice(1)}
                           </span>
                         </div>
+                        
+
                       </div>
+                      {request.status === 'denied' && request.denial_reason && (
+                          <div className="mt-2 rounded-md bg-red-50 border border-red-200 p-2">
+                            <p className="text-xs font-semibold text-red-700">Denial Reason</p>
+                            <p className="text-sm text-red-600 italic">
+                              {request.denial_reason}
+                            </p>
+                          </div>
+                        )}
                     </div>
-                    
+
                     {request.status === 'pending' && (
                       <div className="flex items-center space-x-2 ml-4">
                         <button
-                          onClick={() => handleApproveRequest(request.id, request.employee_id, request.hours)}
+                          onClick={() => handleApproveRequest(request.id)}
                           className="flex items-center space-x-1 bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700 transition-colors"
                         >
                           <Check className="h-4 w-4" />
                           <span>Approve</span>
                         </button>
                         <button
-                          onClick={() => handleDenyRequest(request.id, request.employee_id)}
+                         onClick={() => handleDenyRequest(request.id)}
                           className="flex items-center space-x-1 bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700 transition-colors"
                         >
                           <X className="h-4 w-4" />
@@ -353,104 +403,180 @@ const VacationManagement: React.FC = () => {
       )}
 
       {activeTab === 'balances' && (
-      <div className="bg-gray-50 rounded-lg p-4">
-        <div className="overflow-x-auto">
-          <table className="min-w-full">
-            <thead>
-              <tr className="border-b border-gray-200">
-                <th className="text-left py-3 px-4 font-medium text-gray-900">Employee</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-900">Allotted Hours</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-900">Accrued Hours</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-900">Used Hours</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-900">Available</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-900">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {vacationRecords.map((record) => {
-                const available = record.accrued_hours - record.used_hours;
-                const isEditing = editingId === record.employee_id;
+        <div className="bg-gray-50 rounded-lg p-4">
+          <div className="overflow-x-auto">
+            <table className="min-w-full">
+              <thead>
+                <tr className="border-b border-gray-200">
+                  <th className="text-left py-3 px-4 font-medium text-gray-900">Employee</th>
+                  <th className="text-left py-3 px-4 font-medium text-gray-900">Allotted Hours</th>
+                  <th className="text-left py-3 px-4 font-medium text-gray-900">Accrued Hours</th>
+                  <th className="text-left py-3 px-4 font-medium text-gray-900">Used Hours</th>
+                  <th className="text-left py-3 px-4 font-medium text-gray-900">Available</th>
+                  <th className="text-left py-3 px-4 font-medium text-gray-900">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {vacationRecords.map((record) => {
+                  const available = record.accrued_hours - record.used_hours;
+                  const isEditing = editingId === record.employee_id;
 
-                return (
-                  <tr key={record.employee_id} className="border-b border-gray-100 hover:bg-white">
-                    <td className="py-3 px-4 font-medium text-gray-900">{record.employee_name}</td>
-                    <td className="py-3 px-4">
-                      {isEditing ? (
-                        <input
-                          type="number"
-                          value={editValues.allotted_hours}
-                          onChange={(e) => setEditValues(prev => ({ 
-                            ...prev, 
-                            allotted_hours: Number(e.target.value) 
-                          }))}
-                          className="w-20 px-2 py-1 border border-gray-300 rounded text-sm"
-                          min="0"
-                        />
-                      ) : (
-                        <span className="text-gray-600">{record.allotted_hours}</span>
-                      )}
-                    </td>
-                    <td className="py-3 px-4 text-blue-600 font-semibold">
-                      {record.accrued_hours.toFixed(1)}
-                    </td>
-                    <td className="py-3 px-4">
-                      {isEditing ? (
-                        <input
-                          type="number"
-                          value={editValues.used_hours}
-                          onChange={(e) => setEditValues(prev => ({ 
-                            ...prev, 
-                            used_hours: Number(e.target.value) 
-                          }))}
-                          className="w-20 px-2 py-1 border border-gray-300 rounded text-sm"
-                          min="0"
-                          step="0.5"
-                        />
-                      ) : (
-                        <span className="text-red-600">{record.used_hours}</span>
-                      )}
-                    </td>
-                    <td className="py-3 px-4">
-                      <span
-                        className={`font-semibold ${
-                          available > 0 ? 'text-green-600' : 'text-gray-600'
-                        }`}
-                      >
-                        {available.toFixed(1)}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4">
-                      {isEditing ? (
-                        <div className="flex items-center space-x-2">
-                          <button
-                            onClick={() => saveChanges(record.employee_id)}
-                            className="p-1 text-green-600 hover:bg-green-50 rounded"
+                  return (
+                    <tr key={record.employee_id} className="border-b border-gray-100 hover:bg-white">
+                      <td className="py-3 px-4 font-medium text-gray-900">{record.employee_name}</td>
+                      <td className="py-3 px-4">
+                        {isEditing ? (
+                          <select
+                            value={editValues.vacation_allotment_hour_id ?? ''}
+                            onChange={(e) => {
+                              const selectedId = Number(e.target.value);
+                              const selectedOption = vacationHours.find(v => v.id === selectedId);
+
+                              setEditValues(prev => ({
+                                ...prev,
+                                vacation_allotment_hour_id: selectedId,
+                                allotted_hours: selectedOption?.hours ?? 0,
+                              }));
+                            }}
+                            className="w-40 px-2 py-1 border border-gray-300 rounded-md text-sm
+                              focus:outline-none focus:ring-2 focus:ring-blue-500"
                           >
-                            <Save className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={cancelEditing}
-                            className="p-1 text-gray-600 hover:bg-gray-50 rounded"
-                          >
-                            <X className="h-4 w-4" />
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          onClick={() => startEditing(record)}
-                          className="p-1 text-blue-600 hover:bg-blue-50 rounded"
+                            <option value="">Select hours</option>
+
+                            {vacationHours.map(item => (
+                              <option key={item.id} value={item.id}>
+                                {item.name}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <span className="text-gray-600">{record.allotted_hours}</span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4 text-blue-600 font-semibold">
+                        {record.accrued_hours.toFixed(1)}
+                      </td>
+                      <td className="py-3 px-4">
+                        {isEditing ? (
+                          <input
+                            type="number"
+                            value={editValues.used_hours}
+                            onChange={(e) => setEditValues(prev => ({
+                              ...prev,
+                              used_hours: Number(e.target.value)
+                            }))}
+                            className="w-20 px-2 py-1 border border-gray-300 rounded text-sm"
+                            min="0"
+                            step="0.5"
+                          />
+                        ) : (
+                          <span className="text-red-600">{record.used_hours}</span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4">
+                        <span
+                          className={`font-semibold ${available > 0 ? 'text-green-600' : 'text-gray-600'
+                            }`}
                         >
-                          <Edit className="h-4 w-4" />
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                          {available.toFixed(1)}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4">
+                        {isEditing ? (
+                          <div className="flex items-center space-x-2">
+                            {/* <button
+                              onClick={() => saveChanges(record.employee_id)}
+                              className="p-1 text-green-600 hover:bg-green-50 rounded"
+                            >
+                              <Save className="h-4 w-4" />
+                            </button> */}
+
+                            <button
+                              disabled={!editValues.vacation_allotment_hour_id}
+                              onClick={() => saveChanges(record.employee_id)}
+                              className="p-1 text-green-600 hover:bg-green-50 rounded
+                                disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              <Save className="h-4 w-4" />
+                            </button>
+
+                            <button
+                              onClick={cancelEditing}
+                              className="p-1 text-gray-600 hover:bg-gray-50 rounded"
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => startEditing(record)}
+                            className="p-1 text-blue-600 hover:bg-blue-50 rounded"
+                          >
+                            <Edit className="h-4 w-4" />
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-4">
+  {/* Left */}
+  <p className="text-sm text-gray-600">
+    Showing <span className="font-medium">{from}</span> to{' '}
+    <span className="font-medium">{to}</span> of{' '}
+    <span className="font-medium">{total}</span> results
+  </p>
+
+  {/* Right */}
+  <div className="flex items-center gap-3">
+    {/* Rows per page */}
+    <div className="flex items-center gap-2">
+      <label className="text-sm text-gray-600">Rows:</label>
+      <select
+        value={perPage}
+        onChange={(e) => setPerPage(Number(e.target.value))}
+        className="px-2 py-1 border border-gray-300 rounded-md text-sm
+          focus:outline-none focus:ring-2 focus:ring-blue-500"
+      >
+        {[5, 10, 30, 50,100,500].map(size => (
+          <option key={size} value={size}>
+            {size}
+          </option>
+        ))}
+      </select>
+    </div>
+
+    {/* Prev / Next */}
+    <div className="flex gap-2">
+      <button
+        disabled={loading || currentPage === 1}
+        onClick={() => setCurrentPage(p => Math.max(p - 1, 1))}
+        className="px-3 py-1 rounded border text-sm
+          disabled:opacity-50 disabled:cursor-not-allowed
+          hover:bg-gray-100"
+      >
+        Prev
+      </button>
+
+      <button
+        disabled={loading || currentPage === lastPage}
+        onClick={() => setCurrentPage(p => Math.min(p + 1, lastPage))}
+        className="px-3 py-1 rounded border text-sm
+          disabled:opacity-50 disabled:cursor-not-allowed
+          hover:bg-gray-100"
+      >
+        Next
+      </button>
+    </div>
+  </div>
         </div>
-      </div>
+
+
+        </div>
       )}
 
       <div className="mt-4 text-sm text-gray-500 space-y-1">
