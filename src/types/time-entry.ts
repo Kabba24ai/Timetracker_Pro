@@ -7,5 +7,14 @@ export interface TimeEntry {
   notes: string | null;
   status: string;
   total_hours: number;
+  breaks: TimeEntryBreak[];
   created_at: string;
+}
+
+
+export interface TimeEntryBreak {
+  id: number;
+  type: 'lunch' | 'other';
+  start_time: string;
+  end_time: string | null;
 }

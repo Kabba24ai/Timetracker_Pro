@@ -77,10 +77,31 @@ class ApiClient {
       body: JSON.stringify(body),
     });
   }
-}
-// console.log('API_BASE_URL');
 
-// console.log(API_BASE_URL);
-// console.log('API_BASE_URL');
+
+  // -------------------------
+  //  FILE DOWNLOAD METHOD
+  // -------------------------
+  async download(endpoint: string): Promise<Blob> {
+    const headers: HeadersInit = {};
+
+    if (this.token) {
+      headers['Authorization'] = `Bearer ${this.token}`;
+    }
+
+    const response = await fetch(`${this.baseUrl}${endpoint}`, {
+      method: 'GET',
+      headers,
+    });
+
+    if (!response.ok) {
+      throw new Error('File download failed');
+    }
+
+    return response.blob(); //  NO JSON PARSING
+  }
+
+
+}
 
 export const api = new ApiClient(API_BASE_URL);

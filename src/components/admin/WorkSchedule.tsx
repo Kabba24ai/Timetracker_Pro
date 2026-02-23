@@ -363,6 +363,22 @@ const WorkSchedule: React.FC = () => {
     }
   };
 
+  const formatTime12h = (time?: string | null) => {
+  if (!time) return '';
+
+  const [hour, minute] = time.split(':').map(Number);
+
+  const date = new Date();
+  date.setHours(hour, minute);
+
+  return date.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+};
+
+
   const toggleEmployeeSelection = (employeeId: string) => {
     setSelectedEmployees(prev => 
       prev.includes(employeeId)
@@ -814,8 +830,9 @@ const WorkSchedule: React.FC = () => {
                                       {dayData.is_scheduled && (
                                         <>
                                           <div className="text-xs font-mono text-gray-700">
-                                            <div>{dayData.start_time}</div>
-                                            <div>{dayData.end_time}</div>
+                                            <div>{formatTime12h(dayData.start_time)}</div>
+                                            <div>{formatTime12h(dayData.end_time)}</div>
+
                                           </div>
                                           <div className="text-xs text-blue-600 font-semibold">
                                             {dayData.hours.toFixed(1)}h

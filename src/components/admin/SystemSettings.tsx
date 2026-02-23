@@ -15,6 +15,7 @@ const initialDefaultSettings: SystemSettingsType = {
   first_clock_in_reminder_minutes: 15,
   second_clock_in_reminder_minutes: 30,
   auto_clock_out_limit_minutes: 60,
+  auto_clock_out_time:'',
   clock_in_message_1: "Reminder: Please clock in for your shift. Reply STOP to opt out.",
   clock_in_message_2: "Final reminder: You haven't clocked in yet. Please clock in now or contact your supervisor.",
   auto_clock_out_message: "You were automatically clocked out at shift end with lunch deducted. Contact HR if incorrect.",
@@ -538,16 +539,23 @@ const SystemSettings: React.FC = () => {
             </div>
           </div>
 
-          {/* Fourth Row - Auto clock-out settings */}
+         {/* Fourth Row - Auto clock-out settings */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+
+            {/* Auto Clock-Out Limit */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Auto Clock-Out Limit
               </label>
               <select
                 value={settings.auto_clock_out_limit_minutes}
-                onChange={(e) => handleInputChange('auto_clock_out_limit_minutes', Number(e.target.value))}
-                className="w-[260px] px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                onChange={(e) =>
+                  handleInputChange(
+                    'auto_clock_out_limit_minutes',
+                    Number(e.target.value)
+                  )
+                }
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value={30}>30 minutes after shift end</option>
                 <option value={45}>45 minutes after shift end</option>
@@ -556,7 +564,26 @@ const SystemSettings: React.FC = () => {
                 <option value={120}>120 minutes after shift end</option>
               </select>
             </div>
+
+            {/* Auto Clock-Out Time */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Auto Clock-Out Time
+              </label>
+
+              <input
+                type="time"
+                value={settings.auto_clock_out_time || ''}
+                onChange={(e) =>
+                  handleInputChange('auto_clock_out_time', e.target.value)
+                }
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
           </div>
+
+
 
           {/* Fifth Row - Auto clock-out message */}
           <div>

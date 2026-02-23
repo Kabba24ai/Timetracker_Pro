@@ -9,7 +9,7 @@ export interface Employee {
 
   role: string;        // "employee" | "admin" | "master_admin"
   roles: string[];     // ["admin", "sales"]
-    roles_name:string[];   // ["Admin", "Master Admin"]
+  roles_name: string[];   // ["Admin", "Master Admin"]
   created_at: string;
 
   shift_start_time?: string | null;
@@ -21,7 +21,7 @@ export interface Employee {
 
   vacation_eligible?: boolean | null;
 
-   // Related objects (for display)
+  // Related objects (for display)
   vacation_allotment_hour?: {
     id: number;
     hours: number;
@@ -33,5 +33,25 @@ export interface Employee {
     day_number: number;
     name: string;
   } | null;
-  
+
+
+  store?: {
+    id: number;
+    store_name: string;
+
+    today_schedule?: {
+      day: string;
+      open: string | null;
+      close: string | null;
+      is_closed: boolean;
+    } | null;
+
+    weekly_schedule?: {
+      day: string;
+      open: string | null;
+      close: string | null;
+      is_closed: boolean;
+    }[];
+  } | null;
+
 }

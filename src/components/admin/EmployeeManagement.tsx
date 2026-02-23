@@ -47,7 +47,8 @@ import { formatTime12h } from '../../utils/time';
 
 
   useEffect(() => {
-    fetchEmployees(Math.max(1, page));
+    // fetchEmployees(Math.max(1, page));
+      fetchEmployees();
   }, [page, perPage]);
 
 
@@ -175,8 +176,8 @@ import { formatTime12h } from '../../utils/time';
     );
   }
 
-  return (
-    <div className="p-6">
+    return (
+      <div className="p-6">
       {showEditForm && editingEmployee && (
         <div className="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center">
           <div className="bg-white rounded-xl shadow-xl p-4 w-full max-w-2xl mx-4 max-h-[90vh] flex flex-col">
@@ -223,7 +224,7 @@ import { formatTime12h } from '../../utils/time';
                                 editingEmployee.roles_name.map((role) => (
                                   <span
                                     key={role}
-                                    className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${role.includes('admin')
+                                    className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${role.includes('master_admin')
                                       ? 'bg-purple-100 text-purple-800'
                                       : 'bg-blue-100 text-blue-800'
                                       }`}
@@ -423,7 +424,7 @@ import { formatTime12h } from '../../utils/time';
                         employee.roles_name.map((role) => (
                           <span
                             key={role}
-                            className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${role.includes('admin')
+                            className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${role.includes('master_admin')
                               ? 'bg-purple-100 text-purple-800'
                               : 'bg-blue-100 text-blue-800'
                               }`}
@@ -432,16 +433,26 @@ import { formatTime12h } from '../../utils/time';
                           </span>
                         ))
                       ) : (
-                        <span className="text-xs text-gray-400">employee</span>
+                        <span className="inline-flex px-2 py-1 text-xs font-medium rounded-full  bg-gray-100 text-gray-800">Employee</span>
                       )}
                     </div>
                   </td>
-
+{/* 
                   <td className="py-3 px-4 text-gray-600">
                     {employee.shift_start_time && employee.shift_end_time
                       ? `${formatTime12h(employee.shift_start_time)} - ${formatTime12h(employee.shift_end_time)}`
                       : 'Not set'}
+                  </td> */}
+
+                  <td className="py-3 px-4 text-gray-600">
+                    {employee.store?.today_schedule &&
+                    !employee.store.today_schedule.is_closed &&
+                    employee.store.today_schedule.open &&
+                    employee.store.today_schedule.close
+                      ? `${formatTime12h(employee.store.today_schedule.open)} - ${formatTime12h(employee.store.today_schedule.close)}`
+                      : '-'}
                   </td>
+
 
                   <td className="py-3 px-4">
                     {employee.vacation_eligible ? (

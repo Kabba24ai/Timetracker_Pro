@@ -1,10 +1,18 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { Clock, LogOut, Shield } from 'lucide-react';
+import { Clock, LogOut, Shield , User} from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
+
+
+
 
 const Header: React.FC = () => {
   const { employee, signOut } = useAuth();
+   const location = useLocation();
+  const navigate = useNavigate();
+const { dashboardMode, toggleDashboardMode } = useAuth();
+
 
   const handleSignOut = async () => {
     try {
@@ -13,6 +21,16 @@ const Header: React.FC = () => {
       console.error('Error signing out:', error);
     }
   };
+
+    //  AUTO LOGOUT WHEN ?logout=1
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const logout = params.get('logout');
+
+    if (logout === '1') {
+      handleSignOut();
+    }
+  }, [location.search]);
 
   return (
     <header className="bg-white shadow-sm border-b">
@@ -29,7 +47,7 @@ const Header: React.FC = () => {
           </div>
 
           <div className="flex items-center space-x-4">
-            {/* {employee?.roles?.includes('admin') && (
+            {/* {employee?.roles?.includes('master_admin') && (
               <Link
                 to="/admin"
                 className="flex items-center space-x-2 px-3 py-2 text-sm text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
@@ -39,6 +57,29 @@ const Header: React.FC = () => {
               </Link>
             )} */}
             
+            {employee?.roles?.includes('master_admin') && (
+              <button
+                onClick={toggleDashboardMode}
+                className="flex items-center space-x-2 px-3 py-2 text-sm
+                          text-gray-600 hover:text-blue-600 hover:bg-blue-50
+                          rounded-lg transition-colors"
+              >
+                {dashboardMode === 'admin' ? (
+                  <>
+                    <User className="h-4 w-4" />
+                    <span>Employee Dashboard</span>
+                  </>
+                ) : (
+                  <>
+                    <Shield className="h-4 w-4" />
+                    <span>Admin Dashboard</span>
+                  </>
+                )}
+              </button>
+            )}
+
+
+
             <div className="flex items-center space-x-3">
               <div className="text-right">
                 <p className="text-sm font-medium text-gray-900">

@@ -12,6 +12,8 @@ export interface SystemSettingsType  {
   clock_in_message_1: string;
   clock_in_message_2: string;
   auto_clock_out_message: string;
+  auto_clock_out_time: string;
+
   // Holiday settings
   holidays: {
     [year: string]: {

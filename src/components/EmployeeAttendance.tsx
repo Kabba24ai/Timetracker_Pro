@@ -11,6 +11,10 @@ import {
   AchievementGoal,
 } from '../types';
 
+const TENANT_TIMEZONE =
+  import.meta.env.VITE_APP_TIMEZONE || 'UTC';
+
+
 const EmployeeAttendance: React.FC = () => {
   const { employee } = useAuth();
 
@@ -117,14 +121,18 @@ const formatDate = (dateString: string) => {
 };
 
 
-  const formatTime = (dateString: string | null) => {
-    if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleTimeString('en-US', {
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true,
-    });
-  };
+  const formatTime = (timestamp: string) => {
+  const date = new Date(timestamp);
+  if (isNaN(date.getTime())) return '--:--';
+
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: TENANT_TIMEZONE,
+    hour12: true,
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(date);
+};
+
 
   const currentDateRange = getDateRange(dateRangeOption, selectedMonth);
 
@@ -154,7 +162,7 @@ const formatDate = (dateString: string) => {
                 setShowMonthPicker(true);
               } else {
                 setShowMonthPicker(false);
-                setSelectedMonth(new Date()); // ✅ reset to current
+                setSelectedMonth(new Date()); //  reset to current
               }
             }}
             className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"

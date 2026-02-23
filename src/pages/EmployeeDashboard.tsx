@@ -7,9 +7,35 @@ import TodayTimeEntries from '../components/TodayTimeEntries';
 import VacationSummary from '../components/VacationSummary';
 import EmployeeAttendance from '../components/EmployeeAttendance';
 import Header from '../components/Header';
+import { formatTime12h } from '../utils/time';
+
+const TENANT_TIMEZONE =
+  import.meta.env.VITE_APP_TIMEZONE || 'UTC';
+
 
 const EmployeeDashboard: React.FC = () => {
   const { employee } = useAuth();
+
+  const storeToday = employee?.store?.today_schedule;
+
+  const storeStatusText = (() => {
+    if (!employee?.store) return 'No Store Assigned';
+
+    if (!storeToday) return 'Closed';
+
+    if (
+      storeToday.is_closed ||
+      !storeToday.open ||
+      !storeToday.close
+    ) {
+      return 'Closed';
+    }
+
+    return `${formatTime12h(storeToday.open)} - ${formatTime12h(storeToday.close)}`;
+  })();
+
+
+
   const { refreshEntries } = useTimeClock();
   const [currentTime, setCurrentTime] = useState(new Date());
   const [activeTab, setActiveTab] = useState<'overview' | 'attendance'>('overview');
@@ -26,23 +52,27 @@ const EmployeeDashboard: React.FC = () => {
     refreshEntries();
   }, []);
 
-  const formatTime = (date: Date) => {
-    return date.toLocaleTimeString('en-US', {
-      hour12: true,
-      hour: 'numeric',
-      minute: '2-digit',
-      second: '2-digit',
-    });
-  };
+const formatTime = (date: Date) => {
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: TENANT_TIMEZONE,
+    hour12: true,
+    hour: 'numeric',
+    minute: '2-digit',
+    second: '2-digit',
+  }).format(date);
+};
 
-  const formatDate = (date: Date) => {
-    return date.toLocaleDateString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
-  };
+
+const formatDate = (date: Date) => {
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: TENANT_TIMEZONE,
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  }).format(date);
+};
+
 
   if (!employee) return null;
 
@@ -57,6 +87,19 @@ const EmployeeDashboard: React.FC = () => {
             <p className="text-xl text-gray-600">{formatDate(currentTime)}</p>
             <p className="text-2xl font-mono text-blue-600">{formatTime(currentTime)}</p>
           </div>
+
+          <div className="mt-4 flex flex-col sm:flex-row sm:space-x-6">
+            <p
+              className={`text-sm ${
+                storeStatusText === 'Closed'
+                  ? 'text-red-600'
+                  : 'text-gray-700'
+              }`}
+            >
+              <strong>Store Hours Today:</strong> {storeStatusText}
+            </p>
+          </div>
+
         </div>
 
         <div className="mb-6">
