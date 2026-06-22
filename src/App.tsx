@@ -7,13 +7,14 @@ import EmployeeDashboard from './pages/EmployeeDashboard';
 import AdminDashboard from './pages/AdminDashboard';
 import ProtectedRoute from './components/ProtectedRoute';
 import { Toaster } from 'react-hot-toast';
+import { SettingsProvider } from './contexts/SettingsContext';
 
 function App() {
   return (
     <AuthProvider>
       <TimeClockProvider>
         <Router>
-           <Toaster
+          <Toaster
             position="top-right"
             toastOptions={{
               duration: 3000,
@@ -26,7 +27,9 @@ function App() {
                 path="/"
                 element={
                   <ProtectedRoute>
-                    <EmployeeDashboard />
+                     <SettingsProvider>
+                        <EmployeeDashboard />
+                    </SettingsProvider>
                   </ProtectedRoute>
                 }
               />
@@ -34,7 +37,9 @@ function App() {
                 path="/admin"
                 element={
                   <ProtectedRoute adminOnly>
-                    <AdminDashboard />
+                    <SettingsProvider>
+                      <AdminDashboard />
+                    </SettingsProvider>
                   </ProtectedRoute>
                 }
               />

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Calendar, Edit, Save, X, Check, AlertCircle } from 'lucide-react';
 import { api } from '../../lib/api';
 import { Confirm } from '../../lib/confirm';
+import { formatHoursToTime } from '../../utils/helper';
 import {
   VacationRequest
 } from '../../types';
@@ -24,23 +25,23 @@ const VacationManagement: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValues, setEditValues] = useState<{
-  vacation_allotment_hour_id: number | null;
-  allotted_hours: number;
-  used_hours: number;
-}>({
-  vacation_allotment_hour_id: null,
-  allotted_hours: 0,
-  used_hours: 0,
-});
+    vacation_allotment_hour_id: number | null;
+    allotted_hours: number;
+    used_hours: number;
+  }>({
+    vacation_allotment_hour_id: null,
+    allotted_hours: 0,
+    used_hours: 0,
+  });
 
   const [activeTab, setActiveTab] = useState<'balances' | 'requests'>('balances');
-const [vacationHours, setVacationHours] = useState<any[]>([]);
+  const [vacationHours, setVacationHours] = useState<any[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [lastPage, setLastPage] = useState(1);
 
-    const [perPage, setPerPage] = useState(10);
+  const [perPage, setPerPage] = useState(30);
 
-    const [total, setTotal] = useState(0);
+  const [total, setTotal] = useState(0);
 
   useEffect(() => {
     fetchVacationRequests();
@@ -54,24 +55,24 @@ const [vacationHours, setVacationHours] = useState<any[]>([]);
     setCurrentPage(1);
   }, [perPage]);
 
-useEffect(() => {
-  fetchVacationOptions();
-}, []);
+  useEffect(() => {
+    fetchVacationOptions();
+  }, []);
 
-const fetchVacationOptions = async () => {
-  try {
-    const res = await api.get('/users/vacation-Option');
+  const fetchVacationOptions = async () => {
+    try {
+      const res = await api.get('/users/vacation-Option');
 
-    if (!res.success) {
-      toast.error(res.message || 'Failed to load vacation options');
-      return;
+      if (!res.success) {
+        toast.error(res.message || 'Failed to load vacation options');
+        return;
+      }
+
+      setVacationHours(res.data.hours);
+    } catch (error) {
+      console.error('Vacation options error:', error);
     }
-
-    setVacationHours(res.data.hours);
-  } catch (error) {
-    console.error('Vacation options error:', error);
-  }
-};
+  };
 
 
 
@@ -115,64 +116,64 @@ const fetchVacationOptions = async () => {
 
   const handleApproveRequest = async (requestId: string) => {
 
-      const result = await Confirm.fire({
-            title: 'Approve Vacation?',
-            text: 'Are you sure you want to approve this vacation request?',
-            icon: 'question',
-            showCancelButton: true,
-            confirmButtonText: 'Yes, approve',
-            cancelButtonText: 'Cancel',
-            confirmButtonColor: '#16a34a',
-          });
+    const result = await Confirm.fire({
+      title: 'Approve Vacation?',
+      text: 'Are you sure you want to approve this vacation request?',
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonText: 'Yes, approve',
+      cancelButtonText: 'Cancel',
+      confirmButtonColor: '#16a34a',
+    });
 
-          if (!result.isConfirmed) return;
+    if (!result.isConfirmed) return;
 
-  try {
-    const res = await api.post(
-      `/vacation/vacation-requests/${requestId}/approve`
-    );
+    try {
+      const res = await api.post(
+        `/vacation/vacation-requests/${requestId}/approve`
+      );
 
-    if (!res.success) {
-      console.error(res.message);
-       toast.error(res.message || 'Failed to approve vacation request');
-      return;
+      if (!res.success) {
+        console.error(res.message);
+        toast.error(res.message || 'Failed to approve vacation request');
+        return;
+      }
+
+      toast.success('Vacation request approve');
+
+      // Refresh data from backend
+      await fetchVacationRequests();
+      await fetchVacationRecords();
+    } catch (error) {
+      console.error('Error approving vacation request:', error);
     }
-
-     toast.success('Vacation request approve');
-
-    // Refresh data from backend
-    await fetchVacationRequests();
-    await fetchVacationRecords();
-  } catch (error) {
-    console.error('Error approving vacation request:', error);
-  }
-};
+  };
 
 
   const handleDenyRequest = async (requestId: string) => {
 
-      const result = await Confirm.fire({
-          title: 'Deny Vacation Request',
-          input: 'textarea',
-          inputLabel: 'Reason for denial',
-          inputPlaceholder: 'Enter reason...',
-          inputAttributes: {
-            maxlength: '255',
-          },
-          showCancelButton: true,
-          confirmButtonText: 'Deny Request',
-          confirmButtonColor: '#dc2626',
-          cancelButtonText: 'Cancel',
-          preConfirm: (reason) => {
-            if (!reason || reason.trim().length < 3) {
-              Confirm.showValidationMessage('Please provide a valid reason');
-              return false;
-            }
-            return reason;
-          },
-        });
+    const result = await Confirm.fire({
+      title: 'Deny Vacation Request',
+      input: 'textarea',
+      inputLabel: 'Reason for denial',
+      inputPlaceholder: 'Enter reason...',
+      inputAttributes: {
+        maxlength: '255',
+      },
+      showCancelButton: true,
+      confirmButtonText: 'Deny Request',
+      confirmButtonColor: '#dc2626',
+      cancelButtonText: 'Cancel',
+      preConfirm: (reason) => {
+        if (!reason || reason.trim().length < 3) {
+          Confirm.showValidationMessage('Please provide a valid reason');
+          return false;
+        }
+        return reason;
+      },
+    });
 
-        if (!result.isConfirmed) return;
+    if (!result.isConfirmed) return;
 
     try {
 
@@ -200,33 +201,15 @@ const fetchVacationOptions = async () => {
 
 
 
-const startEditing = (record: VacationRecord) => {
-  setEditingId(record.employee_id);
+  const startEditing = (record: VacationRecord) => {
+    setEditingId(record.employee_id);
 
-  setEditValues({
-    vacation_allotment_hour_id: record.vacation_allotment_hour_id ?? null,
-    allotted_hours: record.allotted_hours,
-    used_hours: record.used_hours,
-  });
-};
-
-
-  // const saveChanges = async (employeeId: string) => {
-  //   try {
-  //     // In demo mode, just update local state
-  //     setVacationRecords(prev =>
-  //       prev.map(record =>
-  //         record.employee_id === employeeId
-  //           ? { ...record, ...editValues }
-  //           : record
-  //       )
-  //     );
-
-  //     setEditingId(null);
-  //   } catch (error) {
-  //     console.error('Error saving vacation data:', error);
-  //   }
-  // };
+    setEditValues({
+      vacation_allotment_hour_id: record.vacation_allotment_hour_id ?? null,
+      allotted_hours: record.allotted_hours,
+      used_hours: record.used_hours,
+    });
+  };
 
 
   const saveChanges = async (employeeId: string) => {
@@ -363,17 +346,17 @@ const startEditing = (record: VacationRecord) => {
                             {request.status.charAt(0).toUpperCase() + request.status.slice(1)}
                           </span>
                         </div>
-                        
+
 
                       </div>
                       {request.status === 'denied' && request.denial_reason && (
-                          <div className="mt-2 rounded-md bg-red-50 border border-red-200 p-2">
-                            <p className="text-xs font-semibold text-red-700">Denial Reason</p>
-                            <p className="text-sm text-red-600 italic">
-                              {request.denial_reason}
-                            </p>
-                          </div>
-                        )}
+                        <div className="mt-2 rounded-md bg-red-50 border border-red-200 p-2">
+                          <p className="text-xs font-semibold text-red-700">Denial Reason</p>
+                          <p className="text-sm text-red-600 italic">
+                            {request.denial_reason}
+                          </p>
+                        </div>
+                      )}
                     </div>
 
                     {request.status === 'pending' && (
@@ -386,7 +369,7 @@ const startEditing = (record: VacationRecord) => {
                           <span>Approve</span>
                         </button>
                         <button
-                         onClick={() => handleDenyRequest(request.id)}
+                          onClick={() => handleDenyRequest(request.id)}
                           className="flex items-center space-x-1 bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700 transition-colors"
                         >
                           <X className="h-4 w-4" />
@@ -454,7 +437,8 @@ const startEditing = (record: VacationRecord) => {
                         )}
                       </td>
                       <td className="py-3 px-4 text-blue-600 font-semibold">
-                        {record.accrued_hours.toFixed(1)}
+                        {formatHoursToTime(record.accrued_hours)}
+                        {/* {record.accrued_hours.toFixed(1)} */}
                       </td>
                       <td className="py-3 px-4">
                         {isEditing ? (
@@ -478,7 +462,9 @@ const startEditing = (record: VacationRecord) => {
                           className={`font-semibold ${available > 0 ? 'text-green-600' : 'text-gray-600'
                             }`}
                         >
-                          {available.toFixed(1)}
+                          {/* {available.toFixed(1)} */}
+                          {formatHoursToTime(available)}
+
                         </span>
                       </td>
                       <td className="py-3 px-4">
@@ -523,67 +509,70 @@ const startEditing = (record: VacationRecord) => {
             </table>
           </div>
 
-         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-4">
-  {/* Left */}
-  <p className="text-sm text-gray-600">
-    Showing <span className="font-medium">{from}</span> to{' '}
-    <span className="font-medium">{to}</span> of{' '}
-    <span className="font-medium">{total}</span> results
-  </p>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-4">
+            {/* Left */}
+            <p className="text-sm text-gray-600">
+              Showing <span className="font-medium">{from}</span> to{' '}
+              <span className="font-medium">{to}</span> of{' '}
+              <span className="font-medium">{total}</span> results
+            </p>
 
-  {/* Right */}
-  <div className="flex items-center gap-3">
-    {/* Rows per page */}
-    <div className="flex items-center gap-2">
-      <label className="text-sm text-gray-600">Rows:</label>
-      <select
-        value={perPage}
-        onChange={(e) => setPerPage(Number(e.target.value))}
-        className="px-2 py-1 border border-gray-300 rounded-md text-sm
+            {/* Right */}
+            <div className="flex items-center gap-3">
+              {/* Rows per page */}
+              <div className="flex items-center gap-2">
+                <label className="text-sm text-gray-600">Rows:</label>
+                <select
+                  value={perPage}
+                  onChange={(e) => setPerPage(Number(e.target.value))}
+                  className="px-2 py-1 border border-gray-300 rounded-md text-sm
           focus:outline-none focus:ring-2 focus:ring-blue-500"
-      >
-        {[5, 10, 30, 50,100,500].map(size => (
-          <option key={size} value={size}>
-            {size}
-          </option>
-        ))}
-      </select>
-    </div>
+                >
+                  {[5, 10, 30, 50, 100, 500].map(size => (
+                    <option key={size} value={size}>
+                      {size}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-    {/* Prev / Next */}
-    <div className="flex gap-2">
-      <button
-        disabled={loading || currentPage === 1}
-        onClick={() => setCurrentPage(p => Math.max(p - 1, 1))}
-        className="px-3 py-1 rounded border text-sm
+              {/* Prev / Next */}
+              <div className="flex gap-2">
+                <button
+                  disabled={loading || currentPage === 1}
+                  onClick={() => setCurrentPage(p => Math.max(p - 1, 1))}
+                  className="px-3 py-1 rounded border text-sm
           disabled:opacity-50 disabled:cursor-not-allowed
           hover:bg-gray-100"
-      >
-        Prev
-      </button>
+                >
+                  Prev
+                </button>
 
-      <button
-        disabled={loading || currentPage === lastPage}
-        onClick={() => setCurrentPage(p => Math.min(p + 1, lastPage))}
-        className="px-3 py-1 rounded border text-sm
+                <button
+                  disabled={loading || currentPage === lastPage}
+                  onClick={() => setCurrentPage(p => Math.min(p + 1, lastPage))}
+                  className="px-3 py-1 rounded border text-sm
           disabled:opacity-50 disabled:cursor-not-allowed
           hover:bg-gray-100"
-      >
-        Next
-      </button>
-    </div>
-  </div>
-        </div>
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          </div>
 
 
         </div>
       )}
 
       <div className="mt-4 text-sm text-gray-500 space-y-1">
-        <p>• Vacation accrues at 1 hour per 26 hours worked</p>
-        <p>• Allotted hours represent the annual vacation allowance</p>
-        <p>• Used hours can be manually adjusted for vacation requests</p>
-        <p>• Approved vacation requests automatically update used hours</p>
+        <p>• Vacation hours are earned based on your worked hours, up to 40 hours per week</p>
+        <p>• Your accrual rate is determined by your annual vacation plan</p>
+        <p>• Bonus vacation hours may be applied if eligible within a specific date range</p>
+        <p>• Bonus hours are only active between the assigned start and end dates</p>
+        <p>• Vacation balances update automatically from your time entries</p>
+        <p>• Submit requests using the button above</p>
+        <p>• All requests require manager approval</p>
       </div>
     </div>
   );

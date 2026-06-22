@@ -5,9 +5,10 @@ import toast from 'react-hot-toast';
 import { SystemSettingsType } from '../../types/systemsettings';
 
 const initialDefaultSettings: SystemSettingsType = {
-  pay_increments: 15,
+  pay_increments: 5,
   pay_period_type: 'biweekly',
   pay_period_start_date: '2025-01-05',
+  minimum_lunch_duration_minutes: 30,
   default_lunch_duration_minutes: 60,
   limit_start_time_to_shift: false,
   limit_end_time_to_shift: false,
@@ -16,6 +17,11 @@ const initialDefaultSettings: SystemSettingsType = {
   second_clock_in_reminder_minutes: 30,
   auto_clock_out_limit_minutes: 60,
   auto_clock_out_time:'',
+
+    auto_lunch_minutes:60,
+
+  auto_lunch_message:"Hi {name} , No Lunch Clock-out detected . Update Before Shift end or a {default_lunch_time} min Lunch will be applied.",
+
   clock_in_message_1: "Reminder: Please clock in for your shift. Reply STOP to opt out.",
   clock_in_message_2: "Final reminder: You haven't clocked in yet. Please clock in now or contact your supervisor.",
   auto_clock_out_message: "You were automatically clocked out at shift end with lunch deducted. Contact HR if incorrect.",
@@ -386,8 +392,8 @@ const SystemSettings: React.FC = () => {
           <h3 className="text-lg font-semibold text-gray-900 mb-6">System Configuration</h3>
 
           {/* First Row - 4 columns */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-            <div>
+          <div className="grid grid-cols-1 md:grid-cols-8 gap-6 mb-8">
+            <div className="md:col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Pay Increments (minutes)
               </label>
@@ -397,9 +403,9 @@ const SystemSettings: React.FC = () => {
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value={5}>5 minutes</option>
-                <option value={10}>10 minutes</option>
-                <option value={15}>15 minutes</option>
-                <option value={30}>30 minutes</option>
+                 {/* <option value={10}>10 minutes</option> */}
+               {/* <option value={15}>15 minutes</option>
+                <option value={30}>30 minutes</option> */}
               </select>
               <div className="mt-4">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -414,7 +420,7 @@ const SystemSettings: React.FC = () => {
               </div>
             </div>
 
-            <div>
+            <div className="md:col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Pay Period Type
               </label>
@@ -439,7 +445,7 @@ const SystemSettings: React.FC = () => {
               </div>
             </div>
 
-            <div>
+            <div className="md:col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Pay Period Start Date
               </label>
@@ -451,9 +457,22 @@ const SystemSettings: React.FC = () => {
               />
             </div>
 
-            <div>
+            <div className="md:col-span-1">
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Default Lunch Duration (minutes)
+                Min. Lunch 
+              </label>
+              <input
+                type="number"
+                value={settings.minimum_lunch_duration_minutes}
+                onChange={(e) => handleInputChange('minimum_lunch_duration_minutes', Number(e.target.value))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                min="0"
+              />
+            </div>
+
+            <div className="md:col-span-1">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Default Lunch 
               </label>
               <input
                 type="number"
@@ -539,6 +558,66 @@ const SystemSettings: React.FC = () => {
             </div>
           </div>
 
+
+
+        {/* Fourth Row - Auto clock-out settings */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+
+            {/* Auto Lunch - Reminder */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Auto Lunch - Reminder
+              </label>
+              <select
+                value={settings.auto_lunch_minutes}
+                onChange={(e) =>
+                  handleInputChange(
+                    'auto_lunch_minutes',
+                    Number(e.target.value)
+                  )
+                }
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value={30}>30 minutes before shift end</option>
+                <option value={45}>45 minutes before shift end</option>
+                <option value={60}>60 minutes before shift end</option>
+                <option value={90}>90 minutes before shift end</option>
+                <option value={120}>120 minutes before shift end</option>
+              </select>
+            </div>
+          </div>
+
+
+
+          {/* Fifth Row - Auto Lunch message */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Auto Lunch Message
+            </label>
+            <textarea
+              value={settings.auto_lunch_message}
+              onChange={(e) => handleInputChange('auto_lunch_message', e.target.value)}
+              maxLength={200}
+              rows={3}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-none"
+              placeholder="Enter auto Lunch message..."
+            />
+
+            <div className="mt-2 p-2 bg-gray-100 rounded text-sm text-gray-700">
+              <strong>Preview:</strong>{' '}
+              {settings.auto_lunch_message
+                .replace(/\{default_lunch_time\}/g, String(settings.default_lunch_duration_minutes))
+                .replace(/\{name\}/g, 'John Doe')}
+            </div>
+
+            <p className="text-xs text-gray-500 mt-1">
+              {160 - settings.auto_lunch_message.length} characters remaining
+            </p>
+          </div>
+
+
+
+
          {/* Fourth Row - Auto clock-out settings */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
 
@@ -579,6 +658,7 @@ const SystemSettings: React.FC = () => {
                 }
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
+              
             </div>
 
           </div>
@@ -593,7 +673,7 @@ const SystemSettings: React.FC = () => {
             <textarea
               value={settings.auto_clock_out_message}
               onChange={(e) => handleInputChange('auto_clock_out_message', e.target.value)}
-              maxLength={160}
+              maxLength={200}
               rows={3}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-none"
               placeholder="Enter auto clock-out message..."
@@ -767,116 +847,7 @@ const SystemSettings: React.FC = () => {
           </div>
         </div>
 
-        {/* Daily Shift Settings */}
-        <div className="bg-gray-50  rounded-lg ">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Daily Shift Hours</h3>
-          <div className="space-y-4">
-            {Object.entries(settings.daily_shifts).map(([day, shift]) => (
-              <div key={day} className="flex items-center space-x-4 p-4 bg-white rounded-lg border overflow-x-auto">
-                <div className="flex items-center space-x-3 w-28">
-                  <input
-                    type="checkbox"
-                    checked={shift.enabled}
-                    onChange={(e) => handleDailyShiftChange(day as keyof SystemSettings['daily_shifts'], 'enabled', e.target.checked)}
-                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                  />
-                  <label className="text-sm font-medium text-gray-900">
-                    {getDayLabel(day)}
-                  </label>
-                </div>
 
-                <div className="flex items-center space-x-4 flex-1">
-                  <div className="flex-1">
-                    <label className="block text-xs text-gray-500 mb-1">Start Time</label>
-                    <input
-                      type="time"
-                      value={shift.start}
-                      onChange={(e) => handleDailyShiftChange(day as keyof SystemSettings['daily_shifts'], 'start', e.target.value)}
-                      disabled={!shift.enabled}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-400"
-                    />
-                  </div>
-
-                  <div className="flex-1">
-                    <label className="block text-xs text-gray-500 mb-1">End Time</label>
-                    <input
-                      type="time"
-                      value={shift.end}
-                      onChange={(e) => handleDailyShiftChange(day as keyof SystemSettings['daily_shifts'], 'end', e.target.value)}
-                      disabled={!shift.enabled}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-400"
-                    />
-                  </div>
-
-                  <div className="flex-1">
-                    <label className="block text-xs text-gray-500 mb-1">Lunch Required</label>
-                    <div className="flex items-center space-x-2 h-10">
-                      <input
-                        type="checkbox"
-                        checked={shift.lunch_required}
-                        onChange={(e) => handleDailyShiftChange(day as keyof SystemSettings['daily_shifts'], 'lunch_required', e.target.checked)}
-                        disabled={!shift.enabled}
-                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded disabled:opacity-50"
-                      />
-                      <span className="text-sm text-gray-700">Required</span>
-                    </div>
-                  </div>
-
-                  <div className="w-20 text-right">
-                    {shift.enabled && (
-                      <div className="text-sm text-gray-600">
-                        <span className="text-xs text-gray-500">Hours:</span>
-                        <div className="font-medium">
-                          {(() => {
-                            const start = new Date(`2000-01-01T${shift.start}:00`);
-                            const end = new Date(`2000-01-01T${shift.end}:00`);
-                            const hours = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
-                            return hours > 0 ? hours.toFixed(1) : '0.0';
-                          })()}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <div className="flex items-start space-x-3">
-              <Clock className="h-6 w-6 text-blue-600 mt-0.5 shrink-0" />
-              <div>
-                <h4 className="text-sm font-semibold text-blue-900 mb-2">Daily Shift Information</h4>
-                <div className="text-sm text-blue-800 space-y-1">
-                  <p>• Configure different start and end times for each day of the week</p>
-                  <p>• Check "Lunch Required" for days when employees must take a lunch break</p>
-                  <p>• Default lunch duration is {settings.default_lunch_duration_minutes} minutes (configurable above)</p>
-                  <p>• <strong>Auto Clock-Out:</strong> After {settings.auto_clock_out_limit_minutes} minutes past shift end, employees are automatically clocked out</p>
-                  <p>• <strong>Lunch Deduction:</strong> Auto clock-out includes {settings.default_lunch_duration_minutes} minute lunch deduction if lunch is required for that day</p>
-                  <p>• These settings help control labor costs while maintaining fair time tracking and ensuring accurate payroll</p>
-                  <p>• These settings will be used for scheduling and payroll calculations</p>
-                  <p>• Hours shown are the total shift length for each day</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Time Limits Information Panel */}
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
-          <div className="flex items-start space-x-3">
-            <Clock className="h-6 w-6 text-blue-600 mt-0.5 shrink-0" />
-            <div>
-              <h4 className="text-sm font-semibold text-blue-900 mb-2">Time Limit Settings</h4>
-              <div className="text-sm text-blue-800 space-y-1">
-                <p>• <strong>Limit Start Time:</strong> When checked, employees who clock in early will have their start time recorded as the scheduled shift start time</p>
-                <p>• <strong>Limit End Time:</strong> When checked, employees who clock out late will have their end time recorded as the scheduled shift end time</p>
-                <p>• <strong>Pay Increments:</strong> Time is rounded to the nearest {settings.pay_increments} minute increment for payroll calculations</p>
-                <p>• These settings help control labor costs while maintaining fair time tracking</p>
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   );

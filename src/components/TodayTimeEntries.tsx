@@ -198,6 +198,14 @@ const getEffectiveTimestamp = (e: TimeEvent) => {
                     <div>
                       <p className="font-medium text-gray-900">{getEntryLabel(entry.entry_type)}</p>
                       <p className="text-sm text-gray-500">Entry #{index + 1}</p>
+
+                          {/*  ADD THIS CONDITION */}
+                          {entry.entry_type === 'clock_in' && (
+                            <p className="text-xs text-red-500 mt-1">
+                              Shift Start 7:00 AM - You are restricted from working until your shift begins.
+                            </p>
+                          )}
+
                     </div>
                   </div>
                   <div className="text-right">

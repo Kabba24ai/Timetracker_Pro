@@ -244,8 +244,11 @@ const endOther = async () => {
       await loadActiveEntry();
       await refreshEntries();
     } catch (error: any) {
+
+      console.log(error);
+
       toast.error(
-        error?.response?.data?.message || 'Clock-in failed'
+        error?.message || 'Clock-in failed'
       );
     } finally {
       setProcessingAction(null);

@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import { Employee } from '../../types/employee';
 import { formatTime12h } from '../../utils/time';
 
-  const EmployeeManagement: React.FC = () => {
+const EmployeeManagement: React.FC = () => {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -14,7 +14,7 @@ import { formatTime12h } from '../../utils/time';
   const [editFormData, setEditFormData] = useState<Partial<Employee>>({});
 
   const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(10);
+  const [perPage, setPerPage] = useState(30);
   const [lastPage, setLastPage] = useState(1);
   const [total, setTotal] = useState(0);
 
@@ -22,8 +22,6 @@ import { formatTime12h } from '../../utils/time';
   const [vacationDays, setVacationDays] = useState<any[]>([]);
   const [saving, setSaving] = useState(false);
 
-
-  
 
   useEffect(() => {
     fetchVacationOptions();
@@ -48,7 +46,7 @@ import { formatTime12h } from '../../utils/time';
 
   useEffect(() => {
     // fetchEmployees(Math.max(1, page));
-      fetchEmployees();
+    fetchEmployees();
   }, [page, perPage]);
 
 
@@ -76,7 +74,7 @@ import { formatTime12h } from '../../utils/time';
         return;
       }
 
-     setEmployees(res.data);
+      setEmployees(res.data);
       setPage(res.meta.current_page);
       setLastPage(res.meta.last_page);
       setTotal(res.meta.total);
@@ -101,6 +99,10 @@ import { formatTime12h } from '../../utils/time';
       vacation_start_day_id: employee.vacation_start_day_id
         ?? employee.vacation_start_day?.id
         ?? null,
+
+      bonus_vacation_hours: employee.bonus_vacation_hours ?? 0,
+      bonus_vacation_hours_start_date: employee.bonus_vacation_hours_start_date ?? '',
+      bonus_vacation_hours_end_date: employee.bonus_vacation_hours_end_date ?? '',
     });
 
     setShowEditForm(true);
@@ -116,6 +118,10 @@ import { formatTime12h } from '../../utils/time';
         vacation_eligible: editFormData.vacation_eligible ?? false,
         vacation_allotment_hour_id: editFormData.vacation_allotment_hour_id ?? null,
         vacation_start_day_id: editFormData.vacation_start_day_id ?? null,
+          
+        bonus_vacation_hours: editFormData.bonus_vacation_hours ?? 0,
+        bonus_vacation_hours_start_date: editFormData.bonus_vacation_hours_start_date ?? null,
+        bonus_vacation_hours_end_date: editFormData.bonus_vacation_hours_end_date ?? null,
       };
 
       const res = await api.put(
@@ -176,8 +182,8 @@ import { formatTime12h } from '../../utils/time';
     );
   }
 
-    return (
-      <div className="p-6">
+  return (
+    <div className="p-6">
       {showEditForm && editingEmployee && (
         <div className="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center">
           <div className="bg-white rounded-xl shadow-xl p-4 w-full max-w-2xl mx-4 max-h-[90vh] flex flex-col">
@@ -186,147 +192,202 @@ import { formatTime12h } from '../../utils/time';
             </h3> */}
 
             {/* Header */}
-                <div className="p-2  border-b">
-                  <h3 className="text-lg sm:text-xl font-bold text-gray-900">
-                    Edit Employee – {editingEmployee.first_name} {editingEmployee.last_name}
-                  </h3>
+            <div className="p-2  border-b">
+              <h3 className="text-lg sm:text-xl font-bold text-gray-900">
+                Edit Employee – {editingEmployee.first_name} {editingEmployee.last_name}
+              </h3>
+            </div>
+
+            {/* Scrollable Content */}
+            <div className="p-4 sm:p-6 overflow-y-auto flex-1">
+              {/* View-Only Employee Information */}
+              <div className="bg-gray-50 rounded-lg p-4 mb-6">
+                <h4 className="text-sm font-semibold text-gray-900 mb-3">Employee Information (View Only - From Roles Module)</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">First Name</label>
+                    <div className="px-3 py-2  border border-gray-200 rounded-lg text-gray-400 bg-gray-100 ">
+                      {editingEmployee.first_name}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Last Name</label>
+                    <div className="px-3 py-2  border border-gray-200 rounded-lg text-gray-400 bg-gray-100">
+                      {editingEmployee.last_name}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Employee Time Clock Code</label>
+                    <div className="px-3 py-2  border border-gray-200 rounded-lg text-gray-400 bg-gray-100">
+                      {editingEmployee.employee_code}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Roles</label>
+
+                    <div className="px-3 py-2 bg-gray-100 border border-gray-200 rounded-lg flex flex-wrap gap-2">
+                      {editingEmployee.roles_name && editingEmployee.roles_name.length > 0 ? (
+                        editingEmployee.roles_name.map((role) => (
+                          <span
+                            key={role}
+                            className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${role.includes('master_admin')
+                              ? 'bg-purple-100 text-purple-800'
+                              : 'bg-blue-100 text-blue-800'
+                              }`}
+                          >
+                            {role.replace('_', ' ')}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-sm text-gray-400">No roles assigned</span>
+                      )}
+                    </div>
+                  </div>
+
                 </div>
-
-              {/* Scrollable Content */}
-                <div className="p-4 sm:p-6 overflow-y-auto flex-1">
-                      {/* View-Only Employee Information */}
-                      <div className="bg-gray-50 rounded-lg p-4 mb-6">
-                        <h4 className="text-sm font-semibold text-gray-900 mb-3">Employee Information (View Only - From Roles Module)</h4>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">First Name</label>
-                            <div className="px-3 py-2  border border-gray-200 rounded-lg text-gray-400 bg-gray-100 ">
-                              {editingEmployee.first_name}
-                            </div>
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Last Name</label>
-                            <div className="px-3 py-2  border border-gray-200 rounded-lg text-gray-400 bg-gray-100">
-                              {editingEmployee.last_name}
-                            </div>
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Employee Time Clock Code</label>
-                            <div className="px-3 py-2  border border-gray-200 rounded-lg text-gray-400 bg-gray-100">
-                              {editingEmployee.unique_id}
-                            </div>
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Roles</label>
-
-                            <div className="px-3 py-2 bg-gray-100 border border-gray-200 rounded-lg flex flex-wrap gap-2">
-                              {editingEmployee.roles_name && editingEmployee.roles_name.length > 0 ? (
-                                editingEmployee.roles_name.map((role) => (
-                                  <span
-                                    key={role}
-                                    className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${role.includes('master_admin')
-                                      ? 'bg-purple-100 text-purple-800'
-                                      : 'bg-blue-100 text-blue-800'
-                                      }`}
-                                  >
-                                    {role.replace('_', ' ')}
-                                  </span>
-                                ))
-                              ) : (
-                                <span className="text-sm text-gray-400">No roles assigned</span>
-                              )}
-                            </div>
-                          </div>
-
-                        </div>
-                      </div>
-
-                      {/* Editable Vacation Settings */}
-                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-6">
-                        <h4 className="text-sm font-semibold text-blue-900 mb-4">Vacation Settings</h4>
-
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                              Vacation Eligible
-                            </label>
-                            <label className="flex items-center">
-                              <input
-                                type="checkbox"
-                                checked={editFormData.vacation_eligible || false}
-                                onChange={(e) =>
-                                  setEditFormData(prev => ({
-                                    ...prev,
-                                    vacation_eligible: e.target.checked,
-                                    vacation_allotment_hour_id: e.target.checked ? prev.vacation_allotment_hour_id : null,
-                                    vacation_start_day_id: e.target.checked ? prev.vacation_start_day_id : null,
-                                  }))
-                                }
-
-                                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                              />
-                              <span className="ml-2 text-sm text-gray-700">Enable vacation</span>
-                            </label>
-                          </div>
-
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                              Vacation Hours (Annual)
-                            </label>
-
-
-                            <select
-                              value={editFormData.vacation_allotment_hour_id || ''}
-                              onChange={(e) =>
-                                setEditFormData(prev => ({
-                                  ...prev,
-                                  vacation_allotment_hour_id: Number(e.target.value),
-                                }))
-                              }
-                              disabled={!editFormData.vacation_eligible}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-400"
-                            >
-                              <option value="">Select hours</option>
-
-                              {vacationHours.map((item) => (
-                                <option key={item.id} value={item.id}>
-                                  {item.name}
-                                </option>
-                              ))}
-                            </select>
-
-                          </div>
-
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                              Vacation Start
-                            </label>
-
-                            <select
-                              value={editFormData.vacation_start_day_id || ''}
-                              onChange={(e) =>
-                                setEditFormData(prev => ({
-                                  ...prev,
-                                  vacation_start_day_id: Number(e.target.value),
-                                }))
-                              }
-                              disabled={!editFormData.vacation_eligible}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-400"
-                            >
-                              <option value="">Select start day</option>
-
-                              {vacationDays.map((item) => (
-                                <option key={item.id} value={item.id}>
-                                  {item.name}
-                                </option>
-                              ))}
-                            </select>
-
-                          </div>
-                        </div>
-                      </div>
-
               </div>
+
+              {/* Editable Vacation Settings */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-6">
+                <h4 className="text-sm font-semibold text-blue-900 mb-4">Vacation Settings</h4>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Vacation Eligible
+                    </label>
+                    <label className="flex items-center">
+                      <input
+                        type="checkbox"
+                        checked={editFormData.vacation_eligible || false}
+                        onChange={(e) =>
+                          setEditFormData(prev => ({
+                            ...prev,
+                            vacation_eligible: e.target.checked,
+                            vacation_allotment_hour_id: e.target.checked ? prev.vacation_allotment_hour_id : null,
+                            vacation_start_day_id: e.target.checked ? prev.vacation_start_day_id : null,
+                          }))
+                        }
+
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      />
+                      <span className="ml-2 text-sm text-gray-700">Enable vacation</span>
+                    </label>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Vacation Hours (Annual)
+                    </label>
+
+
+                    <select
+                      value={editFormData.vacation_allotment_hour_id || ''}
+                      onChange={(e) =>
+                        setEditFormData(prev => ({
+                          ...prev,
+                          vacation_allotment_hour_id: Number(e.target.value),
+                        }))
+                      }
+                      disabled={!editFormData.vacation_eligible}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-400"
+                    >
+                      <option value="">Select hours</option>
+
+                      {vacationHours.map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {item.name}
+                        </option>
+                      ))}
+                    </select>
+
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Vacation Start
+                    </label>
+
+                    <select
+                      value={editFormData.vacation_start_day_id || ''}
+                      onChange={(e) =>
+                        setEditFormData(prev => ({
+                          ...prev,
+                          vacation_start_day_id: Number(e.target.value),
+                        }))
+                      }
+                      disabled={!editFormData.vacation_eligible}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-400"
+                    >
+                      <option value="">Select start day</option>
+
+                      {vacationDays.map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {item.name}
+                        </option>
+                      ))}
+                    </select>
+
+                  </div>
+
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Bonus Vacation Hours
+                    </label>
+                    <input
+                      type="number"
+                      value={editFormData.bonus_vacation_hours || ''}
+                      onChange={(e) =>
+                        setEditFormData(prev => ({
+                          ...prev,
+                          bonus_vacation_hours: Number(e.target.value),
+                        }))
+                      }
+                      disabled={!editFormData.vacation_eligible}
+                      className="w-full px-3 py-2 border rounded-lg"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Bonus Vacation Start 
+                    </label>
+                    <input
+                      type="date"
+                      value={editFormData.bonus_vacation_hours_start_date || ''}
+                      onChange={(e) =>
+                        setEditFormData(prev => ({
+                          ...prev,
+                          bonus_vacation_hours_start_date: e.target.value,
+                        }))
+                      }
+                      disabled={!editFormData.vacation_eligible}
+                      className="w-full px-3 py-2 border rounded-lg"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Bonus Vacation End 
+                    </label>
+                    <input
+                      type="date"
+                      value={editFormData.bonus_vacation_hours_end_date || ''}
+                      onChange={(e) =>
+                        setEditFormData(prev => ({
+                          ...prev,
+                          bonus_vacation_hours_end_date: e.target.value,
+                        }))
+                      }
+                      disabled={!editFormData.vacation_eligible}
+                      className="w-full px-3 py-2 border rounded-lg"
+                    />
+                  </div>
+                </div>
+              </div>
+
+            </div>
 
 
             <div className="flex items-center justify-end gap-3 p-4 border-t bg-white sticky bottom-0">
@@ -376,7 +437,7 @@ import { formatTime12h } from '../../utils/time';
                     <span>Save Changes</span>
                   </>
                 )}
-            </button>
+              </button>
 
             </div>
           </div>
@@ -414,7 +475,7 @@ import { formatTime12h } from '../../utils/time';
                       <p className="font-medium text-gray-900">
                         {employee.first_name} {employee.last_name}
                       </p>
-                      <p className="text-sm text-gray-500">  ID: {employee.unique_id}</p>
+                      <p className="text-sm text-gray-500">  ID: {employee.employee_code}</p>
                     </div>
                   </td>
                   <td className="py-3 px-4 text-gray-600">{employee.email}</td>
@@ -437,7 +498,7 @@ import { formatTime12h } from '../../utils/time';
                       )}
                     </div>
                   </td>
-{/* 
+                  {/* 
                   <td className="py-3 px-4 text-gray-600">
                     {employee.shift_start_time && employee.shift_end_time
                       ? `${formatTime12h(employee.shift_start_time)} - ${formatTime12h(employee.shift_end_time)}`
@@ -446,9 +507,9 @@ import { formatTime12h } from '../../utils/time';
 
                   <td className="py-3 px-4 text-gray-600">
                     {employee.store?.today_schedule &&
-                    !employee.store.today_schedule.is_closed &&
-                    employee.store.today_schedule.open &&
-                    employee.store.today_schedule.close
+                      !employee.store.today_schedule.is_closed &&
+                      employee.store.today_schedule.open &&
+                      employee.store.today_schedule.close
                       ? `${formatTime12h(employee.store.today_schedule.open)} - ${formatTime12h(employee.store.today_schedule.close)}`
                       : '-'}
                   </td>

@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Award } from 'lucide-react';
+import { Award , Clock ,CalendarDays } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTimeClock } from '../contexts/TimeClockContext';
 import TimeClockCard from '../components/TimeClockCard';
 import TodayTimeEntries from '../components/TodayTimeEntries';
 import VacationSummary from '../components/VacationSummary';
 import EmployeeAttendance from '../components/EmployeeAttendance';
+import PayrollHours from '../components/PayrollHours';
+import EmpWorkSchedule from '../components/EmpWorkSchedule';
 import Header from '../components/Header';
 import { formatTime12h } from '../utils/time';
 
@@ -38,7 +40,7 @@ const EmployeeDashboard: React.FC = () => {
 
   const { refreshEntries } = useTimeClock();
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [activeTab, setActiveTab] = useState<'overview' | 'attendance'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'attendance' | 'payrollhours' | 'workschedule'>('overview');
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -80,7 +82,7 @@ const formatDate = (date: Date) => {
     <div className="min-h-screen bg-gray-50">
       <Header />
       
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-8xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">Welcome, {employee.first_name}!</h1>
           <div className="mt-2 flex flex-col sm:flex-row sm:items-center sm:space-x-4 space-y-1 sm:space-y-0">
@@ -125,10 +127,35 @@ const formatDate = (date: Date) => {
               <Award className="h-5 w-5" />
               <span>Attendance</span>
             </button>
+
+            <button
+              onClick={() => setActiveTab('payrollhours')}
+              className={`flex items-center space-x-2 px-4 py-2 rounded-md font-medium transition-colors ${
+                activeTab === 'payrollhours'
+                  ? 'bg-blue-600 text-white'
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+              }`}
+            >
+              <Clock className="h-5 w-5" />
+              <span>Payroll Hours</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('workschedule')}
+              className={`flex items-center space-x-2 px-4 py-2 rounded-md font-medium transition-colors ${
+                activeTab === 'workschedule'
+                  ? 'bg-blue-600 text-white'
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+              }`}
+            >
+              <CalendarDays className="h-5 w-5" />
+              <span>Work Schedule</span>
+            </button>
+
           </nav>
         </div>
 
-        {activeTab === 'overview' ? (
+        {/* {activeTab === 'overview' ? (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             <div className="lg:col-span-2 space-y-8">
               <TimeClockCard />
@@ -140,7 +167,31 @@ const formatDate = (date: Date) => {
           </div>
         ) : (
           <EmployeeAttendance />
-        )}
+        )} */}
+
+        {activeTab === 'overview' && (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              <div className="lg:col-span-2 space-y-8">
+                <TimeClockCard />
+                <TodayTimeEntries />
+              </div>
+              <div>
+                <VacationSummary />
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'attendance' && (
+            <EmployeeAttendance />
+          )}
+
+          {activeTab === 'payrollhours' && (
+            <PayrollHours />   
+          )}
+
+          {activeTab === 'workschedule' && (
+            <EmpWorkSchedule />   
+          )}
       </div>
     </div>
   );

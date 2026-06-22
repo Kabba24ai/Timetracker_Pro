@@ -3,6 +3,8 @@ import { Calendar, TrendingUp, Clock, Plus, X, Save } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../lib/api';
 import toast from 'react-hot-toast';
+import { formatHoursToTime } from '../utils/helper';
+
 import {
   VacationRequest
 } from '../types';
@@ -371,7 +373,7 @@ const VacationSummary: React.FC = () => {
             </div>
             {availableHours < selectedHours && (
               <p className="text-sm text-red-600">
-                Insufficient vacation hours available. You have {availableHours.toFixed(1)} hours available.
+                Insufficient vacation hours available. You have {formatHoursToTime(availableHours)} hours available.
               </p>
             )}
 
@@ -388,7 +390,7 @@ const VacationSummary: React.FC = () => {
               <p className="text-sm text-gray-600">Ready to use</p>
             </div>
           </div>
-          <p className="text-2xl font-bold text-blue-600">{availableHours.toFixed(1)}</p>
+          <p className="text-2xl font-bold text-blue-600">{formatHoursToTime(availableHours)}</p>
         </div>
 
         <button
@@ -403,11 +405,11 @@ const VacationSummary: React.FC = () => {
         <div className="grid grid-cols-2 gap-4">
           <div className="p-3 bg-green-50 rounded-lg border border-green-200">
             <p className="text-sm text-gray-600">Accrued</p>
-            <p className="text-lg font-semibold text-green-600">{vacationData.accrued_hours.toFixed(1)}</p>
+            <p className="text-lg font-semibold text-green-600">{formatHoursToTime(vacationData.accrued_hours)}</p>
           </div>
           <div className="p-3 bg-red-50 rounded-lg border border-red-200">
             <p className="text-sm text-gray-600">Used</p>
-            <p className="text-lg font-semibold text-red-600">{vacationData.used_hours.toFixed(1)}</p>
+            <p className="text-lg font-semibold text-red-600"> {formatHoursToTime(vacationData.used_hours)}</p>
           </div>
         </div>
 
@@ -474,7 +476,7 @@ const VacationSummary: React.FC = () => {
           <div className="space-y-2 text-sm text-gray-600">
             <div className="flex justify-between">
               <span>Hours Worked:</span>
-              <span className="font-medium">{vacationData.hours_worked_this_year.toFixed(1)}</span>
+              <span className="font-medium"> {formatHoursToTime(vacationData.hours_worked_this_year)}</span>
             </div>
             <div className="flex justify-between">
               <span>Annual Allotment:</span>
@@ -483,12 +485,15 @@ const VacationSummary: React.FC = () => {
           </div>
         </div>
 
-        <div className="text-xs text-gray-500 space-y-1">
-          <p>• Vacation accrues at 1 hour per 26 hours worked</p>
-          <p>• Submit vacation requests using the button above</p>
-          <p>• Hours update daily based on time entries</p>
-          <p>• Requests require manager approval</p>
-        </div>
+      <div className="text-xs text-gray-500 space-y-1">
+        <p>• Vacation hours are earned based on your worked hours, up to 40 hours per week</p>
+        <p>• Your accrual rate is determined by your annual vacation plan</p>
+        <p>• Bonus vacation hours may be applied if eligible within a specific date range</p>
+        <p>• Bonus hours are only active between the assigned start and end dates</p>
+        <p>• Vacation balances update automatically from your time entries</p>
+        <p>• Submit requests using the button above</p>
+        <p>• All requests require manager approval</p>
+      </div>
       </div>
     </div>
   );

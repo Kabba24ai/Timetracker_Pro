@@ -8,6 +8,7 @@ import SystemSettings from '../components/admin/SystemSettings';
 import WorkSchedule from '../components/admin/WorkSchedule';
 import AttendanceTracking from '../components/admin/AttendanceTracking';
 
+
 const AdminDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState('employees');
 
@@ -42,8 +43,8 @@ const AdminDashboard: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-50">
       <Header />
-      
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+      <div className="max-w-8xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">Admin Dashboard</h1>
           <p className="text-gray-600 mt-2">Manage employees, time tracking, and system settings</p>
@@ -59,11 +60,10 @@ const AdminDashboard: React.FC = () => {
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`flex shrink-0 items-center space-x-2 px-4 py-2 rounded-md font-medium transition-colors ${
-                    activeTab === tab.id
+                  className={`flex shrink-0 items-center space-x-2 px-4 py-2 rounded-md font-medium transition-colors ${activeTab === tab.id
                       ? 'bg-white text-blue-600 shadow-sm'
                       : 'text-gray-600 hover:text-gray-900'
-                  }`}
+                    }`}
                 >
                   <Icon className="h-5 w-5" />
                   <span>{tab.name}</span>

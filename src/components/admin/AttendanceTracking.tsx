@@ -46,7 +46,7 @@ const AttendanceTracking: React.FC = () => {
   const [aggregatedStats, setAggregatedStats] = useState<EmployeeAggregatedStats[]>([]);
 
   const [page, setPage] = useState(1);
-const [perPage, setPerPage] = useState(10);
+const [perPage, setPerPage] = useState(30);
 const [lastPage, setLastPage] = useState(1);
 const [total, setTotal] = useState(0);
 

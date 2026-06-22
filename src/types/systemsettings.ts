@@ -2,6 +2,7 @@ export interface SystemSettingsType  {
   pay_increments: number;
   pay_period_type: 'weekly' | 'biweekly';
   pay_period_start_date: string;
+  minimum_lunch_duration_minutes:number;
   default_lunch_duration_minutes: number;
   limit_start_time_to_shift: boolean;
   limit_end_time_to_shift: boolean;
@@ -9,9 +10,14 @@ export interface SystemSettingsType  {
   first_clock_in_reminder_minutes: number;
   second_clock_in_reminder_minutes: number;
   auto_clock_out_limit_minutes: number;
+
+  auto_lunch_minutes:number;
+  auto_lunch_message:string;
+  
   clock_in_message_1: string;
   clock_in_message_2: string;
   auto_clock_out_message: string;
+
   auto_clock_out_time: string;
 
   // Holiday settings

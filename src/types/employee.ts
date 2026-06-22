@@ -2,7 +2,7 @@ export interface Employee {
   id: string;
   user_id: string;
   unique_id?: string;
-
+  employee_code?: string;
   first_name: string;
   last_name: string;
   email: string;
@@ -20,6 +20,10 @@ export interface Employee {
 
 
   vacation_eligible?: boolean | null;
+
+  bonus_vacation_hours?: number | null;
+  bonus_vacation_hours_start_date?: string | null;
+  bonus_vacation_hours_end_date?: string | null;
 
   // Related objects (for display)
   vacation_allotment_hour?: {
