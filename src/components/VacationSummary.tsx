@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Calendar, TrendingUp, Clock, Plus, X, Save } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { useSettings } from '../contexts/SettingsContext';
 import { api } from '../lib/api';
 import toast from 'react-hot-toast';
 import { formatHoursToTime } from '../utils/helper';
@@ -23,8 +24,38 @@ interface VacationData {
   hours_worked_this_year: number;
 }
 
+const TENANT_TIMEZONE = import.meta.env.VITE_APP_TIMEZONE || 'UTC';
+
+// Normalizes any date string to YYYY-MM-DD in the tenant timezone.
+// Date-only strings ("YYYY-MM-DD") are returned as-is — passing them through
+// new Date() would parse as UTC midnight and shift the date in negative-offset
+// timezones (e.g. America/Chicago). Datetime strings with T are parsed and
+// converted via Intl so timezone offsets in the string are respected.
+// Returns null for empty or unparseable input.
+const extractLocalDateString = (dateStr: string): string | null => {
+  if (!dateStr || typeof dateStr !== 'string') return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return null;
+  return new Intl.DateTimeFormat('en-CA', { timeZone: TENANT_TIMEZONE }).format(d);
+};
+
+const getTodayDateString = (): string =>
+  new Intl.DateTimeFormat('en-CA', { timeZone: TENANT_TIMEZONE }).format(new Date());
+
+// Returns true only if dateStr is a calendar day strictly after today in the
+// tenant timezone. Today itself returns false — if used_hours has not yet
+// picked up a vacation that starts today, that is a backend timing issue
+// outside the scope of this comparison.
+const isAfterToday = (dateStr: string): boolean => {
+  const d = extractLocalDateString(dateStr);
+  if (!d) return false;
+  return d > getTodayDateString();
+};
+
 const VacationSummary: React.FC = () => {
   const { employee } = useAuth();
+  const { settings } = useSettings();
   const [vacationData, setVacationData] = useState<VacationData>({
     allotted_hours: 0,
     accrued_hours: 0,
@@ -111,6 +142,7 @@ const VacationSummary: React.FC = () => {
         setShowRequestForm(false);
         setNewRequest({ start_date: '', vacation_request_hour_id: '' });
         fetchVacationRequests();
+        fetchVacationData();
       }
     } catch (error) {
       console.error('Error submitting vacation request', error);
@@ -133,9 +165,6 @@ const VacationSummary: React.FC = () => {
     let currentDate = new Date(start);
     let workDaysAdded = 0;
 
-    // Get holiday settings
-    const savedSettings = localStorage.getItem('demo_system_settings');
-    const settings = savedSettings ? JSON.parse(savedSettings) : null;
     const year = start.getFullYear().toString();
     const holidays = settings?.holidays?.[year] || {};
 
@@ -220,57 +249,6 @@ const VacationSummary: React.FC = () => {
     return dates;
   };
 
-  const calculateHoursWorked = (entries: any[]) => {
-    let totalHours = 0;
-    let clockInTime: Date | null = null;
-    let lunchStartTime: Date | null = null;
-    let unpaidStartTime: Date | null = null;
-
-    entries.forEach((entry) => {
-      const entryTime = new Date(entry.timestamp);
-
-      switch (entry.entry_type) {
-        case 'clock_in':
-          clockInTime = entryTime;
-          break;
-        case 'clock_out':
-          if (clockInTime) {
-            const hoursWorked = (entryTime.getTime() - clockInTime.getTime()) / (1000 * 60 * 60);
-            totalHours += hoursWorked;
-            clockInTime = null;
-          }
-          break;
-        case 'lunch_out':
-          lunchStartTime = entryTime;
-          break;
-        case 'lunch_in':
-          if (lunchStartTime) {
-            const lunchHours = (entryTime.getTime() - lunchStartTime.getTime()) / (1000 * 60 * 60);
-            totalHours -= lunchHours;
-            lunchStartTime = null;
-          }
-          break;
-        case 'unpaid_out':
-          unpaidStartTime = entryTime;
-          break;
-        case 'unpaid_in':
-          if (unpaidStartTime) {
-            const unpaidHours = (entryTime.getTime() - unpaidStartTime.getTime()) / (1000 * 60 * 60);
-            totalHours -= unpaidHours;
-            unpaidStartTime = null;
-          }
-          break;
-      }
-    });
-
-    return Math.max(0, totalHours);
-  };
-
-  const calculateAccruedHours = (hoursWorked: number) => {
-    // Accrue 1 hour of vacation for every 26 hours worked (standard rate)
-    return Math.floor(hoursWorked / 26);
-  };
-
   const selectedHourOption = hourOptions.find(
     h => h.id === Number(newRequest.vacation_request_hour_id)
   );
@@ -278,7 +256,21 @@ const VacationSummary: React.FC = () => {
   const selectedHours = selectedHourOption?.hours ?? 0;
 
 
-  const availableHours = vacationData.accrued_hours - vacationData.used_hours;
+  const pendingHours = vacationRequests.reduce(
+    (sum, req) => req.status === 'pending' ? sum + (Number(req.hours) || 0) : sum,
+    0
+  );
+
+  const approvedFutureHours = vacationRequests.reduce(
+    (sum, req) =>
+      req.status === 'approved' && isAfterToday(req.start_date)
+        ? sum + (Number(req.hours) || 0)
+        : sum,
+    0
+  );
+
+  const availableHours =
+    vacationData.accrued_hours - vacationData.used_hours - pendingHours - approvedFutureHours;
 
   if (loading) {
     return (

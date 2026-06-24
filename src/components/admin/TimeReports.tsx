@@ -63,6 +63,105 @@ const formatTimeForInput = (dateString?: string | null) => {
   return `${hour}:${minute}`;
 };
 
+// Returns "YYYY-MM-DD" in TENANT_TIMEZONE for any full ISO datetime string.
+// Returns null for null/empty/unparseable input.
+const extractDateInTZ = (isoString?: string | null): string | null => {
+  if (!isoString) return null;
+  const d = new Date(isoString);
+  if (isNaN(d.getTime())) return null;
+  return new Intl.DateTimeFormat('en-CA', { timeZone: TENANT_TIMEZONE }).format(d);
+};
+
+// Validates entries that appear in editedValues using effective datetime reconstruction.
+// Supports overnight shifts and overnight breaks — never uses HH:mm-only comparison.
+// Skips open shifts (null clock_out) and open breaks (null break end).
+// Returns an array of human-readable error messages; empty array means valid.
+const validateEditedEntries = (
+  editedValues: Record<string, any>,
+  dailyBreakdownData: any[]
+): string[] => {
+  const errors: string[] = [];
+
+  const affectedEntryIds = new Set<number>(
+    Object.values(editedValues).map((v: any) => Number(v.entry_id))
+  );
+
+  if (affectedEntryIds.size === 0) return errors;
+
+  for (const day of dailyBreakdownData) {
+    for (const entry of (day.entries ?? [])) {
+      if (!affectedEntryIds.has(entry.entry_id)) continue;
+
+      const eid = entry.entry_id;
+      const dayDate = day.date; // "YYYY-MM-DD" fallback when adjusted is unparseable
+
+      // RULE-S2: clock_in must be before clock_out
+      const ciAdjusted = entry.clock_in?.adjusted;
+      const coAdjusted = entry.clock_out?.adjusted;
+
+      if (ciAdjusted && coAdjusted) {
+        const ciDate = extractDateInTZ(ciAdjusted) ?? dayDate;
+        const coDate = extractDateInTZ(coAdjusted) ?? dayDate;
+
+        const ciHH = editedValues[`${eid}-clock_in-0`]?.new_time
+                  ?? formatTimeForInput(ciAdjusted);
+        const coHH = editedValues[`${eid}-clock_out-0`]?.new_time
+                  ?? formatTimeForInput(coAdjusted);
+
+        if (`${ciDate}T${ciHH}` >= `${coDate}T${coHH}`) {
+          errors.push(
+            `Clock-out must be after clock-in on ${day.date}. In: ${ciHH}, Out: ${coHH}`
+          );
+        }
+      }
+
+      // RULE-S1: each lunch break start must be before its end
+      for (const lb of (entry.lunch_breaks ?? [])) {
+        const startAdj = lb.start?.adjusted;
+        const endAdj   = lb.end?.adjusted;
+        if (!startAdj || !endAdj) continue; // skip open breaks
+
+        const startDate = extractDateInTZ(startAdj) ?? dayDate;
+        const endDate   = extractDateInTZ(endAdj)   ?? dayDate;
+
+        const startHH = editedValues[`${eid}-lunch_out-${lb.id}`]?.new_time
+                     ?? formatTimeForInput(startAdj);
+        const endHH   = editedValues[`${eid}-lunch_in-${lb.id}`]?.new_time
+                     ?? formatTimeForInput(endAdj);
+
+        if (`${startDate}T${startHH}` >= `${endDate}T${endHH}`) {
+          errors.push(
+            `Lunch break end must be after start on ${day.date}. Start: ${startHH}, End: ${endHH}`
+          );
+        }
+      }
+
+      // RULE-S1: each unpaid break start must be before its end
+      for (const ub of (entry.unpaid_breaks ?? [])) {
+        const startAdj = ub.start?.adjusted;
+        const endAdj   = ub.end?.adjusted;
+        if (!startAdj || !endAdj) continue; // skip open breaks
+
+        const startDate = extractDateInTZ(startAdj) ?? dayDate;
+        const endDate   = extractDateInTZ(endAdj)   ?? dayDate;
+
+        const startHH = editedValues[`${eid}-unpaid_out-${ub.id}`]?.new_time
+                     ?? formatTimeForInput(startAdj);
+        const endHH   = editedValues[`${eid}-unpaid_in-${ub.id}`]?.new_time
+                     ?? formatTimeForInput(endAdj);
+
+        if (`${startDate}T${startHH}` >= `${endDate}T${endHH}`) {
+          errors.push(
+            `Unpaid break end must be after start on ${day.date}. Start: ${startHH}, End: ${endHH}`
+          );
+        }
+      }
+    }
+  }
+
+  return errors;
+};
+
 const formatDate = (date: Date) => {
   return new Intl.DateTimeFormat('en-US', {
     timeZone: TENANT_TIMEZONE,
@@ -1092,6 +1191,12 @@ const TimeReports: React.FC = () => {
 
     if (!updates.length) {
       toast("No changes detected");
+      return;
+    }
+
+    const validationErrors = validateEditedEntries(editedValues, dailyBreakdownData);
+    if (validationErrors.length > 0) {
+      validationErrors.forEach(msg => toast.error(msg));
       return;
     }
 
