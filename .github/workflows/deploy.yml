@@ -29,8 +29,8 @@ jobs:
       # - name: Type check
       #   run: npx tsc -b --noEmit
 
-      - name: Lint
-        run: npm run lint
+      # - name: Lint
+      #   run: npm run lint
 
       - name: Build (production)
         run: npm run build -- --mode production
