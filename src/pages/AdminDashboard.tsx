@@ -7,7 +7,7 @@ import TimeReviewV2 from '../components/admin/TimeReviewV2';
 import VacationManagement from '../components/admin/VacationManagement';
 import SystemSettings from '../components/admin/SystemSettings';
 import WorkScheduleV2 from '../components/admin/WorkScheduleV2';
-import AttendanceTracking from '../components/admin/AttendanceTracking';
+import AttendanceV2 from '../components/admin/AttendanceV2';
 
 interface DrillDown {
   userId: number;
@@ -53,7 +53,7 @@ const AdminDashboard: React.FC = () => {
       case 'employees':
         return <EmployeeManagement />;
       case 'attendance':
-        return <AttendanceTracking />;
+        return <AttendanceV2 />;
       case 'work-schedule':
         return <WorkScheduleV2 />;
       case 'vacation':
