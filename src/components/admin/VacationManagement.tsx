@@ -1,349 +1,234 @@
-import React, { useState, useEffect } from 'react';
-import { Calendar, Edit, Save, X, Check, AlertCircle } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { ApiError } from '../../lib/api';
+import {
+  EmployeeBalances,
+  OverlapException,
+  TimeOffRequest,
+  TimeOffStatus,
+  TimeOffType,
+  TIME_OFF_STATUS_STYLE,
+  adminApprove,
+  adminBalances,
+  adminDeny,
+  adminGrant,
+  adminListRequests,
+  fetchOverlapExceptions,
+  fetchTimeOffTypes,
+  resolveOverlap,
+} from '../../lib/timeOff';
 
-interface VacationRecord {
-  id?: string;
-  employee_id: string;
-  employee_name: string;
-  allotted_hours: number;
-  accrued_hours: number;
-  used_hours: number;
-}
+type Tab = 'requests' | 'balances' | 'overlaps';
 
-interface VacationRequest {
-  id: string;
-  employee_id: string;
-  employee_name?: string;
-  start_date: string;
-  end_date: string;
-  hours: number;
-  status: 'pending' | 'approved' | 'denied';
-  created_at: string;
-}
-
-// Mock vacation data for demo
-const mockVacationRecords: VacationRecord[] = [
-  {
-    id: '1',
-    employee_id: '1',
-    employee_name: 'John Doe',
-    allotted_hours: 80,
-    accrued_hours: 24.5,
-    used_hours: 8.0,
-  },
-  {
-    id: '2',
-    employee_id: '3',
-    employee_name: 'Jane Smith',
-    allotted_hours: 80,
-    accrued_hours: 32.0,
-    used_hours: 16.0,
-  },
-  {
-    id: '3',
-    employee_id: '2',
-    employee_name: 'Admin User',
-    allotted_hours: 120,
-    accrued_hours: 28.0,
-    used_hours: 0.0,
-  }
-];
-
+/**
+ * Admin time-off management on the real V2 API: approve/deny requests, view and
+ * grant balances, and resolve worked-during-approved overlap exceptions.
+ */
 const VacationManagement: React.FC = () => {
-  const [vacationRecords, setVacationRecords] = useState<VacationRecord[]>([]);
-  const [vacationRequests, setVacationRequests] = useState<VacationRequest[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editValues, setEditValues] = useState<{ allotted_hours: number; used_hours: number }>({
-    allotted_hours: 0,
-    used_hours: 0,
-  });
-  const [activeTab, setActiveTab] = useState<'balances' | 'requests'>('balances');
+  const [tab, setTab] = useState<Tab>('requests');
+  const [error, setError] = useState<string | null>(null);
+
+  const [statusFilter, setStatusFilter] = useState<TimeOffStatus | 'all'>('pending');
+  const [requests, setRequests] = useState<TimeOffRequest[]>([]);
+  const [balances, setBalances] = useState<EmployeeBalances[]>([]);
+  const [overlaps, setOverlaps] = useState<OverlapException[]>([]);
+  const [types, setTypes] = useState<TimeOffType[]>([]);
+
+  const [grant, setGrant] = useState({ employee_id: '', bucket: '', hours: '' });
+  const [busy, setBusy] = useState(false);
+
+  const loadRequests = async () => {
+    try {
+      setRequests(await adminListRequests(statusFilter === 'all' ? {} : { status: statusFilter }));
+    } catch (e) {
+      setError(e instanceof ApiError ? e.firstError() : 'Could not load requests.');
+    }
+  };
+
+  const loadBalances = async () => {
+    try {
+      setBalances(await adminBalances());
+    } catch (e) {
+      setError(e instanceof ApiError ? e.firstError() : 'Could not load balances.');
+    }
+  };
+
+  const loadOverlaps = async () => {
+    try {
+      setOverlaps(await fetchOverlapExceptions('open'));
+    } catch (e) {
+      setError(e instanceof ApiError ? e.firstError() : 'Could not load overlaps.');
+    }
+  };
 
   useEffect(() => {
-    fetchVacationRecords();
-    fetchVacationRequests();
+    void fetchTimeOffTypes().then((t) => {
+      setTypes(t);
+      const first = t.find((x) => x.is_balance_tracked);
+      if (first) setGrant((g) => ({ ...g, bucket: first.balance_bucket ?? first.code }));
+    });
   }, []);
 
-  const fetchVacationRecords = async () => {
+  useEffect(() => {
+    setError(null);
+    if (tab === 'requests') void loadRequests();
+    if (tab === 'balances') void loadBalances();
+    if (tab === 'overlaps') void loadOverlaps();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, statusFilter]);
+
+  const act = async (fn: () => Promise<unknown>, reload: () => Promise<void>) => {
+    setBusy(true);
+    setError(null);
     try {
-      // Use mock data for demo
-      setVacationRecords(mockVacationRecords);
-    } catch (error) {
-      console.error('Error fetching vacation records:', error);
+      await fn();
+      await reload();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.firstError() : 'Action failed.');
     } finally {
-      setLoading(false);
+      setBusy(false);
     }
   };
 
-  const fetchVacationRequests = async () => {
-    try {
-      // Fetch all vacation requests from all employees
-      const employees = ['1', '2', '3'];
-      const employeeNames = { '1': 'John Doe', '2': 'Admin User', '3': 'Jane Smith' };
-      let allRequests: VacationRequest[] = [];
-
-      employees.forEach(employeeId => {
-        const requestsKey = `vacation_requests_${employeeId}`;
-        const savedRequests = localStorage.getItem(requestsKey);
-        if (savedRequests) {
-          const requests = JSON.parse(savedRequests).map((req: VacationRequest) => ({
-            ...req,
-            employee_name: employeeNames[employeeId as keyof typeof employeeNames]
-          }));
-          allRequests = [...allRequests, ...requests];
-        }
-      });
-
-      // Sort by created date, newest first
-      allRequests.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-      setVacationRequests(allRequests);
-    } catch (error) {
-      console.error('Error fetching vacation requests:', error);
-    }
-  };
-
-  const handleApproveRequest = async (requestId: string, employeeId: string, hours: number) => {
-    try {
-      // Update request status
-      const requestsKey = `vacation_requests_${employeeId}`;
-      const savedRequests = localStorage.getItem(requestsKey);
-      if (savedRequests) {
-        const requests = JSON.parse(savedRequests);
-        const updatedRequests = requests.map((req: VacationRequest) =>
-          req.id === requestId ? { ...req, status: 'approved' } : req
-        );
-        localStorage.setItem(requestsKey, JSON.stringify(updatedRequests));
-      }
-
-      // Update used hours in vacation records
-      setVacationRecords(prev =>
-        prev.map(record =>
-          record.employee_id === employeeId
-            ? { ...record, used_hours: record.used_hours + hours }
-            : record
-        )
-      );
-
-      // Refresh requests
-      await fetchVacationRequests();
-    } catch (error) {
-      console.error('Error approving request:', error);
-    }
-  };
-
-  const handleDenyRequest = async (requestId: string, employeeId: string) => {
-    try {
-      const requestsKey = `vacation_requests_${employeeId}`;
-      const savedRequests = localStorage.getItem(requestsKey);
-      if (savedRequests) {
-        const requests = JSON.parse(savedRequests);
-        const updatedRequests = requests.map((req: VacationRequest) =>
-          req.id === requestId ? { ...req, status: 'denied' } : req
-        );
-        localStorage.setItem(requestsKey, JSON.stringify(updatedRequests));
-      }
-
-      await fetchVacationRequests();
-    } catch (error) {
-      console.error('Error denying request:', error);
-    }
-  };
-
-  const calculateHoursWorked = (entries: any[]) => {
-    let totalHours = 0;
-    let clockInTime: Date | null = null;
-    let lunchStartTime: Date | null = null;
-    let unpaidStartTime: Date | null = null;
-
-    entries.forEach((entry) => {
-      const entryTime = new Date(entry.timestamp);
-
-      switch (entry.entry_type) {
-        case 'clock_in':
-          clockInTime = entryTime;
-          break;
-        case 'clock_out':
-          if (clockInTime) {
-            const hoursWorked = (entryTime.getTime() - clockInTime.getTime()) / (1000 * 60 * 60);
-            totalHours += hoursWorked;
-            clockInTime = null;
-          }
-          break;
-        case 'lunch_out':
-          lunchStartTime = entryTime;
-          break;
-        case 'lunch_in':
-          if (lunchStartTime) {
-            const lunchHours = (entryTime.getTime() - lunchStartTime.getTime()) / (1000 * 60 * 60);
-            totalHours -= lunchHours;
-            lunchStartTime = null;
-          }
-          break;
-        case 'unpaid_out':
-          unpaidStartTime = entryTime;
-          break;
-        case 'unpaid_in':
-          if (unpaidStartTime) {
-            const unpaidHours = (entryTime.getTime() - unpaidStartTime.getTime()) / (1000 * 60 * 60);
-            totalHours -= unpaidHours;
-            unpaidStartTime = null;
-          }
-          break;
-      }
-    });
-
-    return Math.max(0, totalHours);
-  };
-
-  const startEditing = (record: VacationRecord) => {
-    setEditingId(record.employee_id);
-    setEditValues({
-      allotted_hours: record.allotted_hours,
-      used_hours: record.used_hours,
-    });
-  };
-
-  const saveChanges = async (employeeId: string) => {
-    try {
-      // In demo mode, just update local state
-      setVacationRecords(prev => 
-        prev.map(record => 
-          record.employee_id === employeeId 
-            ? { ...record, ...editValues }
-            : record
-        )
-      );
-
-      setEditingId(null);
-    } catch (error) {
-      console.error('Error saving vacation data:', error);
-    }
-  };
-
-  const cancelEditing = () => {
-    setEditingId(null);
-    setEditValues({ allotted_hours: 0, used_hours: 0 });
-  };
-
-  if (loading) {
-    return (
-      <div className="p-6">
-        <div className="animate-pulse space-y-4">
-          <div className="h-8 bg-gray-200 rounded w-1/3"></div>
-          <div className="space-y-3">
-            <div className="h-16 bg-gray-200 rounded"></div>
-            <div className="h-16 bg-gray-200 rounded"></div>
-            <div className="h-16 bg-gray-200 rounded"></div>
-          </div>
-        </div>
-      </div>
+  const submitGrant = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await act(
+      () => adminGrant({ employee_id: Number(grant.employee_id), bucket: grant.bucket, hours: Number(grant.hours), reason: 'Admin grant' }),
+      loadBalances,
     );
-  }
+    setGrant((g) => ({ ...g, employee_id: '', hours: '' }));
+  };
+
+  const balanceBuckets = types.filter((t) => t.is_balance_tracked);
 
   return (
-    <div className="p-6">
-      <div className="flex items-center space-x-3 mb-6">
-        <Calendar className="h-6 w-6 text-gray-600" />
-        <h2 className="text-2xl font-bold text-gray-900">Vacation Management</h2>
-      </div>
-
-      <div className="mb-4 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-        <p className="text-sm text-yellow-800">
-          <strong>Demo Mode:</strong> Changes are temporary and will reset on page refresh.
-        </p>
-      </div>
-
-      <div className="mb-6">
-        <nav className="flex space-x-1 bg-gray-100 p-1 rounded-lg">
+    <div className="space-y-4">
+      <div className="flex gap-2 border-b border-gray-200">
+        {(['requests', 'balances', 'overlaps'] as Tab[]).map((t) => (
           <button
-            onClick={() => setActiveTab('balances')}
-            className={`flex items-center space-x-2 px-4 py-2 rounded-md font-medium transition-colors ${
-              activeTab === 'balances'
-                ? 'bg-white text-blue-600 shadow-sm'
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
+            key={t}
+            onClick={() => setTab(t)}
+            className={`px-4 py-2 text-sm font-medium capitalize ${tab === t ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500'}`}
           >
-            <Calendar className="h-5 w-5" />
-            <span>Vacation Balances</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('requests')}
-            className={`flex items-center space-x-2 px-4 py-2 rounded-md font-medium transition-colors ${
-              activeTab === 'requests'
-                ? 'bg-white text-blue-600 shadow-sm'
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            <AlertCircle className="h-5 w-5" />
-            <span>Vacation Requests</span>
-            {vacationRequests.filter(req => req.status === 'pending').length > 0 && (
-              <span className="bg-red-500 text-white text-xs rounded-full px-2 py-1 min-w-[20px] text-center">
-                {vacationRequests.filter(req => req.status === 'pending').length}
-              </span>
+            {t}
+            {t === 'overlaps' && overlaps.length > 0 && (
+              <span className="ml-1 rounded-full bg-red-100 px-1.5 text-xs text-red-700">{overlaps.length}</span>
             )}
           </button>
-        </nav>
+        ))}
       </div>
 
-      {activeTab === 'requests' && (
-        <div className="bg-gray-50 rounded-lg p-4">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Vacation Requests</h3>
-          
-          {vacationRequests.length === 0 ? (
-            <div className="text-center py-8">
-              <Calendar className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-500">No vacation requests found.</p>
-            </div>
+      {error && <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+
+      {tab === 'requests' && (
+        <div className="space-y-3">
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as TimeOffStatus | 'all')}
+            className="rounded-lg border-gray-300 text-sm"
+          >
+            <option value="pending">Pending</option>
+            <option value="approved">Approved</option>
+            <option value="denied">Denied</option>
+            <option value="cancelled">Cancelled</option>
+            <option value="all">All</option>
+          </select>
+
+          {requests.length === 0 ? (
+            <p className="text-sm text-gray-500">No requests.</p>
           ) : (
-            <div className="space-y-4">
-              {vacationRequests.map((request) => (
-                <div key={request.id} className="bg-white rounded-lg border p-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center space-x-4">
-                        <div>
-                          <p className="font-medium text-gray-900">{request.employee_name}</p>
-                          <p className="text-sm text-gray-600">
-                            {new Date(request.start_date).toLocaleDateString()} - {new Date(request.end_date).toLocaleDateString()}
-                          </p>
-                          <p className="text-sm font-semibold text-blue-600">
-                            {request.hours} hours ({Math.ceil(request.hours / 8)} work days)
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            Requested on {new Date(request.created_at).toLocaleDateString()}
-                          </p>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs uppercase text-gray-500">
+                  <th className="p-2">Employee</th>
+                  <th className="p-2">Type</th>
+                  <th className="p-2">Dates</th>
+                  <th className="p-2">Hours</th>
+                  <th className="p-2">Status</th>
+                  <th className="p-2" />
+                </tr>
+              </thead>
+              <tbody>
+                {requests.map((r) => (
+                  <tr key={r.id} className="border-t border-gray-100">
+                    <td className="p-2">{r.employee_name}</td>
+                    <td className="p-2">{r.type.label}</td>
+                    <td className="p-2">
+                      {r.start_date}
+                      {r.end_date !== r.start_date ? ` – ${r.end_date}` : ''}
+                    </td>
+                    <td className="p-2">{r.approved_hours ?? r.requested_hours}h</td>
+                    <td className="p-2">
+                      <span className={`rounded-full px-2 py-1 text-xs font-medium ${TIME_OFF_STATUS_STYLE[r.status]}`}>{r.status}</span>
+                    </td>
+                    <td className="p-2 text-right">
+                      {r.status === 'pending' && (
+                        <div className="flex justify-end gap-2">
+                          <button
+                            disabled={busy}
+                            onClick={() => act(() => adminApprove(r.id), loadRequests)}
+                            className="rounded bg-green-600 px-2 py-1 text-xs text-white hover:bg-green-700"
+                          >
+                            Approve
+                          </button>
+                          <button
+                            disabled={busy}
+                            onClick={() => act(() => adminDeny(r.id, 'Denied'), loadRequests)}
+                            className="rounded bg-red-600 px-2 py-1 text-xs text-white hover:bg-red-700"
+                          >
+                            Deny
+                          </button>
                         </div>
-                        <div>
-                          <span className={`inline-flex px-3 py-1 text-sm font-medium rounded-full ${
-                            request.status === 'approved' ? 'bg-green-100 text-green-800' :
-                            request.status === 'denied' ? 'bg-red-100 text-red-800' :
-                            'bg-yellow-100 text-yellow-800'
-                          }`}>
-                            {request.status.charAt(0).toUpperCase() + request.status.slice(1)}
-                          </span>
-                        </div>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+
+      {tab === 'balances' && (
+        <div className="space-y-4">
+          <form onSubmit={submitGrant} className="flex flex-wrap items-end gap-2 rounded-lg border border-gray-200 bg-gray-50 p-3">
+            <label className="text-sm">
+              <span className="mb-1 block text-xs font-medium text-gray-700">Employee ID</span>
+              <input value={grant.employee_id} onChange={(e) => setGrant({ ...grant, employee_id: e.target.value })} type="number" className="w-28 rounded border-gray-300" required />
+            </label>
+            <label className="text-sm">
+              <span className="mb-1 block text-xs font-medium text-gray-700">Bucket</span>
+              <select value={grant.bucket} onChange={(e) => setGrant({ ...grant, bucket: e.target.value })} className="rounded border-gray-300">
+                {balanceBuckets.map((t) => (
+                  <option key={t.code} value={t.balance_bucket ?? t.code}>
+                    {t.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-sm">
+              <span className="mb-1 block text-xs font-medium text-gray-700">Hours</span>
+              <input value={grant.hours} onChange={(e) => setGrant({ ...grant, hours: e.target.value })} type="number" step="0.25" min="0.25" className="w-24 rounded border-gray-300" required />
+            </label>
+            <button disabled={busy} className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
+              Grant
+            </button>
+          </form>
+
+          {balances.length === 0 ? (
+            <p className="text-sm text-gray-500">No balances yet. Grant hours above to get started.</p>
+          ) : (
+            <div className="space-y-3">
+              {balances.map((row) => (
+                <div key={row.employee.id} className="rounded-lg border border-gray-200 p-3">
+                  <div className="mb-2 font-medium text-gray-900">{row.employee.name}</div>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                    {row.balances.map((b) => (
+                      <div key={b.bucket} className="text-sm">
+                        <span className="text-gray-500">{b.type_label}: </span>
+                        <span className="font-semibold">{b.available}h</span>
+                        <span className="text-xs text-gray-400"> ({b.used}h used)</span>
                       </div>
-                    </div>
-                    
-                    {request.status === 'pending' && (
-                      <div className="flex items-center space-x-2 ml-4">
-                        <button
-                          onClick={() => handleApproveRequest(request.id, request.employee_id, request.hours)}
-                          className="flex items-center space-x-1 bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700 transition-colors"
-                        >
-                          <Check className="h-4 w-4" />
-                          <span>Approve</span>
-                        </button>
-                        <button
-                          onClick={() => handleDenyRequest(request.id, request.employee_id)}
-                          className="flex items-center space-x-1 bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700 transition-colors"
-                        >
-                          <X className="h-4 w-4" />
-                          <span>Deny</span>
-                        </button>
-                      </div>
-                    )}
+                    ))}
                   </div>
                 </div>
               ))}
@@ -352,113 +237,44 @@ const VacationManagement: React.FC = () => {
         </div>
       )}
 
-      {activeTab === 'balances' && (
-      <div className="bg-gray-50 rounded-lg p-4">
-        <div className="overflow-x-auto">
-          <table className="min-w-full">
-            <thead>
-              <tr className="border-b border-gray-200">
-                <th className="text-left py-3 px-4 font-medium text-gray-900">Employee</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-900">Allotted Hours</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-900">Accrued Hours</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-900">Used Hours</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-900">Available</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-900">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {vacationRecords.map((record) => {
-                const available = record.accrued_hours - record.used_hours;
-                const isEditing = editingId === record.employee_id;
-
-                return (
-                  <tr key={record.employee_id} className="border-b border-gray-100 hover:bg-white">
-                    <td className="py-3 px-4 font-medium text-gray-900">{record.employee_name}</td>
-                    <td className="py-3 px-4">
-                      {isEditing ? (
-                        <input
-                          type="number"
-                          value={editValues.allotted_hours}
-                          onChange={(e) => setEditValues(prev => ({ 
-                            ...prev, 
-                            allotted_hours: Number(e.target.value) 
-                          }))}
-                          className="w-20 px-2 py-1 border border-gray-300 rounded text-sm"
-                          min="0"
-                        />
-                      ) : (
-                        <span className="text-gray-600">{record.allotted_hours}</span>
-                      )}
-                    </td>
-                    <td className="py-3 px-4 text-blue-600 font-semibold">
-                      {record.accrued_hours.toFixed(1)}
-                    </td>
-                    <td className="py-3 px-4">
-                      {isEditing ? (
-                        <input
-                          type="number"
-                          value={editValues.used_hours}
-                          onChange={(e) => setEditValues(prev => ({ 
-                            ...prev, 
-                            used_hours: Number(e.target.value) 
-                          }))}
-                          className="w-20 px-2 py-1 border border-gray-300 rounded text-sm"
-                          min="0"
-                          step="0.5"
-                        />
-                      ) : (
-                        <span className="text-red-600">{record.used_hours}</span>
-                      )}
-                    </td>
-                    <td className="py-3 px-4">
-                      <span
-                        className={`font-semibold ${
-                          available > 0 ? 'text-green-600' : 'text-gray-600'
-                        }`}
-                      >
-                        {available.toFixed(1)}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4">
-                      {isEditing ? (
-                        <div className="flex items-center space-x-2">
-                          <button
-                            onClick={() => saveChanges(record.employee_id)}
-                            className="p-1 text-green-600 hover:bg-green-50 rounded"
-                          >
-                            <Save className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={cancelEditing}
-                            className="p-1 text-gray-600 hover:bg-gray-50 rounded"
-                          >
-                            <X className="h-4 w-4" />
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          onClick={() => startEditing(record)}
-                          className="p-1 text-blue-600 hover:bg-blue-50 rounded"
-                        >
-                          <Edit className="h-4 w-4" />
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+      {tab === 'overlaps' && (
+        <div className="space-y-3">
+          {overlaps.length === 0 ? (
+            <p className="text-sm text-gray-500">No open overlap exceptions.</p>
+          ) : (
+            <ul className="divide-y divide-gray-100 rounded-lg border border-gray-200">
+              {overlaps.map((o) => (
+                <li key={o.id} className="flex items-center justify-between p-3">
+                  <div className="text-sm">
+                    <div className="font-medium text-gray-900">
+                      {o.employee.name} worked on {o.date}
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      {o.pto_hours}h {o.type} approved · {o.worked_hours}h worked
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      disabled={busy}
+                      onClick={() => act(() => resolveOverlap(o.id, 'kept_pto'), loadOverlaps)}
+                      className="rounded border border-gray-300 px-2 py-1 text-xs"
+                    >
+                      Keep PTO
+                    </button>
+                    <button
+                      disabled={busy}
+                      onClick={() => act(() => resolveOverlap(o.id, 'cancelled_pto'), loadOverlaps)}
+                      className="rounded bg-red-600 px-2 py-1 text-xs text-white hover:bg-red-700"
+                    >
+                      Cancel PTO
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
-      </div>
       )}
-
-      <div className="mt-4 text-sm text-gray-500 space-y-1">
-        <p>• Vacation accrues at 1 hour per 26 hours worked</p>
-        <p>• Allotted hours represent the annual vacation allowance</p>
-        <p>• Used hours can be manually adjusted for vacation requests</p>
-        <p>• Approved vacation requests automatically update used hours</p>
-      </div>
     </div>
   );
 };
