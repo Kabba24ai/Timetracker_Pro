@@ -1,32 +1,53 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase';
+import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { api, ApiError, AUTH_ERROR_EVENT } from '../lib/api';
+import { ClockState } from '../lib/timeclock';
 
-interface User {
-  id: string;
-  email: string;
+// Employee = the kabba2 V2 EmployeeResource. Typed loosely (index signature) so
+// screens can read the fields they need without us mirroring every column.
+export interface Employee {
+  id: number;
+  user_id?: number;
+  unique_id?: string;
+  employee_code?: string;
+  first_name: string;
+  last_name?: string;
+  email?: string;
+  role?: string;
+  roles?: string[];
+  shift_start_time?: string | null;
+  shift_end_time?: string | null;
+  store?: Record<string, unknown> | null;
+  [key: string]: unknown;
 }
 
-interface Employee {
-  id: string;
-  user_id: string;
-  first_name: string;
-  last_name: string;
-  email: string;
-  role: 'employee' | 'admin';
-  created_at: string;
+export interface AuthUser {
+  id: number;
+  full_name: string;
+  email?: string;
+  status?: string;
 }
 
 interface AuthContextType {
-  user: User | null;
+  user: AuthUser | null;
   employee: Employee | null;
+  roles: string[];
+  isAdmin: boolean;
   loading: boolean;
-  signIn: (email: string, password: string) => Promise<void>;
+  /** The authoritative clock state from the last login / session restore (seed for the clock UI). */
+  initialClockState: ClockState | null;
+  /** Log in with a user id + 6-digit employee code (the kabba2 V2 model). */
+  signIn: (userId: number, employeeCode: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
+const USER_KEY = 'tt_user';
+const EMP_KEY = 'tt_employee';
+const ROLES_KEY = 'tt_roles';
+const ADMIN_ROLE = 'master_admin';
+
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
 
-export const useAuth = () => {
+export const useAuth = (): AuthContextType => {
   const context = useContext(AuthContext);
   if (!context) {
     throw new Error('useAuth must be used within an AuthProvider');
@@ -34,127 +55,142 @@ export const useAuth = () => {
   return context;
 };
 
+function readJson<T>(key: string): T | null {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : null;
+  } catch {
+    return null;
+  }
+}
+
+interface LoginResponse {
+  user: AuthUser & { token?: string };
+  employee: Employee;
+  roles?: string[];
+  clock_state?: ClockState;
+  message?: string;
+}
+
+interface MeResponse {
+  employee: Employee;
+  roles?: string[];
+  clock_state?: ClockState;
+}
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [employee, setEmployee] = useState<Employee | null>(null);
-  const [loading, setLoading] = useState(true);
+  // Restore the session synchronously from localStorage so a reload keeps the
+  // user signed in without a flash; /auth/me then validates the token and
+  // refreshes employee/roles/clock_state (a stale token surfaces as a 401,
+  // which fires AUTH_ERROR_EVENT and clears the session).
+  const [user, setUser] = useState<AuthUser | null>(() => readJson<AuthUser>(USER_KEY));
+  const [employee, setEmployee] = useState<Employee | null>(() => readJson<Employee>(EMP_KEY));
+  const [roles, setRoles] = useState<string[]>(() => readJson<string[]>(ROLES_KEY) ?? []);
+  const [initialClockState, setInitialClockState] = useState<ClockState | null>(null);
+  // Only block the UI on startup if there is a token to validate.
+  const [loading, setLoading] = useState<boolean>(() => !!api.getToken());
 
-  useEffect(() => {
-    const initAuth = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-
-        if (session?.user) {
-          const { data: employee } = await supabase
-            .from('employees')
-            .select('*')
-            .eq('user_id', session.user.id)
-            .maybeSingle();
-
-          if (employee) {
-            setUser({ id: session.user.id, email: session.user.email || '' });
-            setEmployee({
-              id: employee.id,
-              user_id: employee.user_id,
-              first_name: employee.first_name,
-              last_name: employee.last_name,
-              email: employee.email,
-              role: employee.role,
-              created_at: employee.created_at
-            });
-          }
-        }
-      } catch (error) {
-        console.error('Auth error:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    initAuth();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      (async () => {
-        if (session?.user) {
-          const { data: employee } = await supabase
-            .from('employees')
-            .select('*')
-            .eq('user_id', session.user.id)
-            .maybeSingle();
-
-          if (employee) {
-            setUser({ id: session.user.id, email: session.user.email || '' });
-            setEmployee({
-              id: employee.id,
-              user_id: employee.user_id,
-              first_name: employee.first_name,
-              last_name: employee.last_name,
-              email: employee.email,
-              role: employee.role,
-              created_at: employee.created_at
-            });
-          }
-        } else {
-          setUser(null);
-          setEmployee(null);
-        }
-      })();
-    });
-
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, []);
-
-  const signIn = async (email: string, password: string) => {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    if (error) {
-      throw new Error(error.message);
-    }
-
-    if (!data.user) {
-      throw new Error('Invalid email or password');
-    }
-
-    const { data: employee, error: employeeError } = await supabase
-      .from('employees')
-      .select('*')
-      .eq('user_id', data.user.id)
-      .maybeSingle();
-
-    if (employeeError) {
-      console.error('Employee query error:', employeeError);
-      throw new Error(`Employee record not found: ${employeeError.message}`);
-    }
-
-    if (!employee) {
-      throw new Error('Employee record not found');
-    }
-
-    setUser({ id: data.user.id, email: data.user.email || '' });
-    setEmployee({
-      id: employee.id,
-      user_id: employee.user_id,
-      first_name: employee.first_name,
-      last_name: employee.last_name,
-      email: employee.email,
-      role: employee.role,
-      created_at: employee.created_at
-    });
-  };
-
-  const signOut = async () => {
-    await supabase.auth.signOut();
+  const clearSession = useCallback(() => {
+    api.setToken(null);
+    localStorage.removeItem(USER_KEY);
+    localStorage.removeItem(EMP_KEY);
+    localStorage.removeItem(ROLES_KEY);
     setUser(null);
     setEmployee(null);
-  };
+    setRoles([]);
+    setInitialClockState(null);
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    const onUnauthorized = () => clearSession();
+    window.addEventListener(AUTH_ERROR_EVENT, onUnauthorized);
+
+    // Session restore: with a token present, confirm it and refresh the session
+    // from the server (source of truth). Without one, there is nothing to do.
+    if (api.getToken()) {
+      api
+        .get<unknown>('/auth/me')
+        .then((res) => {
+          if (!active) return;
+          const me = res as unknown as MeResponse;
+          if (me.employee) {
+            setEmployee(me.employee);
+            localStorage.setItem(EMP_KEY, JSON.stringify(me.employee));
+          }
+          const nextRoles = me.roles ?? me.employee?.roles ?? [];
+          setRoles(nextRoles);
+          localStorage.setItem(ROLES_KEY, JSON.stringify(nextRoles));
+          if (me.clock_state) setInitialClockState(me.clock_state);
+        })
+        .catch(() => {
+          // A 401 already cleared the session via AUTH_ERROR_EVENT; other errors
+          // (e.g. offline) keep the restored localStorage session in place.
+        })
+        .finally(() => {
+          if (active) setLoading(false);
+        });
+    } else {
+      setLoading(false);
+    }
+
+    return () => {
+      active = false;
+      window.removeEventListener(AUTH_ERROR_EVENT, onUnauthorized);
+    };
+    // Run once on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const signIn = useCallback(async (userId: number, employeeCode: string) => {
+    const res = (await api.post<unknown>('/auth/login', {
+      user_id: userId,
+      employee_code: employeeCode,
+    })) as unknown as LoginResponse;
+
+    const token = res.user?.token;
+    if (!token) {
+      throw new ApiError(res.message || 'Login failed. Please try again.', 401);
+    }
+    api.setToken(token);
+
+    const nextUser: AuthUser = {
+      id: res.user.id,
+      full_name: res.user.full_name,
+      email: res.user.email,
+      status: res.user.status,
+    };
+    const nextEmployee = res.employee;
+    const nextRoles = res.roles ?? nextEmployee?.roles ?? [];
+
+    localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
+    localStorage.setItem(EMP_KEY, JSON.stringify(nextEmployee));
+    localStorage.setItem(ROLES_KEY, JSON.stringify(nextRoles));
+
+    setUser(nextUser);
+    setEmployee(nextEmployee);
+    setRoles(nextRoles);
+    setInitialClockState(res.clock_state ?? null);
+  }, []);
+
+  const signOut = useCallback(async () => {
+    // Revoke the token server-side (proper logout), then clear locally regardless
+    // of the network result so the user is always signed out on this device.
+    try {
+      if (api.getToken()) await api.post('/auth/logout');
+    } catch {
+      // Ignore — we clear the local session either way.
+    }
+    clearSession();
+  }, [clearSession]);
+
+  const isAdmin = roles.includes(ADMIN_ROLE);
 
   return (
-    <AuthContext.Provider value={{ user, employee, loading, signIn, signOut }}>
+    <AuthContext.Provider
+      value={{ user, employee, roles, isAdmin, loading, initialClockState, signIn, signOut }}
+    >
       {children}
     </AuthContext.Provider>
   );

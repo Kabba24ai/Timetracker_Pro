@@ -9,18 +9,20 @@ interface ProtectedRouteProps {
 }
 
 const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, adminOnly = false }) => {
-  const { user, employee, loading } = useAuth();
+  const { user, loading, isAdmin } = useAuth();
 
   if (loading) {
     return <LoadingSpinner />;
   }
 
-  if (!user || !employee) {
-    return <Navigate to="/login" />;
+  if (!user) {
+    return <Navigate to="/login" replace />;
   }
 
-  if (adminOnly && employee.role !== 'admin') {
-    return <Navigate to="/" />;
+  // Client-side gate only — the API enforces the real boundary (routes are
+  // token-protected, and admin actions require the master_admin role server-side).
+  if (adminOnly && !isAdmin) {
+    return <Navigate to="/" replace />;
   }
 
   return <>{children}</>;

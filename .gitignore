@@ -101,3 +101,5 @@ pids
 .branches
 .temp
 .vercel
+
+vite.config.ts.timestamp-*

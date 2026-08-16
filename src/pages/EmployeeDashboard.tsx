@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Award } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { useTimeClock } from '../contexts/TimeClockContext';
 import TimeClockCard from '../components/TimeClockCard';
 import TodayTimeEntries from '../components/TodayTimeEntries';
 import VacationSummary from '../components/VacationSummary';
@@ -10,7 +9,6 @@ import Header from '../components/Header';
 
 const EmployeeDashboard: React.FC = () => {
   const { employee } = useAuth();
-  const { refreshEntries } = useTimeClock();
   const [currentTime, setCurrentTime] = useState(new Date());
   const [activeTab, setActiveTab] = useState<'overview' | 'attendance'>('overview');
 
@@ -20,10 +18,6 @@ const EmployeeDashboard: React.FC = () => {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, []);
-
-  useEffect(() => {
-    refreshEntries();
   }, []);
 
   const formatTime = (date: Date) => {

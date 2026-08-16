@@ -4,14 +4,11 @@ import { Clock, LogOut, Shield } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 const Header: React.FC = () => {
-  const { employee, signOut } = useAuth();
+  const { employee, isAdmin, signOut } = useAuth();
 
-  const handleSignOut = async () => {
-    try {
-      await signOut();
-    } catch (error) {
-      console.error('Error signing out:', error);
-    }
+  const handleSignOut = () => {
+    // signOut revokes the token server-side then clears the local session.
+    void signOut();
   };
 
   return (
@@ -29,7 +26,7 @@ const Header: React.FC = () => {
           </div>
 
           <div className="flex items-center space-x-4">
-            {employee?.role === 'admin' && (
+            {isAdmin && (
               <Link
                 to="/admin"
                 className="flex items-center space-x-2 px-3 py-2 text-sm text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
