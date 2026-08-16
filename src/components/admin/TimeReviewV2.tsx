@@ -32,15 +32,29 @@ const CORRECTION_BADGE: Record<string, string> = {
   insert: 'bg-green-100 text-green-700',
 };
 
-const TimeReviewV2: React.FC = () => {
+interface TimeReviewProps {
+  // Drill-down seed from the pay-period grid (employee + period range).
+  initialUserId?: number | null;
+  initialFrom?: string;
+  initialTo?: string;
+}
+
+const TimeReviewV2: React.FC<TimeReviewProps> = ({ initialUserId, initialFrom, initialTo }) => {
   // The canonical tenant TimeTracker timezone drives ALL wall-clock handling.
   const { timezone } = useAuth();
   const tz = timezone ?? 'UTC';
 
   const [employees, setEmployees] = useState<AdminEmployee[]>([]);
-  const [userId, setUserId] = useState<number | null>(null);
-  const [from, setFrom] = useState<string>(() => tenantToday(tz, 14));
-  const [to, setTo] = useState<string>(() => tenantToday(tz, 0));
+  const [userId, setUserId] = useState<number | null>(initialUserId ?? null);
+  const [from, setFrom] = useState<string>(() => initialFrom ?? tenantToday(tz, 14));
+  const [to, setTo] = useState<string>(() => initialTo ?? tenantToday(tz, 0));
+
+  // When a new drill-down target arrives, retarget this screen (auto-loads).
+  useEffect(() => {
+    if (initialUserId != null) setUserId(initialUserId);
+    if (initialFrom) setFrom(initialFrom);
+    if (initialTo) setTo(initialTo);
+  }, [initialUserId, initialFrom, initialTo]);
 
   const [shifts, setShifts] = useState<ClockShift[]>([]);
   const [events, setEvents] = useState<ClockEventRow[]>([]);

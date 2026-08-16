@@ -170,6 +170,109 @@ export function downloadCsv(filename: string, csv: string): void {
   URL.revokeObjectURL(url);
 }
 
+// ── Cross-employee pay-period summary (Phase 3B) ──────────────────────────
+
+export interface PayPeriodRow {
+  employee: { id: number; full_name: string };
+  worked_seconds: number;
+  worked_hours: number;
+  shift_count: number;
+  open_shift_count: number;
+  has_open_shift: boolean;
+  lunch_seconds: number;
+  other_break_seconds: number;
+  correction_count: number;
+  system_event_count: number;
+  auto_clock_out_count: number;
+  mandatory_lunch_count: number;
+  flags: string[];
+}
+
+export interface PayPeriodTotals {
+  employees: number;
+  employees_with_activity: number;
+  worked_seconds: number;
+  worked_hours: number;
+  shift_count: number;
+  lunch_seconds: number;
+  other_break_seconds: number;
+  open_shift_count: number;
+  correction_count: number;
+  system_event_count: number;
+}
+
+export interface PayPeriodSummary {
+  period: { from: string; to: string; timezone: string; label: string | null };
+  totals: PayPeriodTotals;
+  data: PayPeriodRow[];
+}
+
+export interface PayPeriodParams {
+  period?: 'current' | 'previous';
+  from?: string;
+  to?: string;
+  sort?: 'name' | 'worked_desc';
+  flagged?: boolean;
+  store_id?: number;
+}
+
+/** The authoritative cross-employee summary (server computes all totals). */
+export async function fetchPayPeriodSummary(params: PayPeriodParams): Promise<PayPeriodSummary> {
+  const qs = new URLSearchParams();
+  if (params.from) qs.set('from', params.from);
+  if (params.to) qs.set('to', params.to);
+  if (!params.from && !params.to && params.period) qs.set('period', params.period);
+  if (params.sort && params.sort !== 'name') qs.set('sort', params.sort);
+  if (params.flagged) qs.set('flagged', '1');
+  if (params.store_id) qs.set('store_id', String(params.store_id));
+  const suffix = qs.toString() ? `?${qs.toString()}` : '';
+
+  const res = (await api.get<PayPeriodRow[]>(`/admin/pay-periods/summary${suffix}`)) as ApiEnvelope<
+    PayPeriodRow[]
+  > & { period: PayPeriodSummary['period']; totals: PayPeriodTotals };
+
+  return { period: res.period, totals: res.totals, data: res.data ?? [] };
+}
+
+const FLAG_LABEL: Record<string, string> = {
+  open_shift: 'Open shift',
+  has_corrections: 'Corrected',
+  auto_clock_out: 'Auto clock-out',
+  mandatory_lunch: 'Auto lunch',
+  no_activity: 'No activity',
+};
+
+export function flagLabel(flag: string): string {
+  return FLAG_LABEL[flag] ?? flag;
+}
+
+/** CSV of the same authoritative rows shown in the grid. */
+export function payPeriodToCsv(summary: PayPeriodSummary): string {
+  const header = [
+    'Employee',
+    'Worked (h)',
+    'Shifts',
+    'Open shifts',
+    'Lunch (min)',
+    'Other break (min)',
+    'Corrections',
+    'System events',
+    'Flags',
+  ];
+  const rows = summary.data.map((r) => [
+    r.employee.full_name,
+    (r.worked_seconds / 3600).toFixed(2),
+    r.shift_count,
+    r.open_shift_count,
+    Math.round(r.lunch_seconds / 60),
+    Math.round(r.other_break_seconds / 60),
+    r.correction_count,
+    r.system_event_count,
+    r.flags.map(flagLabel).join('; '),
+  ]);
+  return [header, ...rows].map((r) => r.map(csvCell).join(',')).join('\n');
+}
+
 // Re-export the (tz-agnostic) duration formatter; wall-clock formatting comes
 // from ./tz and is always tenant-timezone based.
 export { formatDuration };
