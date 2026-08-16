@@ -6,7 +6,7 @@ import PayPeriodSummaryGrid from '../components/admin/PayPeriodSummary';
 import TimeReviewV2 from '../components/admin/TimeReviewV2';
 import VacationManagement from '../components/admin/VacationManagement';
 import SystemSettings from '../components/admin/SystemSettings';
-import WorkSchedule from '../components/admin/WorkSchedule';
+import WorkScheduleV2 from '../components/admin/WorkScheduleV2';
 import AttendanceTracking from '../components/admin/AttendanceTracking';
 
 interface DrillDown {
@@ -55,7 +55,7 @@ const AdminDashboard: React.FC = () => {
       case 'attendance':
         return <AttendanceTracking />;
       case 'work-schedule':
-        return <WorkSchedule />;
+        return <WorkScheduleV2 />;
       case 'vacation':
         return <VacationManagement />;
       case 'settings':
