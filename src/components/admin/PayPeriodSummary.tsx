@@ -33,7 +33,7 @@ const PayPeriodSummaryGrid: React.FC<Props> = ({ onDrillDown }) => {
   const [mode, setMode] = useState<Mode>('current');
   const [from, setFrom] = useState<string>(() => tenantToday(tz, 13));
   const [to, setTo] = useState<string>(() => tenantToday(tz, 0));
-  const [sort, setSort] = useState<'name' | 'worked_desc'>('name');
+  const [sort, setSort] = useState<'name' | 'paid_desc'>('name');
   const [flagged, setFlagged] = useState(false);
 
   const [summary, setSummary] = useState<Summary | null>(null);
@@ -115,10 +115,10 @@ const PayPeriodSummaryGrid: React.FC<Props> = ({ onDrillDown }) => {
             Exceptions only
           </label>
           <button
-            onClick={() => setSort((s) => (s === 'name' ? 'worked_desc' : 'name'))}
+            onClick={() => setSort((s) => (s === 'name' ? 'paid_desc' : 'name'))}
             className="px-3 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50 transition-colors"
           >
-            Sort: {sort === 'name' ? 'Name' : 'Worked ↓'}
+            Sort: {sort === 'name' ? 'Name' : 'Paid ↓'}
           </button>
           <button
             onClick={load}
@@ -151,41 +151,56 @@ const PayPeriodSummaryGrid: React.FC<Props> = ({ onDrillDown }) => {
         </div>
       )}
 
-      {/* Totals */}
+      {/* Summary cards — Paid is primary; Unpaid its own aggregate. */}
       {totals && (
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 mb-6">
-          <Total label="Total worked" value={formatDuration(totals.worked_seconds)} accent="text-blue-600" />
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mb-4">
+          <Total
+            label="Paid Hours"
+            value={formatDuration(totals.paid_seconds)}
+            accent="text-blue-700"
+            emphasize
+          />
+          <Total label="Unpaid Hours" value={formatDuration(totals.unpaid_seconds)} accent="text-orange-600" />
           <Total label="Employees" value={`${totals.employees_with_activity}/${totals.employees}`} sub="active/total" />
           <Total label="Shifts" value={String(totals.shift_count)} />
           <Total label="Corrections" value={String(totals.correction_count)} />
-          <Total label="System events" value={String(totals.system_event_count)} />
+          <Total label="System Events" value={String(totals.system_event_count)} />
         </div>
       )}
+
+      {/* Payroll formula — true because "Worked" is gross elapsed time. */}
+      <p className="text-xs text-gray-500 mb-4">
+        <span className="font-medium text-gray-600">Paid Hours</span> = Worked Hours −
+        (Lunch + Other Unpaid Hours). Pay the <span className="text-blue-700 font-medium">Paid Hours</span> column,
+        not Worked.
+      </p>
 
       {/* Grid */}
       <div className="overflow-x-auto border rounded-lg">
         <table className="min-w-full text-sm">
           <thead className="bg-gray-50 text-gray-600">
             <tr>
-              <th className="text-left px-4 py-2 font-medium">Employee</th>
-              <th className="text-right px-4 py-2 font-medium">Worked</th>
-              <th className="text-right px-4 py-2 font-medium">Shifts</th>
-              <th className="text-right px-4 py-2 font-medium">Lunch</th>
-              <th className="text-right px-4 py-2 font-medium">Other</th>
-              <th className="text-left px-4 py-2 font-medium">Flags</th>
+              <Th align="left">Employee</Th>
+              <Th sub="Calculated">Paid Hours</Th>
+              <Th sub="Total">Unpaid Hours</Th>
+              <Th sub="Total">Worked</Th>
+              <Th sub="Unpaid">Lunch</Th>
+              <Th sub="Unpaid">Other</Th>
+              <Th>Shifts</Th>
+              <Th align="left">Flags</Th>
               <th className="px-2" />
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {loading && !summary ? (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-gray-400">
+                <td colSpan={9} className="px-4 py-8 text-center text-gray-400">
                   Loading…
                 </td>
               </tr>
             ) : summary && summary.data.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-gray-400">
+                <td colSpan={9} className="px-4 py-8 text-center text-gray-400">
                   No employees match this view.
                 </td>
               </tr>
@@ -198,14 +213,29 @@ const PayPeriodSummaryGrid: React.FC<Props> = ({ onDrillDown }) => {
                   title="Open this employee's Time Review for the period"
                 >
                   <td className="px-4 py-2 font-medium text-gray-900">{r.employee.full_name}</td>
-                  <td className="px-4 py-2 text-right font-mono text-gray-900">
-                    {formatDuration(r.worked_seconds)}
+                  {/* Paid — the primary pay number. */}
+                  <td className="px-4 py-2 text-right font-mono font-semibold text-blue-700">
+                    {formatDuration(r.paid_seconds)}
+                    {r.has_open_shift && (
+                      <span
+                        className="ml-1 text-amber-500 font-sans"
+                        title="Includes an open shift — not final until clock-out"
+                      >
+                        *
+                      </span>
+                    )}
                   </td>
-                  <td className="px-4 py-2 text-right">{r.shift_count}</td>
-                  <td className="px-4 py-2 text-right font-mono text-gray-600">{formatDuration(r.lunch_seconds)}</td>
-                  <td className="px-4 py-2 text-right font-mono text-gray-600">
+                  {/* Unpaid — attention treatment. */}
+                  <td className="px-4 py-2 text-right font-mono text-orange-600">
+                    {formatDuration(r.unpaid_seconds)}
+                  </td>
+                  {/* Worked (gross elapsed) — neutral. */}
+                  <td className="px-4 py-2 text-right font-mono text-gray-500">{formatDuration(r.gross_seconds)}</td>
+                  <td className="px-4 py-2 text-right font-mono text-gray-500">{formatDuration(r.lunch_seconds)}</td>
+                  <td className="px-4 py-2 text-right font-mono text-gray-500">
                     {formatDuration(r.other_break_seconds)}
                   </td>
+                  <td className="px-4 py-2 text-right text-gray-700">{r.shift_count}</td>
                   <td className="px-4 py-2">
                     <div className="flex flex-wrap gap-1">
                       {r.flags.map((f) => (
@@ -228,15 +258,27 @@ const PayPeriodSummaryGrid: React.FC<Props> = ({ onDrillDown }) => {
   );
 };
 
-const Total: React.FC<{ label: string; value: string; sub?: string; accent?: string }> = ({
-  label,
-  value,
+const Th: React.FC<{ children: React.ReactNode; sub?: string; align?: 'left' | 'right' }> = ({
+  children,
   sub,
-  accent,
+  align = 'right',
 }) => (
-  <div className="bg-gray-50 border rounded-lg p-4">
+  <th className={`${align === 'left' ? 'text-left' : 'text-right'} px-4 py-2 font-medium align-bottom`}>
+    <span>{children}</span>
+    {sub && <span className="block text-[10px] font-normal text-gray-400">({sub})</span>}
+  </th>
+);
+
+const Total: React.FC<{
+  label: string;
+  value: string;
+  sub?: string;
+  accent?: string;
+  emphasize?: boolean;
+}> = ({ label, value, sub, accent, emphasize }) => (
+  <div className={`rounded-lg p-4 border ${emphasize ? 'bg-blue-50 border-blue-200' : 'bg-gray-50'}`}>
     <p className="text-xs text-gray-500">{label}</p>
-    <p className={`text-2xl font-semibold ${accent ?? 'text-gray-900'}`}>{value}</p>
+    <p className={`${emphasize ? 'text-2xl' : 'text-xl'} font-semibold ${accent ?? 'text-gray-900'}`}>{value}</p>
     {sub && <p className="text-xs text-gray-400 mt-0.5">{sub}</p>}
   </div>
 );

@@ -5,27 +5,35 @@ const server = vi.hoisted(() => ({ calls: [] as string[], token: 'tok' as string
 
 const PERIOD = { from: '2026-09-01', to: '2026-09-14', timezone: 'America/Chicago', label: 'Sep 1 – Sep 14, 2026' };
 const TOTALS = {
-  employees: 2,
-  employees_with_activity: 1,
-  worked_seconds: 27000,
-  worked_hours: 7.5,
-  shift_count: 1,
+  employees: 3,
+  employees_with_activity: 2,
+  paid_seconds: 27000,
+  paid_hours: 7.5,
+  unpaid_seconds: 1800,
+  unpaid_hours: 0.5,
+  gross_seconds: 28800,
+  gross_hours: 8.0,
+  shift_count: 2,
   lunch_seconds: 1800,
   other_break_seconds: 0,
-  open_shift_count: 0,
+  open_shift_count: 1,
   correction_count: 1,
   system_event_count: 2,
 };
 const ROWS = [
   {
     employee: { id: 1, full_name: 'Ada Clockwell' },
-    worked_seconds: 27000,
-    worked_hours: 7.5,
+    paid_seconds: 27000,
+    paid_hours: 7.5,
+    unpaid_seconds: 1800,
+    unpaid_hours: 0.5,
+    gross_seconds: 28800,
+    gross_hours: 8.0,
+    lunch_seconds: 1800,
+    other_break_seconds: 0,
     shift_count: 1,
     open_shift_count: 0,
     has_open_shift: false,
-    lunch_seconds: 1800,
-    other_break_seconds: 0,
     correction_count: 1,
     system_event_count: 2,
     auto_clock_out_count: 1,
@@ -34,18 +42,41 @@ const ROWS = [
   },
   {
     employee: { id: 2, full_name: 'Bo Vance' },
-    worked_seconds: 0,
-    worked_hours: 0,
+    paid_seconds: 0,
+    paid_hours: 0,
+    unpaid_seconds: 0,
+    unpaid_hours: 0,
+    gross_seconds: 0,
+    gross_hours: 0,
+    lunch_seconds: 0,
+    other_break_seconds: 0,
     shift_count: 0,
     open_shift_count: 0,
     has_open_shift: false,
-    lunch_seconds: 0,
-    other_break_seconds: 0,
     correction_count: 0,
     system_event_count: 0,
     auto_clock_out_count: 0,
     mandatory_lunch_count: 0,
     flags: ['no_activity'],
+  },
+  {
+    employee: { id: 3, full_name: 'Cy Open' },
+    paid_seconds: 0,
+    paid_hours: 0,
+    unpaid_seconds: 0,
+    unpaid_hours: 0,
+    gross_seconds: 0,
+    gross_hours: 0,
+    lunch_seconds: 0,
+    other_break_seconds: 0,
+    shift_count: 1,
+    open_shift_count: 1,
+    has_open_shift: true,
+    correction_count: 0,
+    system_event_count: 0,
+    auto_clock_out_count: 0,
+    mandatory_lunch_count: 0,
+    flags: ['open_shift'],
   },
 ];
 
@@ -102,32 +133,66 @@ describe('pay-period API params', () => {
     expect(call).toContain('to=2026-09-14');
     expect(call).not.toContain('period=');
   });
+
+  it('sends sort=paid_desc when sorting by pay', async () => {
+    await fetchPayPeriodSummary({ period: 'current', sort: 'paid_desc' });
+    expect(server.calls.some((c) => c.includes('sort=paid_desc'))).toBe(true);
+  });
 });
 
 describe('payPeriodToCsv()', () => {
-  it('emits a header + one row per employee with readable flags', () => {
+  it('orders columns payroll-first: Paid, Unpaid, Worked', () => {
     const summary: PayPeriodSummary = { period: PERIOD, totals: TOTALS, data: ROWS };
     const lines = payPeriodToCsv(summary).split('\n');
-    expect(lines).toHaveLength(3);
-    expect(lines[0]).toContain('Worked (h)');
-    expect(lines[1]).toContain('Ada Clockwell');
-    expect(lines[1]).toContain('7.50');
-    expect(lines[1]).toContain('Corrected; Auto clock-out');
-    expect(lines[2]).toContain('No activity');
+    const header = lines[0].split(',');
+
+    expect(lines).toHaveLength(4); // header + 3 rows
+    // Deliberate payroll ordering.
+    expect(header.slice(0, 8)).toEqual([
+      'Employee',
+      'Paid Hours',
+      'Unpaid Hours',
+      'Worked (h)',
+      'Lunch (h)',
+      'Other (h)',
+      'Shifts',
+      'Flags',
+    ]);
+    expect(header.indexOf('Paid Hours')).toBeLessThan(header.indexOf('Unpaid Hours'));
+    expect(header.indexOf('Unpaid Hours')).toBeLessThan(header.indexOf('Worked (h)'));
+  });
+
+  it('emits authoritative Paid/Unpaid/Worked values per row', () => {
+    const summary: PayPeriodSummary = { period: PERIOD, totals: TOTALS, data: ROWS };
+    const rows = payPeriodToCsv(summary).split('\n');
+    const ada = rows[1].split(',');
+    expect(ada[0]).toBe('Ada Clockwell');
+    expect(ada[1]).toBe('7.50'); // Paid
+    expect(ada[2]).toBe('0.50'); // Unpaid
+    expect(ada[3]).toBe('8.00'); // Worked (gross)
+    expect(rows[1]).toContain('Corrected; Auto clock-out');
+    expect(rows[3]).toContain('Open shift');
   });
 });
 
 describe('PayPeriodSummaryGrid', () => {
-  it('loads the summary and renders totals + rows', async () => {
+  it('loads the summary and renders Paid/Unpaid/Worked + rows', async () => {
     render(<PayPeriodSummaryGrid onDrillDown={() => {}} />);
 
     expect(await screen.findByText('Ada Clockwell')).toBeInTheDocument();
     expect(screen.getByText('Bo Vance')).toBeInTheDocument();
-    // Worked duration appears in totals and Ada's row.
+    // Payroll columns are present (label appears in card + header + formula).
+    expect(screen.getAllByText('Paid Hours').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Unpaid Hours').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Worked').length).toBeGreaterThan(0);
+    // Paid duration (7:30) appears in totals + Ada's row.
     expect((await screen.findAllByText('7:30')).length).toBeGreaterThan(0);
-    // Flags rendered with friendly labels.
-    expect(screen.getByText('Auto clock-out')).toBeInTheDocument();
-    expect(screen.getByText('No activity')).toBeInTheDocument();
+    // Unpaid duration (0:30) appears.
+    expect(screen.getAllByText('0:30').length).toBeGreaterThan(0);
+    // Formula is shown.
+    expect(screen.getByText(/= Worked Hours −/)).toBeInTheDocument();
+    // Open-shift row carries the "not final" marker.
+    expect(screen.getByTitle(/open shift/i)).toBeInTheDocument();
   });
 
   it('drills down into an employee for the same period on row click', async () => {

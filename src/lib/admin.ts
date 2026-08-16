@@ -172,15 +172,24 @@ export function downloadCsv(filename: string, csv: string): void {
 
 // ── Cross-employee pay-period summary (Phase 3B) ──────────────────────────
 
+// Payroll-explicit fields (mirrors PayPeriodSummaryService):
+//   paid   = the number to PAY (canonical net-of-breaks projection value)
+//   unpaid = lunch + other break time
+//   gross  = paid + unpaid = elapsed work-period span ("Worked")
+// The identity paid = gross − unpaid holds by construction — no double subtraction.
 export interface PayPeriodRow {
   employee: { id: number; full_name: string };
-  worked_seconds: number;
-  worked_hours: number;
+  paid_seconds: number;
+  paid_hours: number;
+  unpaid_seconds: number;
+  unpaid_hours: number;
+  gross_seconds: number;
+  gross_hours: number;
+  lunch_seconds: number;
+  other_break_seconds: number;
   shift_count: number;
   open_shift_count: number;
   has_open_shift: boolean;
-  lunch_seconds: number;
-  other_break_seconds: number;
   correction_count: number;
   system_event_count: number;
   auto_clock_out_count: number;
@@ -191,8 +200,12 @@ export interface PayPeriodRow {
 export interface PayPeriodTotals {
   employees: number;
   employees_with_activity: number;
-  worked_seconds: number;
-  worked_hours: number;
+  paid_seconds: number;
+  paid_hours: number;
+  unpaid_seconds: number;
+  unpaid_hours: number;
+  gross_seconds: number;
+  gross_hours: number;
   shift_count: number;
   lunch_seconds: number;
   other_break_seconds: number;
@@ -211,7 +224,7 @@ export interface PayPeriodParams {
   period?: 'current' | 'previous';
   from?: string;
   to?: string;
-  sort?: 'name' | 'worked_desc';
+  sort?: 'name' | 'paid_desc';
   flagged?: boolean;
   store_id?: number;
 }
@@ -246,29 +259,40 @@ export function flagLabel(flag: string): string {
   return FLAG_LABEL[flag] ?? flag;
 }
 
-/** CSV of the same authoritative rows shown in the grid. */
+/**
+ * CSV of the same authoritative rows shown in the grid, in the same payroll
+ * column order: Paid first, then Unpaid, then Worked. Operational/audit columns
+ * follow the primary payroll set. Values come straight from the authoritative
+ * fields — no separate calculation path.
+ */
 export function payPeriodToCsv(summary: PayPeriodSummary): string {
   const header = [
     'Employee',
+    'Paid Hours',
+    'Unpaid Hours',
     'Worked (h)',
+    'Lunch (h)',
+    'Other (h)',
     'Shifts',
+    'Flags',
+    // Operational / audit columns follow the primary payroll set.
     'Open shifts',
-    'Lunch (min)',
-    'Other break (min)',
     'Corrections',
     'System events',
-    'Flags',
   ];
+  const hours = (seconds: number) => (seconds / 3600).toFixed(2);
   const rows = summary.data.map((r) => [
     r.employee.full_name,
-    (r.worked_seconds / 3600).toFixed(2),
+    r.paid_hours.toFixed(2),
+    r.unpaid_hours.toFixed(2),
+    r.gross_hours.toFixed(2),
+    hours(r.lunch_seconds),
+    hours(r.other_break_seconds),
     r.shift_count,
+    r.flags.map(flagLabel).join('; '),
     r.open_shift_count,
-    Math.round(r.lunch_seconds / 60),
-    Math.round(r.other_break_seconds / 60),
     r.correction_count,
     r.system_event_count,
-    r.flags.map(flagLabel).join('; '),
   ]);
   return [header, ...rows].map((r) => r.map(csvCell).join(',')).join('\n');
 }
