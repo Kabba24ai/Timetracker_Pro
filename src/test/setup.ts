@@ -1,3 +1,9 @@
+// Run the whole frontend suite under a browser/device timezone that is NOT the
+// tenant TimeTracker timezone used in tests (America/Chicago), so any code that
+// leaks the device timezone into wall-clock handling is caught. Set before any
+// Date operation.
+process.env.TZ = 'Asia/Kolkata';
+
 // Node 25 injects an experimental global `localStorage` that is non-functional
 // without --localstorage-file and shadows jsdom's. Force a working in-memory
 // Storage before any app module reads it. (Runs before test files import.)

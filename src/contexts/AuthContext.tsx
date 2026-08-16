@@ -35,6 +35,8 @@ interface AuthContextType {
   loading: boolean;
   /** The authoritative clock state from the last login / session restore (seed for the clock UI). */
   initialClockState: ClockState | null;
+  /** Canonical tenant TimeTracker timezone (IANA id) from the server; null until known. */
+  timezone: string | null;
   /** Log in with a user id + 6-digit employee code (the kabba2 V2 model). */
   signIn: (userId: number, employeeCode: string) => Promise<void>;
   signOut: () => Promise<void>;
@@ -43,6 +45,7 @@ interface AuthContextType {
 const USER_KEY = 'tt_user';
 const EMP_KEY = 'tt_employee';
 const ROLES_KEY = 'tt_roles';
+const TZ_KEY = 'tt_timezone';
 const ADMIN_ROLE = 'master_admin';
 
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
@@ -87,6 +90,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [employee, setEmployee] = useState<Employee | null>(() => readJson<Employee>(EMP_KEY));
   const [roles, setRoles] = useState<string[]>(() => readJson<string[]>(ROLES_KEY) ?? []);
   const [initialClockState, setInitialClockState] = useState<ClockState | null>(null);
+  const [timezone, setTimezone] = useState<string | null>(() => localStorage.getItem(TZ_KEY));
   // Only block the UI on startup if there is a token to validate.
   const [loading, setLoading] = useState<boolean>(() => !!api.getToken());
 
@@ -95,10 +99,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.removeItem(USER_KEY);
     localStorage.removeItem(EMP_KEY);
     localStorage.removeItem(ROLES_KEY);
+    localStorage.removeItem(TZ_KEY);
     setUser(null);
     setEmployee(null);
     setRoles([]);
     setInitialClockState(null);
+    setTimezone(null);
+  }, []);
+
+  // Persist the canonical tenant timezone whenever the server reports it.
+  const rememberTimezone = useCallback((tz?: string | null) => {
+    if (tz) {
+      localStorage.setItem(TZ_KEY, tz);
+      setTimezone(tz);
+    }
   }, []);
 
   useEffect(() => {
@@ -123,6 +137,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setRoles(nextRoles);
           localStorage.setItem(ROLES_KEY, JSON.stringify(nextRoles));
           if (me.clock_state) setInitialClockState(me.clock_state);
+          rememberTimezone(me.clock_state?.timezone);
         })
         .catch(() => {
           // A 401 already cleared the session via AUTH_ERROR_EVENT; other errors
@@ -172,7 +187,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setEmployee(nextEmployee);
     setRoles(nextRoles);
     setInitialClockState(res.clock_state ?? null);
-  }, []);
+    rememberTimezone(res.clock_state?.timezone);
+  }, [rememberTimezone]);
 
   const signOut = useCallback(async () => {
     // Revoke the token server-side (proper logout), then clear locally regardless
@@ -189,7 +205,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   return (
     <AuthContext.Provider
-      value={{ user, employee, roles, isAdmin, loading, initialClockState, signIn, signOut }}
+      value={{ user, employee, roles, isAdmin, loading, initialClockState, timezone, signIn, signOut }}
     >
       {children}
     </AuthContext.Provider>

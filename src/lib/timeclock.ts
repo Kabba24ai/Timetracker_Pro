@@ -45,6 +45,8 @@ export interface ClockState {
   shift: ClockShift | null;
   open_break: ClockBreak | null;
   server_time: string;
+  /** Canonical tenant TimeTracker timezone (IANA id) — the ONLY tz the client uses. */
+  timezone: string;
   today: {
     shifts: ClockShift[];
     worked_seconds: number;
