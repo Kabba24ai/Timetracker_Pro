@@ -133,6 +133,81 @@ export async function deleteSegment(id: number): Promise<void> {
   await api.del(`/admin/schedule/segments/${id}`);
 }
 
+// ── Rapid scheduling: assign / remove / groups ────────────────────────────
+//
+// "Add Employee" and "Add Group" are real scheduling actions: the server fills
+// each open store day with the store's operating hours (a default, never a
+// clamp) and returns a created / already-scheduled / conflicts summary. The
+// range is the one currently displayed (same view the grid was loaded with) so
+// the scope always matches what the admin sees.
+
+export interface RangeBody {
+  view?: ScheduleView;
+  anchor?: string;
+  from?: string;
+  to?: string;
+}
+
+export interface AssignmentConflict {
+  employee: string;
+  date: string;
+  message: string; // 'Gary Jezorski — Tue Sep 15 overlaps Waverly 7:00–12:00'
+}
+
+export interface AssignmentResult {
+  created: number;
+  already_scheduled: number;
+  day_off_skipped: number;
+  days_off: { employee: string; date: string }[];
+  conflict_count: number;
+  conflicts: AssignmentConflict[];
+}
+
+/** Schedule one employee at a store for the displayed range (store hours default). */
+export async function assignEmployee(input: { user_id: number; store_id: number } & RangeBody): Promise<AssignmentResult> {
+  const res = (await api.post('/admin/schedule/assign', input)) as ApiEnvelope & { result: AssignmentResult };
+  return res.result;
+}
+
+/** Remove an employee from ONE store's schedule for the displayed range only. Returns removed count. */
+export async function removeFromStore(input: { user_id: number; store_id: number } & RangeBody): Promise<number> {
+  const res = (await api.post('/admin/schedule/remove-from-store', input)) as ApiEnvelope & { removed: number };
+  return res.removed ?? 0;
+}
+
+export interface ScheduleGroup {
+  id: number;
+  name: string;
+  store_id: number | null;
+  active: boolean;
+  members: { id: number; full_name: string }[];
+}
+
+export async function fetchGroups(): Promise<ScheduleGroup[]> {
+  const res = (await api.get('/admin/schedule/groups')) as ApiEnvelope & { groups: ScheduleGroup[] };
+  return res.groups ?? [];
+}
+
+export async function createGroup(input: { name: string; store_id?: number | null; member_ids: number[] }): Promise<ScheduleGroup> {
+  const res = (await api.post('/admin/schedule/groups', input)) as ApiEnvelope & { group: ScheduleGroup };
+  return res.group;
+}
+
+export async function updateGroup(id: number, input: { name?: string; store_id?: number | null; active?: boolean; member_ids?: number[] }): Promise<ScheduleGroup> {
+  const res = (await api.put(`/admin/schedule/groups/${id}`, input)) as ApiEnvelope & { group: ScheduleGroup };
+  return res.group;
+}
+
+export async function deleteGroup(id: number): Promise<void> {
+  await api.del(`/admin/schedule/groups/${id}`);
+}
+
+/** Apply a group to a store across the displayed range. */
+export async function applyGroup(id: number, input: { store_id: number } & RangeBody): Promise<AssignmentResult> {
+  const res = (await api.post(`/admin/schedule/groups/${id}/apply`, input)) as ApiEnvelope & { result: AssignmentResult };
+  return res.result;
+}
+
 /** Format 'HH:MM' (24h) as a 12-hour label, e.g. '7:00 AM'. */
 export function formatWall(hhmm: string): string {
   const [h, m] = hhmm.split(':').map(Number);
