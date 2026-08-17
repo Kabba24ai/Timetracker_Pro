@@ -1,24 +1,34 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertCircle, Download, FileClock, Plus, RefreshCw } from 'lucide-react';
+import React, { useCallback, useEffect, useState } from 'react';
+import { AlertCircle, ChevronDown, ChevronRight, Download, Plus, RefreshCw } from 'lucide-react';
 import { ApiError } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
-import { ClockShift } from '../../lib/timeclock';
 import {
   AdminEmployee,
-  ClockEventRow,
-  CorrectableKind,
   CorrectionPayload,
+  DayPosition,
+  POSITION_COLUMNS,
+  PositionKey,
+  TimeReview,
+  TimeReviewDay,
   applyCorrection,
   downloadCsv,
-  fetchEmployeeEvents,
-  fetchEmployeeShifts,
   fetchEmployees,
+  fetchTimeReview,
   formatDuration,
-  shiftsToCsv,
-  summarize,
+  timeReviewToCsv,
 } from '../../lib/admin';
-import { formatClock, formatDate, formatInstant, tenantToday } from '../../lib/tz';
+import { formatClock, formatInstant, toTenantDatetimeLocal } from '../../lib/tz';
 import CorrectionModal, { CorrectionDraft } from './CorrectionModal';
+
+type Mode = 'current' | 'previous' | 'custom';
+
+const DAY_TYPE_STYLE: Record<string, string> = {
+  'Working Day': 'bg-blue-50 text-blue-700',
+  'Day Off': 'bg-gray-100 text-gray-500',
+  Override: 'bg-amber-50 text-amber-700',
+  'PTO / Excused': 'bg-green-50 text-green-700',
+  Unscheduled: 'bg-gray-50 text-gray-400',
+};
 
 const SOURCE_BADGE: Record<string, string> = {
   employee: 'bg-gray-100 text-gray-700',
@@ -32,37 +42,47 @@ const CORRECTION_BADGE: Record<string, string> = {
   insert: 'bg-green-100 text-green-700',
 };
 
+// Default wall-clock time (tenant tz) pre-filled when inserting a missing punch.
+const DEFAULT_TIME: Record<PositionKey, string> = {
+  clock_in: '09:00',
+  lunch_start: '12:00',
+  lunch_end: '12:30',
+  other_start: '15:00',
+  other_end: '15:15',
+  clock_out: '17:00',
+};
+
 interface TimeReviewProps {
-  // Drill-down seed from the pay-period grid (employee + period range).
   initialUserId?: number | null;
   initialFrom?: string;
   initialTo?: string;
 }
 
 const TimeReviewV2: React.FC<TimeReviewProps> = ({ initialUserId, initialFrom, initialTo }) => {
-  // The canonical tenant TimeTracker timezone drives ALL wall-clock handling.
   const { timezone } = useAuth();
   const tz = timezone ?? 'UTC';
 
   const [employees, setEmployees] = useState<AdminEmployee[]>([]);
   const [userId, setUserId] = useState<number | null>(initialUserId ?? null);
-  const [from, setFrom] = useState<string>(() => initialFrom ?? tenantToday(tz, 14));
-  const [to, setTo] = useState<string>(() => initialTo ?? tenantToday(tz, 0));
+  // A drill-down carries an explicit range → custom mode; otherwise the current period.
+  const [mode, setMode] = useState<Mode>(initialFrom ? 'custom' : 'current');
+  const [from, setFrom] = useState<string>(initialFrom ?? '');
+  const [to, setTo] = useState<string>(initialTo ?? '');
 
-  // When a new drill-down target arrives, retarget this screen (auto-loads).
   useEffect(() => {
     if (initialUserId != null) setUserId(initialUserId);
-    if (initialFrom) setFrom(initialFrom);
+    if (initialFrom) {
+      setMode('custom');
+      setFrom(initialFrom);
+    }
     if (initialTo) setTo(initialTo);
   }, [initialUserId, initialFrom, initialTo]);
 
-  const [shifts, setShifts] = useState<ClockShift[]>([]);
-  const [events, setEvents] = useState<ClockEventRow[]>([]);
-  const [showLedger, setShowLedger] = useState(false);
-
+  const [review, setReview] = useState<TimeReview | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [correction, setCorrection] = useState<CorrectionDraft | null>(null);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     fetchEmployees()
@@ -75,53 +95,89 @@ const TimeReviewV2: React.FC<TimeReviewProps> = ({ initialUserId, initialFrom, i
     setLoading(true);
     setError(null);
     try {
-      const [s, e] = await Promise.all([
-        fetchEmployeeShifts(userId, from, to),
-        fetchEmployeeEvents(userId, from, to),
-      ]);
-      setShifts(s);
-      setEvents(e);
+      const params = mode === 'custom' && from && to ? { from, to } : { period: mode === 'previous' ? 'previous' : 'current' };
+      const data = await fetchTimeReview(userId, params as { period?: 'current' | 'previous'; from?: string; to?: string });
+      setReview(data);
+      // Keep custom inputs in sync with the resolved period (for current/previous).
+      if (mode !== 'custom') {
+        setFrom(data.period.from);
+        setTo(data.period.to);
+      }
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not load time data.');
+      setError(err instanceof ApiError ? err.message : 'Could not load the time review.');
     } finally {
       setLoading(false);
     }
-  }, [userId, from, to]);
+  }, [userId, mode, from, to]);
 
-  // Auto-load whenever the selection changes.
   useEffect(() => {
     if (userId) load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId, from, to]);
-
-  const summary = useMemo(() => summarize(shifts), [shifts]);
-  const supersededIds = useMemo(
-    () => new Set(events.map((e) => e.corrects_event_id).filter((v): v is number => v != null)),
-    [events],
-  );
-  const employeeName = employees.find((e) => e.id === userId)?.full_name ?? '';
+  }, [userId, mode]);
 
   const submitCorrection = async (payload: CorrectionPayload) => {
     setError(null);
     try {
       await applyCorrection(payload);
       setCorrection(null);
-      await load(); // re-fetch both projection + ledger for a consistent view
+      await load(); // authoritative refresh: day, cards, and totals
     } catch (err) {
-      // Surface the server's validation message (e.g. impossible sequence).
       throw err instanceof ApiError ? err : new ApiError('The correction could not be applied.', 0);
     }
   };
 
   const exportCsv = () => {
-    if (!shifts.length) return;
-    downloadCsv(`time-review_${employeeName || userId}_${from}_${to}.csv`, shiftsToCsv(employeeName, shifts, tz));
+    if (!review?.days.length || !userId) return;
+    const name = employees.find((e) => e.id === userId)?.full_name ?? String(userId);
+    downloadCsv(`time-review_${name}_${review.period.from}_${review.period.to}.csv`, timeReviewToCsv(review, tz));
   };
+
+  // Click a filled punch → adjust it. Click an empty punch → insert it (single
+  // punch for clock in/out; atomic break pair for lunch/other).
+  const editPosition = (day: TimeReviewDay, key: PositionKey, label: string) => {
+    const pos = day.positions[key];
+    if (pos) {
+      setCorrection({ mode: 'adjust', eventId: pos.event_id, kindLabel: label, effectiveAt: pos.at });
+      return;
+    }
+    if (!userId) return;
+    if (key === 'clock_in' || key === 'clock_out') {
+      const iso = key === 'clock_in' ? day.schedule?.start_at : day.schedule?.end_at;
+      const datetimeLocal = iso ? toTenantDatetimeLocal(iso, tz) : `${day.date}T${DEFAULT_TIME[key]}`;
+      setCorrection({ mode: 'insert', userId, kind: key, datetimeLocal, label: `Add ${label} · ${day.day_label}` });
+    } else {
+      const breakType = key === 'lunch_start' || key === 'lunch_end' ? 'lunch' : 'other';
+      const [startKey, endKey]: [PositionKey, PositionKey] =
+        breakType === 'lunch' ? ['lunch_start', 'lunch_end'] : ['other_start', 'other_end'];
+      setCorrection({
+        mode: 'insert_break',
+        userId,
+        breakType,
+        startLocal: `${day.date}T${DEFAULT_TIME[startKey]}`,
+        endLocal: `${day.date}T${DEFAULT_TIME[endKey]}`,
+        label: `Add ${breakType} · ${day.day_label}`,
+      });
+    }
+  };
+
+  const addTimeForDay = (day: TimeReviewDay) => {
+    if (!userId) return;
+    const iso = day.schedule?.start_at;
+    setCorrection({
+      mode: 'insert',
+      userId,
+      kind: 'clock_in',
+      datetimeLocal: iso ? toTenantDatetimeLocal(iso, tz) : `${day.date}T${DEFAULT_TIME.clock_in}`,
+      label: `Add time · ${day.day_label}`,
+    });
+  };
+
+  const totals = review?.totals;
 
   return (
     <div className="p-6">
       {/* Toolbar */}
-      <div className="flex flex-wrap items-end gap-3 mb-6">
+      <div className="flex flex-wrap items-end gap-3 mb-5">
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">Employee</label>
           <select
@@ -137,46 +193,47 @@ const TimeReviewV2: React.FC<TimeReviewProps> = ({ initialUserId, initialFrom, i
             ))}
           </select>
         </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">From</label>
-          <input
-            type="date"
-            value={from}
-            max={to}
-            onChange={(e) => setFrom(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
+
+        <div className="inline-flex rounded-lg border border-gray-300 overflow-hidden">
+          {(['current', 'previous', 'custom'] as Mode[]).map((m) => (
+            <button
+              key={m}
+              onClick={() => setMode(m)}
+              className={`px-4 py-2 text-sm font-medium capitalize transition-colors ${
+                mode === m ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              {m === 'custom' ? 'Custom' : `${m} period`}
+            </button>
+          ))}
         </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">To</label>
-          <input
-            type="date"
-            value={to}
-            min={from}
-            onChange={(e) => setTo(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
+
+        {mode === 'custom' && (
+          <>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">From</label>
+              <input type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">To</label>
+              <input type="date" value={to} min={from} onChange={(e) => setTo(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+          </>
+        )}
+
         <button
           onClick={load}
-          disabled={!userId || loading}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+          disabled={!userId || loading || (mode === 'custom' && (!from || !to))}
+          className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
         >
           <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
           <span>Refresh</span>
         </button>
+
         <div className="ml-auto flex gap-2">
           <button
-            onClick={() => userId && setCorrection({ mode: 'insert', userId })}
-            disabled={!userId}
-            className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
-          >
-            <Plus className="h-4 w-4" />
-            <span>Insert punch</span>
-          </button>
-          <button
             onClick={exportCsv}
-            disabled={!shifts.length}
+            disabled={!review?.days.length}
             className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
           >
             <Download className="h-4 w-4" />
@@ -184,6 +241,13 @@ const TimeReviewV2: React.FC<TimeReviewProps> = ({ initialUserId, initialFrom, i
           </button>
         </div>
       </div>
+
+      {review && (
+        <p className="text-sm text-gray-500 mb-3">
+          {review.period.label ?? `${review.period.from} – ${review.period.to}`}
+          <span className="text-gray-400"> · {review.employee.full_name}</span>
+        </p>
+      )}
 
       {error && (
         <div className="mb-4 flex items-center gap-2 text-red-600 bg-red-50 p-3 rounded-lg">
@@ -196,158 +260,200 @@ const TimeReviewV2: React.FC<TimeReviewProps> = ({ initialUserId, initialFrom, i
         <p className="text-gray-500 text-center py-12">Select an employee to review their time.</p>
       ) : (
         <>
-          {/* Summary */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-            <SummaryCard label="Worked" value={formatDuration(summary.workedSeconds)} accent="text-blue-600" />
-            <SummaryCard label="Shifts" value={String(summary.shiftCount)} sub={summary.openShifts ? `${summary.openShifts} open` : undefined} />
-            <SummaryCard label="Lunch" value={formatDuration(summary.lunchSeconds)} />
-            <SummaryCard label="Other breaks" value={formatDuration(summary.otherSeconds)} />
-          </div>
-
-          {/* Shifts */}
-          <h3 className="text-sm font-semibold text-gray-700 mb-2">Shifts</h3>
-          {shifts.length === 0 ? (
-            <p className="text-gray-500 text-sm py-6">No shifts in this range.</p>
-          ) : (
-            <div className="space-y-3 mb-2">
-              {shifts.map((s) => (
-                <ShiftRow key={s.id} shift={s} tz={tz} />
-              ))}
+          {/* Summary cards — Paid → Unpaid → Total Worked, then Shifts / Lunch / Other. */}
+          {totals && (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mb-4">
+              <Card label="Paid" value={formatDuration(totals.paid_seconds)} accent="text-blue-700" emphasize />
+              <Card label="Unpaid" value={formatDuration(totals.unpaid_seconds)} accent="text-orange-600" />
+              <Card label="Total Worked" value={formatDuration(totals.gross_seconds)} accent="text-gray-900" />
+              <Card label="Shifts" value={String(totals.shift_count)} sub={totals.open_shift_count ? `${totals.open_shift_count} open` : undefined} />
+              <Card label="Lunch" value={formatDuration(totals.lunch_seconds)} />
+              <Card label="Other Breaks" value={formatDuration(totals.other_break_seconds)} />
             </div>
           )}
-          <p className="text-xs text-gray-400 mb-8">All times shown in {tz} (tenant timezone).</p>
 
-          {/* Ledger */}
-          <button
-            onClick={() => setShowLedger((v) => !v)}
-            className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-2 hover:text-blue-600"
-          >
-            <FileClock className="h-4 w-4" />
-            {showLedger ? 'Hide' : 'Show'} event ledger ({events.length})
-          </button>
-          {showLedger && (
-            <div className="overflow-x-auto border rounded-lg">
-              <table className="min-w-full text-sm">
-                <thead className="bg-gray-50 text-gray-600">
+          <p className="text-xs text-gray-500 mb-1">
+            Click any time to edit. Click <span className="font-medium">Add time</span> on days with no entries to add
+            time for that day. Pay the <span className="text-blue-700 font-medium">Paid</span> column.
+          </p>
+          <p className="text-xs text-gray-400 mb-4">All times shown in {tz} (tenant timezone).</p>
+
+          {/* Daily grid — one row per calendar day, recorded or not. */}
+          <div className="overflow-x-auto border rounded-lg">
+            <table className="min-w-full text-sm">
+              <thead className="bg-gray-50 text-gray-600">
+                <tr>
+                  <th className="text-left px-3 py-2 font-medium">Day</th>
+                  <th className="text-left px-3 py-2 font-medium">Date</th>
+                  <th className="text-left px-3 py-2 font-medium">Day Type</th>
+                  {POSITION_COLUMNS.map((c) => (
+                    <th key={c.key} className="text-center px-2 py-2 font-medium whitespace-nowrap">
+                      {c.label}
+                    </th>
+                  ))}
+                  <th className="text-right px-3 py-2 font-medium text-blue-700">Paid</th>
+                  <th className="text-right px-3 py-2 font-medium text-orange-600">Unpaid</th>
+                  <th className="text-right px-3 py-2 font-medium">Total Worked</th>
+                  <th className="text-right px-3 py-2 font-medium">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {loading && !review ? (
                   <tr>
-                    <th className="text-left px-3 py-2 font-medium">Kind</th>
-                    <th className="text-left px-3 py-2 font-medium">Effective</th>
-                    <th className="text-left px-3 py-2 font-medium">Raw</th>
-                    <th className="text-left px-3 py-2 font-medium">Source</th>
-                    <th className="text-left px-3 py-2 font-medium">Reason</th>
-                    <th className="text-right px-3 py-2 font-medium">Actions</th>
+                    <td colSpan={13} className="px-4 py-8 text-center text-gray-400">
+                      Loading…
+                    </td>
                   </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {events.map((ev) => {
-                    const superseded = supersededIds.has(ev.id);
+                ) : (
+                  review?.days.map((d) => {
+                    const empty = d.event_count === 0;
                     return (
-                      <tr key={ev.id} className={superseded ? 'bg-gray-50 text-gray-400' : ''}>
-                        <td className="px-3 py-2 whitespace-nowrap">
-                          {ev.kind_label}
-                          {ev.correction_type && (
-                            <span className={`ml-2 px-1.5 py-0.5 rounded text-xs ${CORRECTION_BADGE[ev.correction_type] ?? 'bg-gray-100'}`}>
-                              {ev.correction_type}
+                      <React.Fragment key={d.date}>
+                        <tr className="hover:bg-gray-50/60">
+                          <td className="px-3 py-2 font-medium text-gray-900 whitespace-nowrap">{d.weekday_label}</td>
+                          <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{d.date.slice(5)}</td>
+                          <td className="px-3 py-2 whitespace-nowrap">
+                            <span className={`px-2 py-0.5 rounded-full text-xs ${DAY_TYPE_STYLE[d.day_type] ?? 'bg-gray-100 text-gray-500'}`}>
+                              {d.day_type}
                             </span>
-                          )}
-                          {superseded && <span className="ml-2 text-xs italic">superseded</span>}
-                        </td>
-                        <td className="px-3 py-2 whitespace-nowrap font-mono">{formatInstant(ev.effective_at, tz)}</td>
-                        <td className="px-3 py-2 whitespace-nowrap font-mono text-gray-400">{formatInstant(ev.raw_at, tz)}</td>
-                        <td className="px-3 py-2">
-                          <span className={`px-2 py-0.5 rounded-full text-xs ${SOURCE_BADGE[ev.source] ?? 'bg-gray-100'}`}>
-                            {ev.source}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2 text-gray-600 max-w-[16rem] truncate" title={ev.reason ?? ''}>
-                          {ev.reason ?? ''}
-                        </td>
-                        <td className="px-3 py-2 text-right whitespace-nowrap">
-                          {!superseded && ev.correction_type !== 'void' && (
-                            <>
-                              <button
-                                onClick={() => setCorrection({ mode: 'adjust', eventId: ev.id, kindLabel: ev.kind_label, effectiveAt: ev.effective_at })}
-                                className="text-blue-600 hover:underline mr-3"
-                              >
-                                Adjust
+                          </td>
+                          {POSITION_COLUMNS.map((c) => (
+                            <td key={c.key} className="px-2 py-2 text-center">
+                              <PunchCell pos={d.positions[c.key]} tz={tz} onClick={() => editPosition(d, c.key, c.label)} />
+                            </td>
+                          ))}
+                          <td className="px-3 py-2 text-right font-mono font-semibold text-blue-700 whitespace-nowrap">
+                            {formatDuration(d.paid_seconds)}
+                            {d.has_open_shift && (
+                              <span className="ml-1 text-amber-500 font-sans" title="Includes an open shift — not final until clock-out">
+                                *
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-right font-mono text-orange-600">{formatDuration(d.unpaid_seconds)}</td>
+                          <td className="px-3 py-2 text-right font-mono text-gray-700">{formatDuration(d.gross_seconds)}</td>
+                          <td className="px-3 py-2 text-right whitespace-nowrap">
+                            {empty ? (
+                              <button onClick={() => addTimeForDay(d)} className="inline-flex items-center gap-1 text-blue-600 hover:underline">
+                                <Plus className="h-3.5 w-3.5" /> Add time
                               </button>
+                            ) : (
                               <button
-                                onClick={() => setCorrection({ mode: 'void', eventId: ev.id, kindLabel: ev.kind_label })}
-                                className="text-red-600 hover:underline"
+                                onClick={() => setExpanded((s) => ({ ...s, [d.date]: !s[d.date] }))}
+                                className="inline-flex items-center gap-1 text-gray-500 hover:text-blue-600"
+                                title="View the immutable event ledger for this day"
                               >
-                                Void
+                                {expanded[d.date] ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                                Ledger ({d.event_count})
+                                {d.has_extra_events && <span className="ml-1 text-[10px] px-1 rounded bg-amber-100 text-amber-700">extra</span>}
                               </button>
-                            </>
-                          )}
-                        </td>
-                      </tr>
+                            )}
+                          </td>
+                        </tr>
+                        {expanded[d.date] && (
+                          <tr className="bg-gray-50/60">
+                            <td colSpan={13} className="px-4 py-3">
+                              <DayLedger day={d} tz={tz} onAdjust={(eventId, kindLabel, at) => setCorrection({ mode: 'adjust', eventId, kindLabel, effectiveAt: at })} onVoid={(eventId, kindLabel) => setCorrection({ mode: 'void', eventId, kindLabel })} />
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
                     );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
+                  })
+                )}
+              </tbody>
+              {totals && (
+                <tfoot>
+                  <tr className="bg-gray-50 border-t-2 border-gray-200 font-semibold">
+                    <td colSpan={9} className="px-3 py-3 text-gray-700">
+                      Pay Period Total
+                    </td>
+                    <td className="px-3 py-3 text-right font-mono text-blue-700">{formatDuration(totals.paid_seconds)}</td>
+                    <td className="px-3 py-3 text-right font-mono text-orange-600">{formatDuration(totals.unpaid_seconds)}</td>
+                    <td className="px-3 py-3 text-right font-mono text-gray-900">{formatDuration(totals.gross_seconds)}</td>
+                    <td />
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
         </>
       )}
 
-      {correction && (
-        <CorrectionModal
-          draft={correction}
-          tz={tz}
-          onClose={() => setCorrection(null)}
-          onSubmit={submitCorrection}
-        />
-      )}
+      {correction && <CorrectionModal draft={correction} tz={tz} onClose={() => setCorrection(null)} onSubmit={submitCorrection} />}
     </div>
   );
 };
 
-const SummaryCard: React.FC<{ label: string; value: string; sub?: string; accent?: string }> = ({
-  label,
-  value,
-  sub,
-  accent,
-}) => (
-  <div className="bg-gray-50 border rounded-lg p-4">
+const PunchCell: React.FC<{ pos: DayPosition | null; tz: string; onClick: () => void }> = ({ pos, tz, onClick }) =>
+  pos ? (
+    <button onClick={onClick} className="font-mono text-gray-900 px-2 py-1 rounded hover:bg-blue-50 hover:text-blue-700 transition-colors" title="Click to edit">
+      {formatClock(pos.at, tz)}
+    </button>
+  ) : (
+    <button onClick={onClick} className="font-mono text-gray-300 px-2 py-1 rounded hover:bg-blue-50 hover:text-blue-600 transition-colors" title="Click to add">
+      --:--
+    </button>
+  );
+
+const Card: React.FC<{ label: string; value: string; sub?: string; accent?: string; emphasize?: boolean }> = ({ label, value, sub, accent, emphasize }) => (
+  <div className={`rounded-lg p-4 border ${emphasize ? 'bg-blue-50 border-blue-200' : 'bg-gray-50'}`}>
     <p className="text-xs text-gray-500">{label}</p>
-    <p className={`text-2xl font-semibold ${accent ?? 'text-gray-900'}`}>{value}</p>
+    <p className={`${emphasize ? 'text-2xl' : 'text-xl'} font-semibold ${accent ?? 'text-gray-900'}`}>{value}</p>
     {sub && <p className="text-xs text-amber-600 mt-0.5">{sub}</p>}
   </div>
 );
 
-const ShiftRow: React.FC<{ shift: ClockShift; tz: string }> = ({ shift, tz }) => {
-  const open = shift.status === 'open';
-  return (
-    <div className="border rounded-lg overflow-hidden">
-      <div className="flex items-center justify-between p-3 bg-gray-50">
-        <div className="text-sm">
-          <span className="font-medium text-gray-900">{formatClock(shift.clock_in_at, tz)}</span>
-          <span className="text-gray-400 mx-1">→</span>
-          {open ? (
-            <span className="text-green-600 font-medium">In progress</span>
-          ) : (
-            <span className="text-gray-900">{formatClock(shift.clock_out_at, tz)}</span>
-          )}
-          <span className="text-gray-400 ml-2">{formatDate(shift.clock_in_at, tz)}</span>
-        </div>
-        <div className="text-right">
-          <span className="font-mono text-gray-900">{formatDuration(shift.worked_seconds)}</span>
-          <span className="text-xs text-gray-500 ml-1">worked</span>
-        </div>
-      </div>
-      {shift.breaks.length > 0 && (
-        <div className="divide-y divide-gray-100">
-          {shift.breaks.map((b) => (
-            <div key={b.id} className="flex items-center justify-between px-4 py-1.5 text-sm text-gray-600">
-              <span>{b.type === 'lunch' ? 'Lunch' : 'Break'} · {formatClock(b.start_at, tz)}–{b.end_at ? formatClock(b.end_at, tz) : 'ongoing'}</span>
-              <span className="font-mono">{formatDuration(b.duration_seconds)}</span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-};
+const DayLedger: React.FC<{
+  day: TimeReviewDay;
+  tz: string;
+  onAdjust: (eventId: number, kindLabel: string, at: string | null) => void;
+  onVoid: (eventId: number, kindLabel: string) => void;
+}> = ({ day, tz, onAdjust, onVoid }) => (
+  <div>
+    <p className="text-xs font-semibold text-gray-600 mb-2">Event ledger — {day.day_label} (immutable audit truth)</p>
+    <table className="min-w-full text-xs">
+      <thead className="text-gray-500">
+        <tr>
+          <th className="text-left px-2 py-1 font-medium">Kind</th>
+          <th className="text-left px-2 py-1 font-medium">Effective</th>
+          <th className="text-left px-2 py-1 font-medium">Source</th>
+          <th className="text-left px-2 py-1 font-medium">Reason</th>
+          <th className="text-right px-2 py-1 font-medium">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {day.events.map((ev) => (
+          <tr key={ev.id} className={ev.superseded ? 'text-gray-400' : ''}>
+            <td className="px-2 py-1 whitespace-nowrap">
+              {ev.kind_label}
+              {ev.correction_type && <span className={`ml-2 px-1.5 py-0.5 rounded ${CORRECTION_BADGE[ev.correction_type] ?? 'bg-gray-100'}`}>{ev.correction_type}</span>}
+              {ev.superseded && <span className="ml-2 italic">superseded</span>}
+            </td>
+            <td className="px-2 py-1 whitespace-nowrap font-mono">{formatInstant(ev.effective_at, tz)}</td>
+            <td className="px-2 py-1">
+              <span className={`px-2 py-0.5 rounded-full ${SOURCE_BADGE[ev.source] ?? 'bg-gray-100'}`}>{ev.source}</span>
+            </td>
+            <td className="px-2 py-1 text-gray-600 max-w-[14rem] truncate" title={ev.reason ?? ''}>
+              {ev.reason ?? ''}
+            </td>
+            <td className="px-2 py-1 text-right whitespace-nowrap">
+              {!ev.superseded && ev.correction_type !== 'void' && (
+                <>
+                  <button onClick={() => onAdjust(ev.id, ev.kind_label, ev.effective_at)} className="text-blue-600 hover:underline mr-3">
+                    Adjust
+                  </button>
+                  <button onClick={() => onVoid(ev.id, ev.kind_label)} className="text-red-600 hover:underline">
+                    Void
+                  </button>
+                </>
+              )}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+);
 
-export type { CorrectableKind };
 export default TimeReviewV2;

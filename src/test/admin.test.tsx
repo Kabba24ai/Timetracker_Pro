@@ -1,49 +1,69 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 
-// Fake V2 admin API. Records calls and serves shifts/events/corrections so the
-// tests prove the wiring end-to-end (employee pick → fetch → render → correct).
+// Fake V2 admin API. Records calls and serves the per-day time review + roster +
+// corrections so the tests prove the wiring end-to-end.
 const server = vi.hoisted(() => ({
   calls: [] as string[],
   token: 'tok' as string | null,
 }));
 
-const SHIFT = {
-  id: 10,
-  status: 'closed',
-  clock_in_at: '2026-09-14T14:00:00+00:00',
-  clock_out_at: '2026-09-14T22:00:00+00:00',
-  worked_seconds: 27000, // 7.5h (8h − 30m lunch)
-  breaks: [
-    { id: 1, type: 'lunch', start_at: '2026-09-14T17:00:00+00:00', end_at: '2026-09-14T17:30:00+00:00', duration_seconds: 1800 },
-  ],
+const EV = (id: number, kind: string, label: string, at: string) => ({
+  id, kind, kind_label: label, raw_at: at, effective_at: at, source: 'employee',
+  actor_id: 1, correction_type: null, corrects_event_id: null, reason: null,
+  shift_id: 10, break_id: null, metadata: null, created_at: null, superseded: false,
+});
+
+const ZERO = {
+  paid_seconds: 0, paid_hours: 0, unpaid_seconds: 0, unpaid_hours: 0, gross_seconds: 0, gross_hours: 0,
+  lunch_seconds: 0, other_break_seconds: 0, shift_count: 0, open_shift_count: 0, has_open_shift: false,
 };
 
-const EVENTS = [
-  { id: 100, kind: 'clock_in', kind_label: 'Clock In', raw_at: '2026-09-14T14:00:00+00:00', effective_at: '2026-09-14T14:00:00+00:00', source: 'employee', actor_id: 1, correction_type: null, corrects_event_id: null, reason: null, shift_id: 10, break_id: null, metadata: null, created_at: null },
-  { id: 101, kind: 'clock_out', kind_label: 'Clock Out', raw_at: '2026-09-14T22:00:00+00:00', effective_at: '2026-09-14T22:00:00+00:00', source: 'employee', actor_id: 1, correction_type: null, corrects_event_id: null, reason: null, shift_id: 10, break_id: null, metadata: null, created_at: null },
-];
+const REVIEW = {
+  employee: { id: 1, full_name: 'Ada Clockwell' },
+  period: { from: '2026-09-13', to: '2026-09-14', timezone: 'UTC', label: 'Sep 13 – Sep 14, 2026' },
+  totals: {
+    paid_seconds: 27000, paid_hours: 7.5, unpaid_seconds: 1800, unpaid_hours: 0.5, gross_seconds: 28800, gross_hours: 8,
+    lunch_seconds: 1800, other_break_seconds: 0, shift_count: 1, open_shift_count: 0, has_open_shift: false,
+  },
+  days: [
+    {
+      date: '2026-09-13', day_of_week: 0, weekday_label: 'Sun', day_label: 'Sun, Sep 13', day_type: 'Day Off',
+      schedule: { is_working_day: false, start_at: null, end_at: null, source: 'recurring', store_id: null },
+      excused: null,
+      positions: { clock_in: null, lunch_start: null, lunch_end: null, other_start: null, other_end: null, clock_out: null },
+      event_count: 0, has_extra_events: false, flags: [], events: [], ...ZERO,
+    },
+    {
+      date: '2026-09-14', day_of_week: 1, weekday_label: 'Mon', day_label: 'Mon, Sep 14', day_type: 'Working Day',
+      schedule: { is_working_day: true, start_at: '2026-09-14T14:00:00+00:00', end_at: '2026-09-14T22:00:00+00:00', source: 'recurring', store_id: null },
+      excused: null,
+      positions: {
+        clock_in: { event_id: 100, at: '2026-09-14T14:00:00+00:00', source: 'employee' },
+        lunch_start: { event_id: 102, at: '2026-09-14T17:00:00+00:00', source: 'employee' },
+        lunch_end: { event_id: 103, at: '2026-09-14T17:30:00+00:00', source: 'employee' },
+        other_start: null, other_end: null,
+        clock_out: { event_id: 101, at: '2026-09-14T22:00:00+00:00', source: 'employee' },
+      },
+      event_count: 4, has_extra_events: false, flags: [],
+      events: [EV(100, 'clock_in', 'Clock In', '2026-09-14T14:00:00+00:00'), EV(101, 'clock_out', 'Clock Out', '2026-09-14T22:00:00+00:00')],
+      paid_seconds: 27000, paid_hours: 7.5, unpaid_seconds: 1800, unpaid_hours: 0.5, gross_seconds: 28800, gross_hours: 8,
+      lunch_seconds: 1800, other_break_seconds: 0, shift_count: 1, open_shift_count: 0, has_open_shift: false,
+    },
+  ],
+};
 
 vi.mock('../lib/api', () => {
   class ApiError extends Error {
     status: number;
-    errors?: Record<string, string[]>;
-    constructor(message: string, status: number, errors?: Record<string, string[]>) {
+    constructor(message: string, status: number) {
       super(message);
-      this.name = 'ApiError';
       this.status = status;
-      this.errors = errors;
     }
-    firstError(): string {
-      if (this.errors) {
-        const first = Object.values(this.errors)[0];
-        if (first?.length) return first[0];
-      }
+    firstError() {
       return this.message;
     }
   }
-  const AUTH_ERROR_EVENT = 'tt:unauthorized';
-
   const api = {
     getToken: () => server.token,
     setToken: (t: string | null) => { server.token = t; },
@@ -52,24 +72,18 @@ vi.mock('../lib/api', () => {
       if (path === '/auth/login-users') {
         return { success: true, data: [{ id: 1, full_name: 'Ada Clockwell' }, { id: 2, full_name: 'Bo Vance' }] };
       }
-      if (path.startsWith('/admin/employees/1/shifts')) return { success: true, data: [SHIFT] };
-      if (path.startsWith('/admin/employees/1/events')) return { success: true, data: EVENTS };
+      if (path.startsWith('/admin/employees/1/time-review')) return { success: true, ...REVIEW };
       return { success: true, data: [] };
     },
     post: async (path: string) => {
       server.calls.push(`POST ${path}`);
-      if (path === '/admin/corrections') {
-        return { success: true, correction_event_id: 200, shifts: [SHIFT] };
-      }
-      return { success: true };
+      return { success: true, correction_event_id: 200 };
     },
   };
-
-  return { api, ApiError, AUTH_ERROR_EVENT };
+  return { api, ApiError, AUTH_ERROR_EVENT: 'tt:unauthorized' };
 });
 
-import { shiftsToCsv, summarize } from '../lib/admin';
-import type { ClockShift } from '../lib/timeclock';
+import { timeReviewToCsv, type TimeReview } from '../lib/admin';
 import TimeReviewV2 from '../components/admin/TimeReviewV2';
 
 beforeEach(() => {
@@ -77,70 +91,64 @@ beforeEach(() => {
   server.token = 'tok';
 });
 
-describe('admin summarize()', () => {
-  it('totals worked, lunch, other, and open shifts', () => {
-    const shifts = [
-      SHIFT as unknown as ClockShift,
-      {
-        id: 11, status: 'open', clock_in_at: '2026-09-15T14:00:00+00:00', clock_out_at: null, worked_seconds: 0,
-        breaks: [{ id: 2, type: 'other', start_at: '', end_at: '', duration_seconds: 900 }],
-      } as unknown as ClockShift,
-    ];
-    const s = summarize(shifts);
-    expect(s.shiftCount).toBe(2);
-    expect(s.workedSeconds).toBe(27000);
-    expect(s.lunchSeconds).toBe(1800);
-    expect(s.otherSeconds).toBe(900);
-    expect(s.openShifts).toBe(1);
+describe('timeReviewToCsv()', () => {
+  it('orders columns Date…punches…Paid, Unpaid, Total Worked', () => {
+    const header = timeReviewToCsv(REVIEW as unknown as TimeReview, 'UTC').split('\n')[0].split(',');
+    expect(header.slice(0, 3)).toEqual(['Date', 'Day', 'Day Type']);
+    expect(header.slice(3, 9)).toEqual(['Clock In', 'Lunch Out', 'Lunch In', 'Break Out', 'Break In', 'Clock Out']);
+    expect(header.slice(9)).toEqual(['Paid', 'Unpaid', 'Total Worked']);
+    expect(header.indexOf('Paid')).toBeLessThan(header.indexOf('Unpaid'));
+    expect(header.indexOf('Unpaid')).toBeLessThan(header.indexOf('Total Worked'));
   });
-});
 
-describe('admin shiftsToCsv()', () => {
-  it('emits a header + one row per shift and escapes commas', () => {
-    const csv = shiftsToCsv('Ada, Jr', [SHIFT as unknown as ClockShift], 'America/Chicago');
-    const lines = csv.split('\n');
-    expect(lines[0]).toContain('Employee');
-    expect(lines).toHaveLength(2);
-    expect(lines[1]).toContain('"Ada, Jr"'); // comma-containing cell is quoted
-    expect(lines[1]).toContain('7.50'); // worked hours
-    expect(lines[1]).toContain('30'); // lunch minutes
+  it('emits authoritative Paid/Unpaid/Worked per day', () => {
+    const mon = timeReviewToCsv(REVIEW as unknown as TimeReview, 'UTC').split('\n')[2].split(',');
+    expect(mon[0]).toBe('2026-09-14');
+    expect(mon.slice(9)).toEqual(['7.50', '0.50', '8.00']);
   });
 });
 
 describe('TimeReviewV2 screen', () => {
-  it('loads employees and, on selection, fetches + renders the shift summary', async () => {
+  it('renders every day (recorded + empty) with Paid/Unpaid/Total Worked and Add time', async () => {
     render(<TimeReviewV2 />);
-
-    // Employee roster loaded.
     expect(await screen.findByRole('option', { name: 'Ada Clockwell' })).toBeInTheDocument();
 
     fireEvent.change(screen.getByRole('combobox'), { target: { value: '1' } });
 
-    // Summary + shift row render from the fetched data.
-    // Worked duration appears in both the summary card and the shift row.
-    expect((await screen.findAllByText('7:30')).length).toBeGreaterThan(0);
-    expect(server.calls.some((c) => c.startsWith('GET /admin/employees/1/shifts'))).toBe(true);
-    expect(server.calls.some((c) => c.startsWith('GET /admin/employees/1/events'))).toBe(true);
+    // Both days present — the empty Sunday still gets a row.
+    expect(await screen.findByText('Sun')).toBeInTheDocument();
+    expect(screen.getByText('Mon')).toBeInTheDocument();
+    // Empty day offers Add time.
+    expect(screen.getByRole('button', { name: /Add time/ })).toBeInTheDocument();
+    // Payroll columns (Paid 7:30 in row + totals, Unpaid 0:30, Total Worked 8:00).
+    expect(screen.getAllByText('7:30').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('0:30').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('8:00').length).toBeGreaterThan(0);
+    // Bottom totals row.
+    expect(screen.getByText('Pay Period Total')).toBeInTheDocument();
+    expect(server.calls.some((c) => c.startsWith('GET /admin/employees/1/time-review'))).toBe(true);
   });
 
-  it('applies a correction and re-fetches', async () => {
+  it('clicking a recorded punch opens Adjust and applying re-fetches', async () => {
     render(<TimeReviewV2 />);
     fireEvent.change(await screen.findByRole('combobox'), { target: { value: '1' } });
-    await screen.findAllByText('7:30');
+    // Mon clock-in = 14:00 UTC = "2:00 PM".
+    fireEvent.click(await screen.findByText('2:00 PM'));
 
-    // Open the ledger, adjust the clock-in.
-    fireEvent.click(screen.getByText(/show event ledger/i));
-    const row = (await screen.findByText('Clock In')).closest('tr')!;
-    fireEvent.click(within(row).getByText('Adjust'));
+    expect(await screen.findByText('Adjust Clock In')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /^Apply$/ }));
 
-    // Apply the correction.
-    fireEvent.click(await screen.findByRole('button', { name: /^Apply$/ }));
-
-    // Posted a correction and re-loaded the data (reload is async after the POST).
     await vi.waitFor(() => expect(server.calls).toContain('POST /admin/corrections'));
     await vi.waitFor(() => {
       const afterPost = server.calls.slice(server.calls.indexOf('POST /admin/corrections') + 1);
-      expect(afterPost.some((c) => c.startsWith('GET /admin/employees/1/shifts'))).toBe(true);
+      expect(afterPost.some((c) => c.startsWith('GET /admin/employees/1/time-review'))).toBe(true);
     });
+  });
+
+  it('clicking Add time on an empty day opens the insert modal', async () => {
+    render(<TimeReviewV2 />);
+    fireEvent.change(await screen.findByRole('combobox'), { target: { value: '1' } });
+    fireEvent.click(await screen.findByRole('button', { name: /Add time/ }));
+    expect(await screen.findByText(/Add time · Sun, Sep 13/)).toBeInTheDocument();
   });
 });

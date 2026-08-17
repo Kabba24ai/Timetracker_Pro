@@ -1,22 +1,24 @@
 // TimeTracker V2 — admin review/reporting API layer.
 //
 // Thin wrappers over the master-admin-only V2 endpoints:
-//   GET  /admin/employees/{id}/shifts   — the derived shift/break projection
-//   GET  /admin/employees/{id}/events   — the immutable event ledger (audit)
-//   POST /admin/corrections             — append-only adjust / void / insert
+//   GET  /admin/employees/{id}/time-review — per-day pay-period correction grid
+//   POST /admin/corrections                — append-only adjust / void / insert /
+//                                            insert_break (atomic break pair)
 //
-// The server enforces the master_admin role; this layer only shuttles data.
+// The server enforces the master_admin role, owns all payroll math, and returns
+// authoritative state; this layer only shuttles data.
 
 import { api, ApiEnvelope } from './api';
-import { ClockShift, formatDuration } from './timeclock';
-import { formatInstant } from './tz';
+import { formatDuration } from './timeclock';
+import { formatClock } from './tz';
 
 export interface AdminEmployee {
   id: number;
   full_name: string;
 }
 
-// One row of the immutable ledger (mirrors ClockEventResource).
+// One row of the immutable ledger (mirrors ClockEventResource; the Time Review
+// day payload adds `superseded`).
 export interface ClockEventRow {
   id: number;
   kind: 'clock_in' | 'clock_out' | 'lunch_start' | 'lunch_end' | 'other_start' | 'other_end';
@@ -32,17 +34,22 @@ export interface ClockEventRow {
   break_id: number | null;
   metadata: Record<string, unknown> | null;
   created_at: string | null;
+  superseded?: boolean;
 }
 
-export type CorrectionType = 'adjust' | 'void' | 'insert';
+export type CorrectionType = 'adjust' | 'void' | 'insert' | 'insert_break';
 export type CorrectableKind = ClockEventRow['kind'];
+export type BreakKind = 'lunch' | 'other';
 
 export interface CorrectionPayload {
   type: CorrectionType;
   event_id?: number; // adjust | void
-  user_id?: number; // insert
+  user_id?: number; // insert | insert_break
   kind?: CorrectableKind; // insert
-  effective_at?: string; // adjust | insert (ISO 8601)
+  effective_at?: string; // adjust | insert (ISO 8601, UTC from tenant wall-clock)
+  break_type?: BreakKind; // insert_break
+  start_at?: string; // insert_break (ISO 8601)
+  end_at?: string; // insert_break (ISO 8601)
   reason?: string;
 }
 
@@ -52,64 +59,111 @@ export async function fetchEmployees(): Promise<AdminEmployee[]> {
   return res.data ?? [];
 }
 
-/** An employee's shift/break projection over a date range (YYYY-MM-DD). */
-export async function fetchEmployeeShifts(
-  userId: number,
-  from: string,
-  to: string,
-): Promise<ClockShift[]> {
-  const res = (await api.get<ClockShift[]>(
-    `/admin/employees/${userId}/shifts?from=${from}&to=${to}`,
-  )) as ApiEnvelope<ClockShift[]>;
-  return res.data ?? [];
+/** Apply an append-only correction. The Time Review screen re-fetches the
+ * authoritative day grid afterward, so the return value is not relied upon. */
+export async function applyCorrection(payload: CorrectionPayload): Promise<void> {
+  await api.post('/admin/corrections', payload);
 }
 
-/** An employee's immutable event ledger over a date range (YYYY-MM-DD). */
-export async function fetchEmployeeEvents(
-  userId: number,
-  from: string,
-  to: string,
-): Promise<ClockEventRow[]> {
-  const res = (await api.get<ClockEventRow[]>(
-    `/admin/employees/${userId}/events?from=${from}&to=${to}`,
-  )) as ApiEnvelope<ClockEventRow[]>;
-  return res.data ?? [];
+// ── Per-day Time Review (pay-period correction workspace) ─────────────────
+
+export type PositionKey =
+  | 'clock_in'
+  | 'lunch_start'
+  | 'lunch_end'
+  | 'other_start'
+  | 'other_end'
+  | 'clock_out';
+
+export interface DayPosition {
+  event_id: number;
+  at: string | null;
+  source: string;
 }
 
-/** Apply an append-only correction; returns the affected employee's rebuilt shifts. */
-export async function applyCorrection(payload: CorrectionPayload): Promise<ClockShift[]> {
-  const res = (await api.post<ClockShift[]>('/admin/corrections', payload)) as ApiEnvelope<
-    ClockShift[]
-  > & { shifts?: ClockShift[] };
-  // The endpoint returns { success, correction_event_id, shifts: [...] }.
-  return res.shifts ?? [];
+// Payroll fields mirror PayrollBreakdown: paid (net, the number to pay),
+// unpaid (lunch+other), gross (paid+unpaid = "Total Worked").
+export interface PayrollFields {
+  paid_seconds: number;
+  paid_hours: number;
+  unpaid_seconds: number;
+  unpaid_hours: number;
+  gross_seconds: number;
+  gross_hours: number;
+  lunch_seconds: number;
+  other_break_seconds: number;
+  shift_count: number;
+  open_shift_count: number;
+  has_open_shift: boolean;
 }
 
-// ── Summary + CSV ─────────────────────────────────────────────────────────
-
-export interface RangeSummary {
-  shiftCount: number;
-  workedSeconds: number;
-  lunchSeconds: number;
-  otherSeconds: number;
-  openShifts: number;
+export interface TimeReviewDay extends PayrollFields {
+  date: string;
+  day_of_week: number;
+  weekday_label: string;
+  day_label: string;
+  day_type: string;
+  schedule: {
+    is_working_day: boolean;
+    start_at: string | null;
+    end_at: string | null;
+    source: string;
+    store_id: number | null;
+  } | null;
+  excused: {
+    type: string;
+    hours: number;
+    scheduled_hours: number;
+    is_paid: boolean;
+    is_full_day: boolean;
+  } | null;
+  positions: Record<PositionKey, DayPosition | null>;
+  event_count: number;
+  has_extra_events: boolean;
+  flags: string[];
+  events: ClockEventRow[];
 }
 
-export function summarize(shifts: ClockShift[]): RangeSummary {
-  return shifts.reduce<RangeSummary>(
-    (acc, s) => {
-      acc.shiftCount += 1;
-      acc.workedSeconds += s.worked_seconds;
-      if (s.status === 'open') acc.openShifts += 1;
-      for (const b of s.breaks) {
-        if (b.type === 'lunch') acc.lunchSeconds += b.duration_seconds;
-        else acc.otherSeconds += b.duration_seconds;
-      }
-      return acc;
-    },
-    { shiftCount: 0, workedSeconds: 0, lunchSeconds: 0, otherSeconds: 0, openShifts: 0 },
-  );
+export interface TimeReview {
+  employee: { id: number; full_name: string };
+  period: { from: string; to: string; timezone: string; label: string | null };
+  totals: PayrollFields;
+  days: TimeReviewDay[];
 }
+
+export interface TimeReviewParams {
+  period?: 'current' | 'previous';
+  from?: string;
+  to?: string;
+}
+
+/** The authoritative per-day pay-period review for one employee. */
+export async function fetchTimeReview(userId: number, params: TimeReviewParams): Promise<TimeReview> {
+  const qs = new URLSearchParams();
+  if (params.from) qs.set('from', params.from);
+  if (params.to) qs.set('to', params.to);
+  if (!params.from && !params.to && params.period) qs.set('period', params.period);
+  const suffix = qs.toString() ? `?${qs.toString()}` : '';
+
+  const res = (await api.get(`/admin/employees/${userId}/time-review${suffix}`)) as ApiEnvelope & {
+    employee: TimeReview['employee'];
+    period: TimeReview['period'];
+    totals: PayrollFields;
+    days: TimeReviewDay[];
+  };
+
+  return { employee: res.employee, period: res.period, totals: res.totals, days: res.days ?? [] };
+}
+
+// The six primary positions, in display order, with their column labels.
+export const POSITION_COLUMNS: { key: PositionKey; label: string }[] = [
+  { key: 'clock_in', label: 'Clock In' },
+  { key: 'lunch_start', label: 'Lunch Out' },
+  { key: 'lunch_end', label: 'Lunch In' },
+  { key: 'other_start', label: 'Break Out' },
+  { key: 'other_end', label: 'Break In' },
+  { key: 'clock_out', label: 'Clock Out' },
+];
 
 function csvCell(value: string | number): string {
   const s = String(value);
@@ -117,43 +171,40 @@ function csvCell(value: string | number): string {
 }
 
 /**
- * Build a per-shift CSV for the range (client-side; no backend needed). Times
- * are rendered in the tenant timezone so the export matches the on-screen data.
+ * Per-day CSV for the pay period, in the same payroll ordering as the grid:
+ * Date | Day | Day Type | (punches) | Paid | Unpaid | Total Worked. Times render
+ * in the tenant timezone; values come straight from the authoritative day rows.
  */
-export function shiftsToCsv(employeeName: string, shifts: ClockShift[], tz: string): string {
-  const dt: Intl.DateTimeFormatOptions = {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  };
+export function timeReviewToCsv(review: TimeReview, tz: string): string {
   const header = [
-    'Employee',
-    'Shift ID',
-    'Status',
-    `Clock In (${tz})`,
-    `Clock Out (${tz})`,
-    'Worked (h)',
-    'Lunch (min)',
-    'Other Break (min)',
+    'Date',
+    'Day',
+    'Day Type',
+    'Clock In',
+    'Lunch Out',
+    'Lunch In',
+    'Break Out',
+    'Break In',
+    'Clock Out',
+    'Paid',
+    'Unpaid',
+    'Total Worked',
   ];
-
-  const rows = shifts.map((s) => {
-    const lunch = s.breaks.filter((b) => b.type === 'lunch').reduce((n, b) => n + b.duration_seconds, 0);
-    const other = s.breaks.filter((b) => b.type === 'other').reduce((n, b) => n + b.duration_seconds, 0);
-    return [
-      employeeName,
-      s.id,
-      s.status,
-      s.clock_in_at ? formatInstant(s.clock_in_at, tz, dt) : '',
-      s.clock_out_at ? formatInstant(s.clock_out_at, tz, dt) : '',
-      (s.worked_seconds / 3600).toFixed(2),
-      Math.round(lunch / 60),
-      Math.round(other / 60),
-    ];
-  });
-
+  const at = (d: TimeReviewDay, k: PositionKey) => (d.positions[k]?.at ? formatClock(d.positions[k]!.at, tz) : '');
+  const rows = review.days.map((d) => [
+    d.date,
+    d.weekday_label,
+    d.day_type,
+    at(d, 'clock_in'),
+    at(d, 'lunch_start'),
+    at(d, 'lunch_end'),
+    at(d, 'other_start'),
+    at(d, 'other_end'),
+    at(d, 'clock_out'),
+    d.paid_hours.toFixed(2),
+    d.unpaid_hours.toFixed(2),
+    d.gross_hours.toFixed(2),
+  ]);
   return [header, ...rows].map((r) => r.map(csvCell).join(',')).join('\n');
 }
 
