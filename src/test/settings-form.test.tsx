@@ -25,8 +25,7 @@ const SETTINGS = {
   missed_clock_out_message: 'missed',
   auto_clock_out_warning_minutes: 15,
   auto_clock_out_warning_message: 'warn',
-  auto_clock_out_time: null,
-  auto_clock_out_limit_minutes: 0,
+  auto_clock_out_limit_minutes: 60,
   auto_clock_out_message: 'auto',
   max_shift_hours: 16,
   attendance_grace_minutes: 5,
@@ -200,10 +199,38 @@ describe('Settings form — persistence', () => {
     // Edited values, as NUMBERS / strings — not string-coerced numerics.
     expect(body.minimum_lunch_duration_minutes).toBe(90);
     expect(body.auto_lunch_message).toBe('Take lunch');
-    // Full canonical key set still present and untouched where unedited.
+    // Full canonical key set still present and untouched where unedited — and the
+    // retired auto_clock_out_time is NOT part of the payload.
     expect(body.pay_period_type).toBe('biweekly');
     expect(body.max_shift_hours).toBe(16);
-    expect(body.auto_clock_out_time).toBeNull();
+    expect(body.auto_clock_out_limit_minutes).toBe(60);
+    expect(body).not.toHaveProperty('auto_clock_out_time');
     expect(Object.keys(body).length).toBe(Object.keys(SETTINGS).length);
+  });
+});
+
+describe('Settings form — auto clock-out sequencing contract', () => {
+  it('labels the warning as minutes after shift end and auto clock-out as minutes after store close', async () => {
+    await renderSettings();
+
+    // Warning is timed from shift end (not "minutes before").
+    const warning = screen.getByText('Auto Clock-Out Warning').parentElement!;
+    expect(warning.textContent).toContain('minutes after shift end');
+
+    // Auto clock-out is timed from store close.
+    const autoOut = screen.getByText('Auto Clock-Out', { selector: 'label' }).parentElement!;
+    expect(autoOut.textContent).toContain('minutes after store close');
+  });
+
+  it('no longer renders a fixed Auto Clock-Out Time control', async () => {
+    await renderSettings();
+    expect(screen.queryByText('Auto Clock-Out Time')).toBeNull();
+    expect(document.querySelector('input[type="time"]')).toBeNull();
+  });
+
+  it('identifies Max Open Shift as a safety cap', async () => {
+    await renderSettings();
+    const maxShift = screen.getByText('Max Open Shift (hours)').parentElement!;
+    expect(maxShift.textContent).toContain('Safety cap');
   });
 });

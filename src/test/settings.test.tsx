@@ -24,8 +24,7 @@ const SETTINGS: TimeTrackerSettings = {
   missed_clock_out_message: 'missed',
   auto_clock_out_warning_minutes: 15,
   auto_clock_out_warning_message: 'warn',
-  auto_clock_out_time: null,
-  auto_clock_out_limit_minutes: 0,
+  auto_clock_out_limit_minutes: 60,
   auto_clock_out_message: 'auto',
   max_shift_hours: 16,
   attendance_grace_minutes: 5,
@@ -66,15 +65,15 @@ describe('settings lib', () => {
     const res = await fetchSettings();
     expect(server.calls).toContain('GET /admin/settings');
     expect(res.settings.pay_increments).toBe(5);
-    expect(res.settings.auto_clock_out_time).toBeNull();
+    expect(res.settings.auto_clock_out_limit_minutes).toBe(60);
     expect(res.timezone).toBe('America/Chicago');
   });
 
   it('saves the full settings object and returns resolved values', async () => {
-    const res = await saveSettings({ ...SETTINGS, pay_increments: 15, auto_clock_out_time: '18:30' });
+    const res = await saveSettings({ ...SETTINGS, pay_increments: 15, auto_clock_out_limit_minutes: 90 });
     expect(server.calls).toContain('PUT /admin/settings');
     expect((server.lastBody as TimeTrackerSettings).pay_increments).toBe(15);
     expect(res.settings.pay_increments).toBe(15);
-    expect(res.settings.auto_clock_out_time).toBe('18:30');
+    expect(res.settings.auto_clock_out_limit_minutes).toBe(90);
   });
 });

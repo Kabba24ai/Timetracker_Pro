@@ -36,7 +36,6 @@ export interface TimeTrackerSettings {
   missed_clock_out_message: string;
   auto_clock_out_warning_minutes: number;
   auto_clock_out_warning_message: string;
-  auto_clock_out_time: string | null;
   auto_clock_out_limit_minutes: number;
   auto_clock_out_message: string;
   max_shift_hours: number;

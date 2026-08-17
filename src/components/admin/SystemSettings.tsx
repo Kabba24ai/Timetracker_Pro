@@ -289,30 +289,18 @@ const SystemSettings: React.FC = () => {
         </Section>
 
         <Section title="Missed Clock-Out & Auto Clock-Out">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-            <NumberField label="Missed Clock-Out Reminder (minutes after shift end)" value={settings.missed_clock_out_reminder_minutes} onChange={num('missed_clock_out_reminder_minutes')} max={1440} />
-            <NumberField label="Auto Clock-Out Warning (minutes before)" value={settings.auto_clock_out_warning_minutes} onChange={num('auto_clock_out_warning_minutes')} max={1440} />
+          {/* The sequence reads top-to-bottom: reminder, then warning (both timed
+              from scheduled shift end), then auto clock-out (timed from store
+              close), then the failsafe cap. */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
+            <NumberField label="Missed Clock-Out Reminder" value={settings.missed_clock_out_reminder_minutes} onChange={num('missed_clock_out_reminder_minutes')} max={1440} hint="minutes after shift end" />
+            <NumberField label="Auto Clock-Out Warning" value={settings.auto_clock_out_warning_minutes} onChange={num('auto_clock_out_warning_minutes')} max={1440} hint="minutes after shift end" />
+            <NumberField label="Auto Clock-Out" value={settings.auto_clock_out_limit_minutes} onChange={num('auto_clock_out_limit_minutes')} max={1440} hint="minutes after store close" />
+            <NumberField label="Max Open Shift (hours)" value={settings.max_shift_hours} onChange={num('max_shift_hours')} min={1} max={48} hint="Safety cap for unusually long open shifts." />
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-            <div>
-              <label className={labelCls}>Auto Clock-Out Time</label>
-              <input
-                type="time"
-                value={settings.auto_clock_out_time ?? ''}
-                onChange={(e) =>
-                  setSettings((prev) =>
-                    prev ? { ...prev, auto_clock_out_time: e.target.value === '' ? null : e.target.value } : prev,
-                  )
-                }
-                className={inputCls}
-              />
-              <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
-                <Clock className="h-3 w-3" /> {timezone || 'tenant tz'} · blank = store-close fallback
-              </p>
-            </div>
-            <NumberField label="…or Minutes After Store Close" value={settings.auto_clock_out_limit_minutes} onChange={num('auto_clock_out_limit_minutes')} max={1440} hint="Used only when no time is set." />
-            <NumberField label="Max Open Shift (hours)" value={settings.max_shift_hours} onChange={num('max_shift_hours')} min={1} max={48} hint="Cross-midnight safety cap." />
-          </div>
+          <p className="text-xs text-gray-500 mb-6 flex items-center gap-1">
+            <Clock className="h-3 w-3" /> All times are in {timezone || 'tenant tz'}. The warning’s {'{time}'} token shows the actual upcoming auto clock-out time.
+          </p>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <MessageField label="Missed Clock-Out Message" value={settings.missed_clock_out_message} onChange={msg('missed_clock_out_message')} />
             <MessageField label="Auto Clock-Out Warning Message" value={settings.auto_clock_out_warning_message} onChange={msg('auto_clock_out_warning_message')} />
