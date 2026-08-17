@@ -1,87 +1,147 @@
-// TimeTracker V2 — employee work-schedule admin API layer.
+// TimeTracker V2 — Work Schedule admin API layer.
 //
-// Talks to the canonical V2 schedule endpoints (master-admin only): recurring
-// weekly rules + date-specific overrides. The server owns all schedule
-// resolution and tenant-timezone interpretation; this layer only shuttles data.
+// The canonical schedule is a DATED operational calendar: ONE ROW = ONE EMPLOYEE
+// AT ONE STORE. Store View and Employee View both read the same segment data;
+// the server owns resolution, overlap validation, store-hours defaults, and
+// tenant-timezone interpretation. This layer only shuttles data.
 
 import { api, ApiEnvelope } from './api';
 
-export interface ScheduleRuleRow {
-  day_of_week: number; // 0 = Sunday … 6 = Saturday
-  is_working_day: boolean;
-  start_time: string | null; // 'HH:MM'
-  end_time: string | null;
-  crosses_midnight: boolean;
-  store_id: number | null;
-}
+export type ScheduleView = 'this_week' | 'next_week' | 'month';
 
-export interface ScheduleOverrideRow {
-  id: number;
-  date: string; // YYYY-MM-DD
-  is_working_day: boolean;
-  start_time: string | null;
-  end_time: string | null;
-  crosses_midnight: boolean;
-  store_id: number | null;
-  reason: string | null;
-}
-
-export interface EmployeeSchedule {
-  employee: { id: number; full_name: string; store_id: number | null };
+export interface ScheduleRangeInfo {
+  from: string;
+  to: string;
+  view: string;
+  label: string;
   timezone: string;
-  rules: ScheduleRuleRow[];
-  overrides: ScheduleOverrideRow[];
 }
 
-export const DAY_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+export interface ScheduleDate {
+  date: string; // YYYY-MM-DD
+  day_of_week: number; // 0=Sun … 6=Sat
+  weekday_label: string; // 'Mon'
+  day_label: string; // 'Mon, Sep 14'
+}
 
-/** An employee's stored recurring rules + overrides (in a range). */
-export async function fetchEmployeeSchedule(
-  userId: number,
-  params?: { from?: string; to?: string },
-): Promise<EmployeeSchedule> {
-  const qs = new URLSearchParams();
-  if (params?.from) qs.set('from', params.from);
-  if (params?.to) qs.set('to', params.to);
-  const suffix = qs.toString() ? `?${qs.toString()}` : '';
-  const res = (await api.get(`/admin/employees/${userId}/schedule${suffix}`)) as ApiEnvelope & EmployeeSchedule;
+export interface StoreDayHours {
+  start: string | null; // 'HH:MM'
+  end: string | null;
+  closed: boolean;
+}
+
+export interface StoreMeta {
+  id: number;
+  name: string;
+  color: string; // hex
+  hours: Record<number, StoreDayHours>; // keyed by day_of_week
+}
+
+export interface ScheduleSegmentCell {
+  segment_id: number | null; // null when projected from a recurring rule
+  store_id: number;
+  start: string; // 'HH:MM' tenant wall clock
+  end: string;
+  overnight: boolean;
+  editable: boolean;
+}
+
+export type Cells = Record<string, ScheduleSegmentCell[]>; // date → segments
+
+export interface StoreViewSection {
+  store_id: number;
+  rows: { employee: { id: number; full_name: string }; cells: Cells }[];
+}
+
+export interface StoreView {
+  range: ScheduleRangeInfo;
+  dates: ScheduleDate[];
+  stores: StoreMeta[];
+  employees: { id: number; full_name: string }[];
+  store_view: StoreViewSection[];
+}
+
+export interface EmployeeView {
+  range: ScheduleRangeInfo;
+  employee: { id: number; full_name: string };
+  dates: ScheduleDate[];
+  stores: StoreMeta[];
+  employee_view: { store_id: number; cells: Cells }[];
+  day_offs: string[];
+}
+
+interface ViewParams {
+  view?: ScheduleView;
+  anchor?: string;
+  from?: string;
+  to?: string;
+}
+
+function qs(params: ViewParams): string {
+  const p = new URLSearchParams();
+  if (params.from && params.to) {
+    p.set('from', params.from);
+    p.set('to', params.to);
+  } else {
+    if (params.view) p.set('view', params.view);
+    if (params.anchor) p.set('anchor', params.anchor);
+  }
+  const s = p.toString();
+  return s ? `?${s}` : '';
+}
+
+export async function fetchStoreView(params: ViewParams): Promise<StoreView> {
+  const res = (await api.get(`/admin/schedule/store-view${qs(params)}`)) as ApiEnvelope & StoreView;
   return {
+    range: res.range,
+    dates: res.dates ?? [],
+    stores: res.stores ?? [],
+    employees: res.employees ?? [],
+    store_view: res.store_view ?? [],
+  };
+}
+
+export async function fetchEmployeeView(userId: number, params: ViewParams): Promise<EmployeeView> {
+  const res = (await api.get(`/admin/schedule/employee-view/${userId}${qs(params)}`)) as ApiEnvelope & EmployeeView;
+  return {
+    range: res.range,
     employee: res.employee,
-    timezone: res.timezone,
-    rules: res.rules ?? [],
-    overrides: res.overrides ?? [],
+    dates: res.dates ?? [],
+    stores: res.stores ?? [],
+    employee_view: res.employee_view ?? [],
+    day_offs: res.day_offs ?? [],
   };
 }
 
-/** Bulk upsert the recurring weekly schedule (send all 7 days). */
-export async function saveEmployeeSchedule(userId: number, rules: ScheduleRuleRow[]): Promise<void> {
-  await api.put(`/admin/employees/${userId}/schedule`, { rules });
+export interface SegmentInput {
+  user_id: number;
+  store_id: number;
+  date: string;
+  start_time?: string; // 'HH:MM'; omitted → store hours default
+  end_time?: string;
 }
 
-/** Create/replace a date-specific override; returns its id. */
-export async function saveScheduleOverride(
-  userId: number,
-  payload: {
-    date: string;
-    is_working_day: boolean;
-    start_time?: string | null;
-    end_time?: string | null;
-    crosses_midnight?: boolean;
-    store_id?: number | null;
-    reason?: string | null;
-  },
-): Promise<number> {
-  const res = (await api.post(`/admin/employees/${userId}/schedule/overrides`, payload)) as ApiEnvelope & {
-    override_id: number;
-  };
-  return res.override_id;
+export async function createSegment(input: SegmentInput): Promise<void> {
+  await api.post('/admin/schedule/segments', input);
 }
 
-export async function deleteScheduleOverride(userId: number, overrideId: number): Promise<void> {
-  await api.del(`/admin/employees/${userId}/schedule/overrides/${overrideId}`);
+export async function updateSegment(id: number, times: { start_time: string; end_time: string; store_id?: number }): Promise<void> {
+  await api.put(`/admin/schedule/segments/${id}`, times);
 }
 
-/** True when a working window ends at/before it starts (overnight). */
-export function isOvernight(start: string | null, end: string | null): boolean {
-  return !!start && !!end && end <= start;
+export async function deleteSegment(id: number): Promise<void> {
+  await api.del(`/admin/schedule/segments/${id}`);
+}
+
+/** Format 'HH:MM' (24h) as a 12-hour label, e.g. '7:00 AM'. */
+export function formatWall(hhmm: string): string {
+  const [h, m] = hhmm.split(':').map(Number);
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${String(m).padStart(2, '0')} ${ampm}`;
+}
+
+/** Compact range label, e.g. '7:00 AM – 5:00 PM'. */
+export function formatRange(seg: ScheduleSegmentCell): string {
+  return `${formatWall(seg.start)} – ${formatWall(seg.end)}${seg.overnight ? ' (+1)' : ''}`;
 }
