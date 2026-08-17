@@ -29,6 +29,92 @@ type MessageKey =
   | 'auto_clock_out_warning_message'
   | 'auto_clock_out_message';
 
+const inputCls =
+  'w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500';
+const labelCls = 'block text-sm font-medium text-gray-700 mb-2';
+
+// NOTE: Section, NumberField, and MessageField are declared at MODULE scope on
+// purpose. Declaring a component inside another component's render body gives it
+// a new function identity on every render, which makes React unmount + remount
+// the whole subtree each keystroke — destroying the focused <input>/<textarea>
+// and its caret. Stable module-level identity is what keeps focus continuous.
+
+const Section: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
+  <div className="bg-gray-50 rounded-lg p-6">
+    <h3 className="text-lg font-semibold text-gray-900 mb-6">{title}</h3>
+    {children}
+  </div>
+);
+
+// A numeric field backed by a STRING editing buffer. The user types freely —
+// including clearing the field entirely to enter a new value — and only a
+// normalized number is surfaced to the form. This avoids per-keystroke numeric
+// coercion snapping the field back to 0/the old value while editing.
+const NumberField: React.FC<{
+  label: string;
+  value: number;
+  onChange: (n: number) => void;
+  min?: number;
+  max?: number;
+  hint?: string;
+}> = ({ label, value, onChange, min = 0, max, hint }) => {
+  const [text, setText] = useState<string>(() => String(value));
+
+  // Reflect genuine external changes (e.g. the save round-trip normalizes a
+  // value) without clobbering what the user is actively typing — only sync when
+  // the parsed buffer and the incoming value truly differ.
+  useEffect(() => {
+    if (Number(text) !== value) setText(String(value));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
+
+  return (
+    <div>
+      <label className={labelCls}>{label}</label>
+      <input
+        type="number"
+        value={text}
+        min={min}
+        max={max}
+        onChange={(e) => {
+          const raw = e.target.value;
+          setText(raw);
+          if (raw.trim() === '') {
+            onChange(0);
+            return;
+          }
+          const n = Number(raw);
+          if (!Number.isNaN(n)) onChange(n);
+        }}
+        className={inputCls}
+      />
+      {hint && <p className="text-xs text-gray-500 mt-1">{hint}</p>}
+    </div>
+  );
+};
+
+const MessageField: React.FC<{ label: string; value: string; onChange: (v: string) => void; hint?: string }> = ({
+  label,
+  value,
+  onChange,
+  hint,
+}) => (
+  <div>
+    <label className={labelCls}>{label}</label>
+    <textarea
+      value={value ?? ''}
+      onChange={(e) => onChange(e.target.value)}
+      rows={3}
+      maxLength={500}
+      className={`${inputCls} text-sm resize-none`}
+      placeholder="Enter message…"
+    />
+    <p className="text-xs text-gray-500 mt-1">
+      {hint ? `${hint} · ` : ''}Merge tokens: {'{name}'}, {'{time}'}, {'{lunch_minutes}'}
+    </p>
+  </div>
+);
+
 const SystemSettings: React.FC = () => {
   const [settings, setSettings] = useState<TimeTrackerSettings | null>(null);
   const [timezone, setTimezone] = useState<string>('');
@@ -56,11 +142,12 @@ const SystemSettings: React.FC = () => {
     };
   }, []);
 
-  const setNum = (key: NumericKey, value: string) =>
-    setSettings((prev) => (prev ? { ...prev, [key]: value === '' ? 0 : Number(value) } : prev));
-
-  const setMsg = (key: MessageKey, value: string) =>
-    setSettings((prev) => (prev ? { ...prev, [key]: value } : prev));
+  // Stable field-update factories: patch a single key, leaving every other
+  // unsaved value untouched.
+  const num = (key: NumericKey) => (n: number) =>
+    setSettings((prev) => (prev ? { ...prev, [key]: n } : prev));
+  const msg = (key: MessageKey) => (v: string) =>
+    setSettings((prev) => (prev ? { ...prev, [key]: v } : prev));
 
   const handleSave = async () => {
     if (!settings) return;
@@ -103,55 +190,6 @@ const SystemSettings: React.FC = () => {
     );
   }
 
-  const inputCls =
-    'w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500';
-  const labelCls = 'block text-sm font-medium text-gray-700 mb-2';
-
-  const NumberField: React.FC<{ label: string; k: NumericKey; min?: number; max?: number; hint?: string }> = ({
-    label,
-    k,
-    min = 0,
-    max,
-    hint,
-  }) => (
-    <div>
-      <label className={labelCls}>{label}</label>
-      <input
-        type="number"
-        value={settings[k]}
-        min={min}
-        max={max}
-        onChange={(e) => setNum(k, e.target.value)}
-        className={inputCls}
-      />
-      {hint && <p className="text-xs text-gray-500 mt-1">{hint}</p>}
-    </div>
-  );
-
-  const MessageField: React.FC<{ label: string; k: MessageKey; hint?: string }> = ({ label, k, hint }) => (
-    <div>
-      <label className={labelCls}>{label}</label>
-      <textarea
-        value={settings[k] ?? ''}
-        onChange={(e) => setMsg(k, e.target.value)}
-        rows={3}
-        maxLength={500}
-        className={`${inputCls} text-sm resize-none`}
-        placeholder="Enter message…"
-      />
-      <p className="text-xs text-gray-500 mt-1">
-        {hint ? `${hint} · ` : ''}Merge tokens: {'{name}'}, {'{time}'}, {'{lunch_minutes}'}
-      </p>
-    </div>
-  );
-
-  const Section: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
-    <div className="bg-gray-50 rounded-lg p-6">
-      <h3 className="text-lg font-semibold text-gray-900 mb-6">{title}</h3>
-      {children}
-    </div>
-  );
-
   return (
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
@@ -189,7 +227,7 @@ const SystemSettings: React.FC = () => {
               <label className={labelCls}>Pay Rounding Increment</label>
               <select
                 value={settings.pay_increments}
-                onChange={(e) => setNum('pay_increments', e.target.value)}
+                onChange={(e) => num('pay_increments')(Number(e.target.value))}
                 className={inputCls}
               >
                 <option value={0}>No rounding</option>
@@ -232,28 +270,28 @@ const SystemSettings: React.FC = () => {
 
         <Section title="Lunch">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-            <NumberField label="Minimum Lunch (minutes)" k="minimum_lunch_duration_minutes" max={240} hint="Enforced when ending lunch manually." />
-            <NumberField label="Mandatory Lunch (minutes)" k="default_lunch_duration_minutes" max={240} hint="Applied by auto lunch remediation." />
-            <NumberField label="Missed-Lunch Reminder Lead (minutes)" k="auto_lunch_minutes" max={1440} hint="Before shift end." />
+            <NumberField label="Minimum Lunch (minutes)" value={settings.minimum_lunch_duration_minutes} onChange={num('minimum_lunch_duration_minutes')} max={240} hint="Enforced when ending lunch manually." />
+            <NumberField label="Mandatory Lunch (minutes)" value={settings.default_lunch_duration_minutes} onChange={num('default_lunch_duration_minutes')} max={240} hint="Applied by auto lunch remediation." />
+            <NumberField label="Missed-Lunch Reminder Lead (minutes)" value={settings.auto_lunch_minutes} onChange={num('auto_lunch_minutes')} max={1440} hint="Before shift end." />
           </div>
-          <MessageField label="Missed-Lunch Reminder Message" k="auto_lunch_message" />
+          <MessageField label="Missed-Lunch Reminder Message" value={settings.auto_lunch_message} onChange={msg('auto_lunch_message')} />
         </Section>
 
         <Section title="Return-from-Lunch Reminders">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-            <NumberField label="1st Reminder (minutes after lunch start)" k="first_clock_in_reminder_minutes" max={1440} />
-            <NumberField label="2nd Reminder (minutes after lunch start)" k="second_clock_in_reminder_minutes" max={1440} />
+            <NumberField label="1st Reminder (minutes after lunch start)" value={settings.first_clock_in_reminder_minutes} onChange={num('first_clock_in_reminder_minutes')} max={1440} />
+            <NumberField label="2nd Reminder (minutes after lunch start)" value={settings.second_clock_in_reminder_minutes} onChange={num('second_clock_in_reminder_minutes')} max={1440} />
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <MessageField label="1st Reminder Message" k="clock_in_message_1" />
-            <MessageField label="2nd Reminder Message" k="clock_in_message_2" />
+            <MessageField label="1st Reminder Message" value={settings.clock_in_message_1} onChange={msg('clock_in_message_1')} />
+            <MessageField label="2nd Reminder Message" value={settings.clock_in_message_2} onChange={msg('clock_in_message_2')} />
           </div>
         </Section>
 
         <Section title="Missed Clock-Out & Auto Clock-Out">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-            <NumberField label="Missed Clock-Out Reminder (minutes after shift end)" k="missed_clock_out_reminder_minutes" max={1440} />
-            <NumberField label="Auto Clock-Out Warning (minutes before)" k="auto_clock_out_warning_minutes" max={1440} />
+            <NumberField label="Missed Clock-Out Reminder (minutes after shift end)" value={settings.missed_clock_out_reminder_minutes} onChange={num('missed_clock_out_reminder_minutes')} max={1440} />
+            <NumberField label="Auto Clock-Out Warning (minutes before)" value={settings.auto_clock_out_warning_minutes} onChange={num('auto_clock_out_warning_minutes')} max={1440} />
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
             <div>
@@ -272,19 +310,19 @@ const SystemSettings: React.FC = () => {
                 <Clock className="h-3 w-3" /> {timezone || 'tenant tz'} · blank = store-close fallback
               </p>
             </div>
-            <NumberField label="…or Minutes After Store Close" k="auto_clock_out_limit_minutes" max={1440} hint="Used only when no time is set." />
-            <NumberField label="Max Open Shift (hours)" k="max_shift_hours" min={1} max={48} hint="Cross-midnight safety cap." />
+            <NumberField label="…or Minutes After Store Close" value={settings.auto_clock_out_limit_minutes} onChange={num('auto_clock_out_limit_minutes')} max={1440} hint="Used only when no time is set." />
+            <NumberField label="Max Open Shift (hours)" value={settings.max_shift_hours} onChange={num('max_shift_hours')} min={1} max={48} hint="Cross-midnight safety cap." />
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <MessageField label="Missed Clock-Out Message" k="missed_clock_out_message" />
-            <MessageField label="Auto Clock-Out Warning Message" k="auto_clock_out_warning_message" />
-            <MessageField label="Auto Clock-Out Message" k="auto_clock_out_message" />
+            <MessageField label="Missed Clock-Out Message" value={settings.missed_clock_out_message} onChange={msg('missed_clock_out_message')} />
+            <MessageField label="Auto Clock-Out Warning Message" value={settings.auto_clock_out_warning_message} onChange={msg('auto_clock_out_warning_message')} />
+            <MessageField label="Auto Clock-Out Message" value={settings.auto_clock_out_message} onChange={msg('auto_clock_out_message')} />
           </div>
         </Section>
 
         <Section title="Attendance">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <NumberField label="Late Grace Period (minutes)" k="attendance_grace_minutes" max={240} hint="After scheduled start before a punch counts late." />
+            <NumberField label="Late Grace Period (minutes)" value={settings.attendance_grace_minutes} onChange={num('attendance_grace_minutes')} max={240} hint="After scheduled start before a punch counts late." />
           </div>
         </Section>
 
