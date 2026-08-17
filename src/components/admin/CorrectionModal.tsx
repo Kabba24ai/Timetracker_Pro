@@ -1,62 +1,116 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { AlertCircle, X } from 'lucide-react';
 import { ApiError } from '../../lib/api';
-import { BreakKind, CorrectableKind, CorrectionPayload } from '../../lib/admin';
-import { tenantWallClockToUtcIso, toTenantDatetimeLocal } from '../../lib/tz';
+import { BreakKind, CorrectableKind, CORRECTION_REASONS, CorrectionPayload } from '../../lib/admin';
+import { formatCalendarDate, tenantWallClockToUtcIso } from '../../lib/tz';
 
-// The correction the admin is composing. One shape per mode. `insert` and
-// `insert_break` may arrive pre-filled from a clicked day/position so the admin
-// lands on the exact punch to add.
+// The correction the admin is composing. The employee, day, and punch are
+// already chosen on the grid, so the modal edits only TIME + reason — the date
+// is contextual and read-only. Times arrive as 24h 'HH:MM' on `date`.
 export type CorrectionDraft =
-  | { mode: 'adjust'; eventId: number; kindLabel: string; effectiveAt: string | null }
-  | { mode: 'void'; eventId: number; kindLabel: string }
-  | { mode: 'insert'; userId: number; kind?: CorrectableKind; datetimeLocal?: string; label?: string }
-  | {
-      mode: 'insert_break';
-      userId: number;
-      breakType: BreakKind;
-      startLocal?: string;
-      endLocal?: string;
-      label?: string;
-    };
-
-const KINDS: { value: CorrectableKind; label: string }[] = [
-  { value: 'clock_in', label: 'Clock In' },
-  { value: 'clock_out', label: 'Clock Out' },
-  { value: 'lunch_start', label: 'Lunch Out' },
-  { value: 'lunch_end', label: 'Lunch In' },
-  { value: 'other_start', label: 'Break Out' },
-  { value: 'other_end', label: 'Break In' },
-];
+  | { mode: 'adjust'; eventId: number; kindLabel: string; date: string; time24: string }
+  | { mode: 'void'; eventId: number; kindLabel: string; date: string }
+  | { mode: 'insert'; userId: number; kind: CorrectableKind; kindLabel: string; date: string; time24: string; title?: string }
+  | { mode: 'insert_break'; userId: number; breakType: BreakKind; date: string; startTime24: string; endTime24: string; title?: string };
 
 interface Props {
   draft: CorrectionDraft;
-  /** Canonical tenant TimeTracker timezone — datetime fields are interpreted in it. */
+  /** Canonical tenant TimeTracker timezone — times are interpreted in it. */
   tz: string;
   onClose: () => void;
   onSubmit: (payload: CorrectionPayload) => Promise<void>;
 }
 
+const pad = (n: number) => String(n).padStart(2, '0');
+
+interface Clock {
+  h: number; // 1–12
+  m: number; // 0–59
+  ampm: 'AM' | 'PM';
+}
+
+function parse24(t: string): Clock {
+  const [hh, mm] = t.split(':').map(Number);
+  const ampm: 'AM' | 'PM' = hh >= 12 ? 'PM' : 'AM';
+  const h = hh % 12 === 0 ? 12 : hh % 12;
+  return { h, m: mm || 0, ampm };
+}
+
+function to24(c: Clock): string {
+  let hh = c.h % 12;
+  if (c.ampm === 'PM') hh += 12;
+  return `${pad(hh)}:${pad(c.m)}`;
+}
+
+// A fast, purpose-built time control: Hour (1–12) · Minute (00–59) · AM/PM.
+// Digits overwrite on focus; entering two hour digits advances to minute.
+const TimeField: React.FC<{ value: Clock; onChange: (c: Clock) => void; autoFocus?: boolean }> = ({ value, onChange, autoFocus }) => {
+  const minuteRef = useRef<HTMLInputElement>(null);
+
+  const setHour = (raw: string, andAdvance: boolean) => {
+    const digits = raw.replace(/\D/g, '').slice(0, 2);
+    let h = digits === '' ? 0 : Math.min(12, parseInt(digits, 10));
+    onChange({ ...value, h });
+    if (andAdvance && (digits.length === 2 || parseInt(digits || '0', 10) > 1)) minuteRef.current?.select();
+  };
+  const setMinute = (raw: string) => {
+    const digits = raw.replace(/\D/g, '').slice(0, 2);
+    const m = digits === '' ? 0 : Math.min(59, parseInt(digits, 10));
+    onChange({ ...value, m });
+  };
+
+  const cell = 'w-14 text-center px-2 py-2 border border-gray-300 rounded-lg font-mono text-lg focus:outline-none focus:ring-2 focus:ring-blue-500';
+  return (
+    <div className="flex items-center gap-1">
+      <input
+        aria-label="Hour"
+        inputMode="numeric"
+        value={value.h ? String(value.h) : ''}
+        autoFocus={autoFocus}
+        onFocus={(e) => e.currentTarget.select()}
+        onChange={(e) => setHour(e.target.value, true)}
+        onBlur={(e) => setHour(e.target.value, false)}
+        className={cell}
+      />
+      <span className="text-lg font-semibold text-gray-400">:</span>
+      <input
+        aria-label="Minute"
+        ref={minuteRef}
+        inputMode="numeric"
+        value={pad(value.m)}
+        onFocus={(e) => e.currentTarget.select()}
+        onChange={(e) => setMinute(e.target.value)}
+        className={cell}
+      />
+      <select
+        aria-label="AM/PM"
+        value={value.ampm}
+        onChange={(e) => onChange({ ...value, ampm: e.target.value as 'AM' | 'PM' })}
+        className="ml-1 px-2 py-2 border border-gray-300 rounded-lg bg-white text-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+      >
+        <option value="AM">AM</option>
+        <option value="PM">PM</option>
+      </select>
+    </div>
+  );
+};
+
 const CorrectionModal: React.FC<Props> = ({ draft, tz, onClose, onSubmit }) => {
-  const [effectiveAt, setEffectiveAt] = useState<string>(
-    draft.mode === 'adjust'
-      ? toTenantDatetimeLocal(draft.effectiveAt, tz)
-      : draft.mode === 'insert'
-        ? (draft.datetimeLocal ?? toTenantDatetimeLocal(null, tz))
-        : toTenantDatetimeLocal(null, tz),
+  const [time, setTime] = useState<Clock>(() =>
+    draft.mode === 'adjust' || draft.mode === 'insert' ? parse24(draft.time24) : { h: 12, m: 0, ampm: 'PM' },
   );
-  const [kind, setKind] = useState<CorrectableKind>(
-    draft.mode === 'insert' ? (draft.kind ?? 'clock_in') : 'clock_out',
-  );
-  const [startAt, setStartAt] = useState<string>(
-    draft.mode === 'insert_break' ? (draft.startLocal ?? toTenantDatetimeLocal(null, tz)) : '',
-  );
-  const [endAt, setEndAt] = useState<string>(
-    draft.mode === 'insert_break' ? (draft.endLocal ?? toTenantDatetimeLocal(null, tz)) : '',
-  );
-  const [reason, setReason] = useState('');
+  const [start, setStart] = useState<Clock>(() => (draft.mode === 'insert_break' ? parse24(draft.startTime24) : { h: 12, m: 0, ampm: 'PM' }));
+  const [end, setEnd] = useState<Clock>(() => (draft.mode === 'insert_break' ? parse24(draft.endTime24) : { h: 12, m: 30, ampm: 'PM' }));
+
+  const [reasonCode, setReasonCode] = useState('');
+  const [otherText, setOtherText] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const isOther = reasonCode === 'other';
+  // Reason is OPTIONAL (the established TimeTracker rule) — the only block is
+  // choosing Other without an explanation.
+  const reasonReady = !isOther || otherText.trim() !== '';
 
   const title =
     draft.mode === 'adjust'
@@ -64,34 +118,35 @@ const CorrectionModal: React.FC<Props> = ({ draft, tz, onClose, onSubmit }) => {
       : draft.mode === 'void'
         ? `Void ${draft.kindLabel}`
         : draft.mode === 'insert_break'
-          ? draft.label ?? (draft.breakType === 'lunch' ? 'Add lunch' : 'Add break')
-          : (draft.label ?? 'Add a punch');
+          ? (draft.title ?? (draft.breakType === 'lunch' ? 'Add lunch' : 'Add break'))
+          : (draft.title ?? `Add ${draft.kindLabel}`);
 
-  const submit = async () => {
+  // Only send reason fields when a standardized reason is actually chosen.
+  const buildReason = (): Pick<CorrectionPayload, 'reason_code' | 'reason'> => {
+    if (reasonCode === '') return {};
+    const label = CORRECTION_REASONS.find((r) => r.code === reasonCode)?.label ?? reasonCode;
+    return { reason_code: reasonCode, reason: isOther ? otherText.trim() : label };
+  };
+
+  const submit = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!reasonReady || saving) return;
     setSaving(true);
     setError(null);
 
-    // Fields hold wall-clock times in the TENANT timezone; convert to true UTC
-    // instants from that zone — never the browser's.
-    const iso = (local: string) => tenantWallClockToUtcIso(local, tz);
+    const iso = (c: Clock) => tenantWallClockToUtcIso(`${draft.date}T${to24(c)}`, tz);
+    const r = buildReason();
 
     let payload: CorrectionPayload;
     if (draft.mode === 'adjust') {
-      payload = { type: 'adjust', event_id: draft.eventId, effective_at: iso(effectiveAt) };
+      payload = { type: 'adjust', event_id: draft.eventId, effective_at: iso(time), ...r };
     } else if (draft.mode === 'void') {
-      payload = { type: 'void', event_id: draft.eventId };
+      payload = { type: 'void', event_id: draft.eventId, ...r };
     } else if (draft.mode === 'insert_break') {
-      payload = {
-        type: 'insert_break',
-        user_id: draft.userId,
-        break_type: draft.breakType,
-        start_at: iso(startAt),
-        end_at: iso(endAt),
-      };
+      payload = { type: 'insert_break', user_id: draft.userId, break_type: draft.breakType, start_at: iso(start), end_at: iso(end), ...r };
     } else {
-      payload = { type: 'insert', user_id: draft.userId, kind, effective_at: iso(effectiveAt) };
+      payload = { type: 'insert', user_id: draft.userId, kind: draft.kind, effective_at: iso(time), ...r };
     }
-    if (reason.trim()) payload.reason = reason.trim();
 
     try {
       await onSubmit(payload);
@@ -101,15 +156,12 @@ const CorrectionModal: React.FC<Props> = ({ draft, tz, onClose, onSubmit }) => {
     }
   };
 
-  const field =
-    'w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500';
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
+      <form className="bg-white rounded-xl shadow-xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()} onSubmit={submit}>
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600" aria-label="Close">
+          <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600" aria-label="Close">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -121,70 +173,77 @@ const CorrectionModal: React.FC<Props> = ({ draft, tz, onClose, onSubmit }) => {
           </div>
         )}
 
+        {/* Date — contextual, read-only (the row's calendar day). */}
+        <div className="mb-4">
+          <p className="block text-xs font-medium text-gray-600 mb-1">Date</p>
+          <p className="text-sm font-medium text-gray-900">{formatCalendarDate(draft.date)}</p>
+        </div>
+
         {draft.mode === 'void' ? (
           <p className="text-sm text-gray-600 mb-4">
-            This appends a void correction; the original event is preserved and the projection is
-            rebuilt without it. The server rejects it if it would leave an impossible sequence.
+            This appends a void correction; the original event is preserved and the projection is rebuilt without it.
+            The server rejects it if it would leave an impossible sequence.
           </p>
         ) : draft.mode === 'insert_break' ? (
-          <div className="grid grid-cols-2 gap-3 mb-4">
+          <div className="mb-4 grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">
                 {draft.breakType === 'lunch' ? 'Lunch Out' : 'Break Out'} <span className="text-gray-400">({tz})</span>
               </label>
-              <input type="datetime-local" value={startAt} onChange={(e) => setStartAt(e.target.value)} className={field} />
+              <TimeField value={start} onChange={setStart} autoFocus />
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">
-                {draft.breakType === 'lunch' ? 'Lunch In' : 'Break In'} <span className="text-gray-400">({tz})</span>
+                {draft.breakType === 'lunch' ? 'Lunch In' : 'Break In'}
               </label>
-              <input type="datetime-local" value={endAt} onChange={(e) => setEndAt(e.target.value)} className={field} />
+              <TimeField value={end} onChange={setEnd} />
             </div>
           </div>
         ) : (
-          <>
-            {draft.mode === 'insert' && (
-              <div className="mb-4">
-                <label className="block text-xs font-medium text-gray-600 mb-1">Punch type</label>
-                <select value={kind} onChange={(e) => setKind(e.target.value as CorrectableKind)} className={`${field} bg-white`}>
-                  {KINDS.map((k) => (
-                    <option key={k.value} value={k.value}>
-                      {k.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-            <div className="mb-4">
-              <label className="block text-xs font-medium text-gray-600 mb-1">
-                Effective time <span className="text-gray-400">({tz})</span>
-              </label>
-              <input type="datetime-local" value={effectiveAt} onChange={(e) => setEffectiveAt(e.target.value)} className={field} />
-            </div>
-          </>
+          <div className="mb-4">
+            <label className="block text-xs font-medium text-gray-600 mb-1">
+              Time <span className="text-gray-400">({tz})</span>
+            </label>
+            <TimeField value={time} onChange={setTime} autoFocus />
+          </div>
         )}
 
+        {/* Reason — required standardized dropdown; Other reveals a required note. */}
         <div className="mb-5">
-          <label className="block text-xs font-medium text-gray-600 mb-1">Reason (optional)</label>
-          <input
-            type="text"
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-            placeholder="e.g. Employee forgot to clock out"
-            className={field}
-          />
+          <label className="block text-xs font-medium text-gray-600 mb-1">
+            Reason <span className="text-gray-400">(optional)</span>
+          </label>
+          <select
+            aria-label="Reason"
+            value={reasonCode}
+            onChange={(e) => setReasonCode(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">Select reason (optional)</option>
+            {CORRECTION_REASONS.map((r) => (
+              <option key={r.code} value={r.code}>
+                {r.label}
+              </option>
+            ))}
+          </select>
+          {isOther && (
+            <textarea
+              value={otherText}
+              onChange={(e) => setOtherText(e.target.value)}
+              rows={2}
+              placeholder="Explain the correction…"
+              className="mt-2 w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+            />
+          )}
         </div>
 
         <div className="flex justify-end gap-2">
-          <button onClick={onClose} className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+          <button type="button" onClick={onClose} className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
             Cancel
           </button>
           <button
-            onClick={submit}
-            disabled={
-              saving ||
-              (draft.mode === 'insert_break' ? !startAt || !endAt : draft.mode !== 'void' && !effectiveAt)
-            }
+            type="submit"
+            disabled={saving || !reasonReady}
             className={`px-4 py-2 rounded-lg text-white transition-colors disabled:opacity-50 ${
               draft.mode === 'void' ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'
             }`}
@@ -192,7 +251,7 @@ const CorrectionModal: React.FC<Props> = ({ draft, tz, onClose, onSubmit }) => {
             {saving ? 'Applying…' : draft.mode === 'void' ? 'Void event' : 'Apply'}
           </button>
         </div>
-      </div>
+      </form>
     </div>
   );
 };

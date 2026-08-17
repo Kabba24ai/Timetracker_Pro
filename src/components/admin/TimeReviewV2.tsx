@@ -132,19 +132,24 @@ const TimeReviewV2: React.FC<TimeReviewProps> = ({ initialUserId, initialFrom, i
     downloadCsv(`time-review_${name}_${review.period.from}_${review.period.to}.csv`, timeReviewToCsv(review, tz));
   };
 
-  // Click a filled punch → adjust it. Click an empty punch → insert it (single
-  // punch for clock in/out; atomic break pair for lunch/other).
+  // The employee/day/punch are already chosen on the grid; the modal edits TIME
+  // only (the date is read-only context). Filled punch → adjust; empty punch →
+  // insert (single for clock in/out; atomic break pair for lunch/other).
+  const time24Of = (iso: string | null | undefined, fallback: string) =>
+    iso ? toTenantDatetimeLocal(iso, tz).split('T')[1] : fallback;
+
   const editPosition = (day: TimeReviewDay, key: PositionKey, label: string) => {
     const pos = day.positions[key];
-    if (pos) {
-      setCorrection({ mode: 'adjust', eventId: pos.event_id, kindLabel: label, effectiveAt: pos.at });
+    if (pos && pos.at) {
+      // Use the event's OWN tenant date (an overnight clock-out belongs to the next day).
+      const [date, time24] = toTenantDatetimeLocal(pos.at, tz).split('T');
+      setCorrection({ mode: 'adjust', eventId: pos.event_id, kindLabel: label, date, time24 });
       return;
     }
     if (!userId) return;
     if (key === 'clock_in' || key === 'clock_out') {
       const iso = key === 'clock_in' ? day.schedule?.start_at : day.schedule?.end_at;
-      const datetimeLocal = iso ? toTenantDatetimeLocal(iso, tz) : `${day.date}T${DEFAULT_TIME[key]}`;
-      setCorrection({ mode: 'insert', userId, kind: key, datetimeLocal, label: `Add ${label} · ${day.day_label}` });
+      setCorrection({ mode: 'insert', userId, kind: key, kindLabel: label, date: day.date, time24: time24Of(iso, DEFAULT_TIME[key]), title: `Add ${label} · ${day.day_label}` });
     } else {
       const breakType = key === 'lunch_start' || key === 'lunch_end' ? 'lunch' : 'other';
       const [startKey, endKey]: [PositionKey, PositionKey] =
@@ -153,22 +158,24 @@ const TimeReviewV2: React.FC<TimeReviewProps> = ({ initialUserId, initialFrom, i
         mode: 'insert_break',
         userId,
         breakType,
-        startLocal: `${day.date}T${DEFAULT_TIME[startKey]}`,
-        endLocal: `${day.date}T${DEFAULT_TIME[endKey]}`,
-        label: `Add ${breakType} · ${day.day_label}`,
+        date: day.date,
+        startTime24: DEFAULT_TIME[startKey],
+        endTime24: DEFAULT_TIME[endKey],
+        title: `Add ${breakType === 'lunch' ? 'lunch' : 'break'} · ${day.day_label}`,
       });
     }
   };
 
   const addTimeForDay = (day: TimeReviewDay) => {
     if (!userId) return;
-    const iso = day.schedule?.start_at;
     setCorrection({
       mode: 'insert',
       userId,
       kind: 'clock_in',
-      datetimeLocal: iso ? toTenantDatetimeLocal(iso, tz) : `${day.date}T${DEFAULT_TIME.clock_in}`,
-      label: `Add time · ${day.day_label}`,
+      kindLabel: 'Clock In',
+      date: day.date,
+      time24: time24Of(day.schedule?.start_at, DEFAULT_TIME.clock_in),
+      title: `Add time · ${day.day_label}`,
     });
   };
 
@@ -353,7 +360,15 @@ const TimeReviewV2: React.FC<TimeReviewProps> = ({ initialUserId, initialFrom, i
                         {expanded[d.date] && (
                           <tr className="bg-gray-50/60">
                             <td colSpan={13} className="px-4 py-3">
-                              <DayLedger day={d} tz={tz} onAdjust={(eventId, kindLabel, at) => setCorrection({ mode: 'adjust', eventId, kindLabel, effectiveAt: at })} onVoid={(eventId, kindLabel) => setCorrection({ mode: 'void', eventId, kindLabel })} />
+                              <DayLedger
+                                day={d}
+                                tz={tz}
+                                onAdjust={(eventId, kindLabel, at) => {
+                                  const [date, time24] = (at ? toTenantDatetimeLocal(at, tz) : `${d.date}T12:00`).split('T');
+                                  setCorrection({ mode: 'adjust', eventId, kindLabel, date, time24 });
+                                }}
+                                onVoid={(eventId, kindLabel, at) => setCorrection({ mode: 'void', eventId, kindLabel, date: at ? toTenantDatetimeLocal(at, tz).split('T')[0] : d.date })}
+                              />
                             </td>
                           </tr>
                         )}
@@ -408,7 +423,7 @@ const DayLedger: React.FC<{
   day: TimeReviewDay;
   tz: string;
   onAdjust: (eventId: number, kindLabel: string, at: string | null) => void;
-  onVoid: (eventId: number, kindLabel: string) => void;
+  onVoid: (eventId: number, kindLabel: string, at: string | null) => void;
 }> = ({ day, tz, onAdjust, onVoid }) => (
   <div>
     <p className="text-xs font-semibold text-gray-600 mb-2">Event ledger — {day.day_label} (immutable audit truth)</p>
@@ -443,7 +458,7 @@ const DayLedger: React.FC<{
                   <button onClick={() => onAdjust(ev.id, ev.kind_label, ev.effective_at)} className="text-blue-600 hover:underline mr-3">
                     Adjust
                   </button>
-                  <button onClick={() => onVoid(ev.id, ev.kind_label)} className="text-red-600 hover:underline">
+                  <button onClick={() => onVoid(ev.id, ev.kind_label, ev.effective_at)} className="text-red-600 hover:underline">
                     Void
                   </button>
                 </>

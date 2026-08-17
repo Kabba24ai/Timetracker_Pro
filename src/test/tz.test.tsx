@@ -48,22 +48,26 @@ describe('CorrectionModal submits the correct instant in the tenant timezone', (
 
     render(
       <CorrectionModal
-        draft={{ mode: 'adjust', eventId: 42, kindLabel: 'Clock In', effectiveAt: '2026-09-14T15:00:00Z' }}
+        draft={{ mode: 'adjust', eventId: 42, kindLabel: 'Clock In', date: '2026-09-14', time24: '15:00' }}
         tz={TENANT_TZ}
         onClose={() => {}}
         onSubmit={onSubmit}
       />,
     );
 
-    // The field is pre-filled in tenant time; set it explicitly to 07:00.
-    const input = document.querySelector('input[type="datetime-local"]') as HTMLInputElement;
-    fireEvent.change(input, { target: { value: '2026-09-14T07:00' } });
+    // Set the time to 7:00 AM via the purpose-built Hour/Minute/AM-PM control.
+    fireEvent.change(screen.getByLabelText('Hour'), { target: { value: '7' } });
+    fireEvent.change(screen.getByLabelText('Minute'), { target: { value: '00' } });
+    fireEvent.change(screen.getByLabelText('AM/PM'), { target: { value: 'AM' } });
+    // Reason is now required.
+    fireEvent.change(screen.getByRole('combobox', { name: 'Reason' }), { target: { value: 'manager_correction' } });
 
     fireEvent.click(screen.getByRole('button', { name: /^Apply$/ }));
 
     await vi.waitFor(() => expect(onSubmit).toHaveBeenCalled());
     expect(submitted!.type).toBe('adjust');
     expect(submitted!.event_id).toBe(42);
+    expect(submitted!.reason_code).toBe('manager_correction');
     // 7:00 AM America/Chicago = 12:00 UTC — proves tenant-tz conversion, not the
     // device zone (which would yield 01:30 UTC).
     expect(submitted!.effective_at).toBe('2026-09-14T12:00:00.000Z');

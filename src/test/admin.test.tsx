@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 
 // Fake V2 admin API. Records calls and serves the per-day time review + roster +
 // corrections so the tests prove the wiring end-to-end.
 const server = vi.hoisted(() => ({
   calls: [] as string[],
   token: 'tok' as string | null,
+  lastBody: null as unknown,
 }));
 
 const EV = (id: number, kind: string, label: string, at: string) => ({
@@ -75,8 +76,9 @@ vi.mock('../lib/api', () => {
       if (path.startsWith('/admin/employees/1/time-review')) return { success: true, ...REVIEW };
       return { success: true, data: [] };
     },
-    post: async (path: string) => {
+    post: async (path: string, body: unknown) => {
       server.calls.push(`POST ${path}`);
+      server.lastBody = body;
       return { success: true, correction_event_id: 200 };
     },
   };
@@ -89,7 +91,16 @@ import TimeReviewV2 from '../components/admin/TimeReviewV2';
 beforeEach(() => {
   server.calls = [];
   server.token = 'tok';
+  server.lastBody = null;
 });
+
+async function openAdjustClockIn() {
+  render(<TimeReviewV2 />);
+  fireEvent.change(await screen.findByRole('combobox'), { target: { value: '1' } });
+  // Mon clock-in = 14:00 UTC = "2:00 PM".
+  fireEvent.click(await screen.findByText('2:00 PM'));
+  await screen.findByText('Adjust Clock In');
+}
 
 describe('timeReviewToCsv()', () => {
   it('orders columns Date…punches…Paid, Unpaid, Total Worked', () => {
@@ -129,26 +140,80 @@ describe('TimeReviewV2 screen', () => {
     expect(server.calls.some((c) => c.startsWith('GET /admin/employees/1/time-review'))).toBe(true);
   });
 
-  it('clicking a recorded punch opens Adjust and applying re-fetches', async () => {
-    render(<TimeReviewV2 />);
-    fireEvent.change(await screen.findByRole('combobox'), { target: { value: '1' } });
-    // Mon clock-in = 14:00 UTC = "2:00 PM".
-    fireEvent.click(await screen.findByText('2:00 PM'));
-
-    expect(await screen.findByText('Adjust Clock In')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /^Apply$/ }));
-
-    await vi.waitFor(() => expect(server.calls).toContain('POST /admin/corrections'));
-    await vi.waitFor(() => {
-      const afterPost = server.calls.slice(server.calls.indexOf('POST /admin/corrections') + 1);
-      expect(afterPost.some((c) => c.startsWith('GET /admin/employees/1/time-review'))).toBe(true);
-    });
-  });
-
   it('clicking Add time on an empty day opens the insert modal', async () => {
     render(<TimeReviewV2 />);
     fireEvent.change(await screen.findByRole('combobox'), { target: { value: '1' } });
     fireEvent.click(await screen.findByRole('button', { name: /Add time/ }));
     expect(await screen.findByText(/Add time · Sun, Sep 13/)).toBeInTheDocument();
+  });
+});
+
+describe('CorrectionModal — time + standardized reason', () => {
+  it('shows the date read-only (no date input) and loads the existing time', async () => {
+    await openAdjustClockIn();
+    // Read-only calendar date for the clicked row (Sep 14, 2026 is a Monday).
+    expect(screen.getByText('Monday, September 14, 2026')).toBeInTheDocument();
+    expect(document.querySelector('input[type="date"]')).toBeNull();
+    expect(document.querySelector('input[type="datetime-local"]')).toBeNull();
+    // Existing punch (14:00 UTC) loads as 2 : 00 PM.
+    expect((screen.getByLabelText('Hour') as HTMLInputElement).value).toBe('2');
+    expect((screen.getByLabelText('Minute') as HTMLInputElement).value).toBe('00');
+    expect((screen.getByLabelText('AM/PM') as HTMLSelectElement).value).toBe('PM');
+  });
+
+  it('offers all ten standardized reasons and keeps reason optional (Apply enabled)', async () => {
+    await openAdjustClockIn();
+    const reason = screen.getByRole('combobox', { name: 'Reason' });
+    expect(within(reason).getAllByRole('option').filter((o) => (o as HTMLOptionElement).value !== '')).toHaveLength(10);
+    // Reason is optional — Apply is enabled with no reason selected.
+    expect(screen.getByRole('button', { name: /^Apply$/ })).toBeEnabled();
+  });
+
+  it('submits with no reason (reason is optional)', async () => {
+    await openAdjustClockIn();
+    fireEvent.click(screen.getByRole('button', { name: /^Apply$/ }));
+    await vi.waitFor(() => expect(server.calls).toContain('POST /admin/corrections'));
+    const body = server.lastBody as Record<string, unknown>;
+    expect(body.type).toBe('adjust');
+    expect(body.reason_code).toBeUndefined();
+    expect(body.reason).toBeUndefined();
+  });
+
+  it('Other requires an explanation; a standard reason does not', async () => {
+    await openAdjustClockIn();
+    const reason = screen.getByRole('combobox', { name: 'Reason' });
+
+    fireEvent.change(reason, { target: { value: 'other' } });
+    // Explanation field appears and Apply stays disabled until it's filled.
+    const note = await screen.findByPlaceholderText(/Explain the correction/);
+    expect(screen.getByRole('button', { name: /^Apply$/ })).toBeDisabled();
+    fireEvent.change(note, { target: { value: 'Payroll audit' } });
+    expect(screen.getByRole('button', { name: /^Apply$/ })).toBeEnabled();
+
+    // A standard reason needs no free text.
+    fireEvent.change(reason, { target: { value: 'incorrect_time' } });
+    expect(screen.queryByPlaceholderText(/Explain the correction/)).toBeNull();
+    expect(screen.getByRole('button', { name: /^Apply$/ })).toBeEnabled();
+  });
+
+  it('Apply posts the V2 correction with the reason code + tenant-tz time, then re-fetches', async () => {
+    await openAdjustClockIn();
+    // Change the time to 3:45 PM (tz is UTC in tests → 15:45Z).
+    fireEvent.change(screen.getByLabelText('Hour'), { target: { value: '3' } });
+    fireEvent.change(screen.getByLabelText('Minute'), { target: { value: '45' } });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Reason' }), { target: { value: 'incorrect_time' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Apply$/ }));
+
+    await vi.waitFor(() => expect(server.calls).toContain('POST /admin/corrections'));
+    const body = server.lastBody as { type: string; reason_code: string; reason: string; effective_at: string };
+    expect(body.type).toBe('adjust');
+    expect(body.reason_code).toBe('incorrect_time');
+    expect(body.reason).toBe('Incorrect Time Entered');
+    expect(body.effective_at).toContain('15:45');
+    // Re-fetches the authoritative day grid (refreshes Paid/Unpaid/Worked totals).
+    await vi.waitFor(() => {
+      const afterPost = server.calls.slice(server.calls.indexOf('POST /admin/corrections') + 1);
+      expect(afterPost.some((c) => c.startsWith('GET /admin/employees/1/time-review'))).toBe(true);
+    });
   });
 });

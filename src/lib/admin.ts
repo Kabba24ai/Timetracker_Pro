@@ -50,8 +50,30 @@ export interface CorrectionPayload {
   break_type?: BreakKind; // insert_break
   start_at?: string; // insert_break (ISO 8601)
   end_at?: string; // insert_break (ISO 8601)
-  reason?: string;
+  reason_code?: string; // standardized code (mirrors CorrectionReasonCode)
+  reason?: string; // human label, or the free-text explanation when code = 'other'
 }
+
+// Standardized correction reasons — stable codes + human labels. Mirrors the
+// backend CorrectionReasonCode enum; the modal requires one, and `other` reveals
+// a required free-text explanation.
+export interface CorrectionReason {
+  code: string;
+  label: string;
+}
+
+export const CORRECTION_REASONS: CorrectionReason[] = [
+  { code: 'forgot_clock_in', label: 'Employee Forgot to Clock In' },
+  { code: 'forgot_clock_out', label: 'Employee Forgot to Clock Out' },
+  { code: 'forgot_lunch_start', label: 'Employee Forgot to Start Lunch' },
+  { code: 'forgot_lunch_end', label: 'Employee Forgot to End Lunch' },
+  { code: 'forgot_break_start', label: 'Employee Forgot to Start Break' },
+  { code: 'forgot_break_end', label: 'Employee Forgot to End Break' },
+  { code: 'incorrect_time', label: 'Incorrect Time Entered' },
+  { code: 'device_issue', label: 'Clock / Device Issue' },
+  { code: 'manager_correction', label: 'Manager Correction' },
+  { code: 'other', label: 'Other' },
+];
 
 /** Active employees for the admin picker (reuses the login roster endpoint). */
 export async function fetchEmployees(): Promise<AdminEmployee[]> {

@@ -76,6 +76,22 @@ export function formatDate(iso: string | null, tz: string): string {
   return formatInstant(iso, tz, { year: 'numeric', month: 'numeric', day: 'numeric' });
 }
 
+/**
+ * Format a plain calendar date ('YYYY-MM-DD') as e.g. "Sunday, August 16, 2026".
+ * The date has no time/zone, so it is rendered from its parts (UTC-anchored) and
+ * never shifts by timezone — it is the exact day the Time Review row represents.
+ */
+export function formatCalendarDate(dateStr: string): string {
+  const [y, mo, d] = dateStr.split('-').map(Number);
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: 'UTC',
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(new Date(Date.UTC(y, mo - 1, d)));
+}
+
 /** Pre-fill a datetime-local input: an instant → 'YYYY-MM-DDTHH:MM' in tenant time. */
 export function toTenantDatetimeLocal(iso: string | null, tz: string): string {
   const p = partsInTz(iso ? new Date(iso) : new Date(), tz);
