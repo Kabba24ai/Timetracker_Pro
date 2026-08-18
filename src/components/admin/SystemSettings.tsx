@@ -93,6 +93,21 @@ const NumberField: React.FC<{
   );
 };
 
+const ToggleField: React.FC<{ label: string; value: boolean; onChange: (v: boolean) => void; hint?: string }> = ({
+  label,
+  value,
+  onChange,
+  hint,
+}) => (
+  <label className="flex cursor-pointer items-start gap-3">
+    <input type="checkbox" checked={value} onChange={(e) => onChange(e.target.checked)} className="mt-1 h-4 w-4 rounded" />
+    <span>
+      <span className="block text-sm font-medium text-gray-700">{label}</span>
+      {hint && <span className="mt-0.5 block text-xs text-gray-500">{hint}</span>}
+    </span>
+  </label>
+);
+
 const MessageField: React.FC<{ label: string; value: string; onChange: (v: string) => void; hint?: string }> = ({
   label,
   value,
@@ -148,6 +163,8 @@ const SystemSettings: React.FC = () => {
     setSettings((prev) => (prev ? { ...prev, [key]: n } : prev));
   const msg = (key: MessageKey) => (v: string) =>
     setSettings((prev) => (prev ? { ...prev, [key]: v } : prev));
+  const setVacationEnabled = (v: boolean) =>
+    setSettings((prev) => (prev ? { ...prev, vacation_accrual_enabled: v } : prev));
 
   const handleSave = async () => {
     if (!settings) return;
@@ -312,6 +329,44 @@ const SystemSettings: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <NumberField label="Late Grace Period (minutes)" value={settings.attendance_grace_minutes} onChange={num('attendance_grace_minutes')} max={240} hint="After scheduled start before a punch counts late." />
           </div>
+        </Section>
+
+        <Section title="Vacation Accrual">
+          <div className="mb-6">
+            <ToggleField
+              label="Enable Vacation Accrual"
+              value={settings.vacation_accrual_enabled}
+              onChange={setVacationEnabled}
+              hint="Employees accrue vacation from actual worked hours each completed pay period."
+            />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <NumberField
+              label="Standard Annual Vacation Hours"
+              value={settings.vacation_annual_hours}
+              onChange={num('vacation_annual_hours')}
+              max={2000}
+              hint={`${settings.vacation_annual_hours} hours / approximately ${(settings.vacation_annual_hours / 40).toFixed(1)} weeks. Employees may have a personal override.`}
+            />
+            <NumberField
+              label="Max Accrual-Eligible Hours / Pay Period"
+              value={settings.vacation_max_eligible_hours_per_period}
+              onChange={num('vacation_max_eligible_hours_per_period')}
+              min={1}
+              max={200}
+              hint="Overtime above this cap never increases accrual (applied across the whole period, not per week)."
+            />
+            <NumberField
+              label="Accrual Starts After (days)"
+              value={settings.vacation_accrual_waiting_days}
+              onChange={num('vacation_accrual_waiting_days')}
+              max={3650}
+              hint="Employment waiting period. Common: 0 / 30 / 60 / 90."
+            />
+          </div>
+          <p className="text-xs text-gray-500 mt-4">
+            Accrual rate = annual hours ÷ (max eligible hours × pay periods per year). Balances feed the same Vacation ledger employees request against.
+          </p>
         </Section>
 
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-start space-x-3">

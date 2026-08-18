@@ -28,6 +28,10 @@ const SETTINGS: TimeTrackerSettings = {
   auto_clock_out_message: 'auto',
   max_shift_hours: 16,
   attendance_grace_minutes: 5,
+  vacation_accrual_enabled: true,
+  vacation_annual_hours: 80,
+  vacation_max_eligible_hours_per_period: 80,
+  vacation_accrual_waiting_days: 90,
 };
 
 vi.mock('../lib/api', () => {

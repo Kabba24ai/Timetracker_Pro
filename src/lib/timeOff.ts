@@ -75,7 +75,57 @@ export interface OverlapException {
   resolved_at: string | null;
 }
 
+// The two employee-facing request choices for this release. Vacation draws on the
+// accrued balance; Unpaid Time Off never touches it.
+export const EMPLOYEE_REQUEST_TYPES = ['vacation', 'unpaid'] as const;
+export const EMPLOYEE_TYPE_LABEL: Record<string, string> = { vacation: 'Vacation', unpaid: 'Unpaid Time Off' };
+
+export interface VacationStatus {
+  available: number;
+  accrual_enabled: boolean;
+  annual_entitlement_hours: number;
+  using_override: boolean;
+  effective_rate: number;
+  eligibility_date: string | null;
+  is_eligible: boolean;
+  accrual_year: number;
+  accrued_this_year: number;
+  annual_remaining_capacity: number;
+}
+
+export interface VacationAccrualRow {
+  employee: { id: number; name: string };
+  available: number;
+  annual_entitlement_hours: number;
+  using_override: boolean;
+  override_hours: number | null;
+  effective_rate: number;
+  eligibility_date: string | null;
+  is_eligible: boolean;
+  accrued_this_year: number;
+  annual_remaining_capacity: number;
+}
+
+export interface VacationAccrualRecord {
+  id: number;
+  kind: 'accrual' | 'adjustment';
+  period_start: string;
+  period_end: string;
+  total_worked_hours: number;
+  eligible_worked_hours: number;
+  annual_entitlement_hours: number;
+  accrual_rate: number;
+  hours_earned: number;
+  source: string;
+  created_at: string | null;
+}
+
 // ── Employee ────────────────────────────────────────────────────────────────
+
+export async function fetchMyVacationStatus(): Promise<VacationStatus> {
+  const res = (await api.get('/time-off/vacation-status')) as ApiEnvelope<VacationStatus>;
+  return res.data as VacationStatus;
+}
 
 export async function fetchTimeOffTypes(): Promise<TimeOffType[]> {
   const res = (await api.get('/time-off/types')) as ApiEnvelope<TimeOffType[]>;
@@ -152,6 +202,39 @@ export async function adminBalances(employeeId?: number): Promise<EmployeeBalanc
 export async function adminGrant(payload: { employee_id: number; bucket: string; hours: number; reason?: string }): Promise<TimeOffBalance> {
   const res = (await api.post('/admin/time-off/balances/grant', payload)) as ApiEnvelope<TimeOffBalance>;
   return res.data as TimeOffBalance;
+}
+
+// ── Admin: vacation accrual ─────────────────────────────────────────────────
+
+export interface VacationAccrualOverview {
+  company_default_hours: number;
+  accrual_enabled: boolean;
+  data: VacationAccrualRow[];
+  recent_accruals: VacationAccrualRecord[];
+}
+
+export async function fetchVacationAccrual(employeeId?: number): Promise<VacationAccrualOverview> {
+  const suffix = employeeId ? `?employee_id=${employeeId}` : '';
+  const res = (await api.get(`/admin/vacation/accrual${suffix}`)) as ApiEnvelope<VacationAccrualRow[]> & {
+    company_default_hours: number;
+    accrual_enabled: boolean;
+    recent_accruals: VacationAccrualRecord[];
+  };
+  return {
+    company_default_hours: res.company_default_hours,
+    accrual_enabled: res.accrual_enabled,
+    data: res.data ?? [],
+    recent_accruals: res.recent_accruals ?? [],
+  };
+}
+
+export async function setVacationEntitlement(employeeId: number, hours: number | null): Promise<void> {
+  await api.put(`/admin/employees/${employeeId}/vacation-entitlement`, { annual_vacation_hours_override: hours });
+}
+
+export async function runVacationAccrual(params: { period_start?: string; employee_id?: number } = {}): Promise<{ records_written: number }> {
+  const res = (await api.post('/admin/vacation/accrual/run', params)) as ApiEnvelope & { records_written: number };
+  return { records_written: res.records_written ?? 0 };
 }
 
 export async function fetchOverlapExceptions(status: 'open' | 'resolved' = 'open'): Promise<OverlapException[]> {

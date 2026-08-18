@@ -29,6 +29,10 @@ const SETTINGS = {
   auto_clock_out_message: 'auto',
   max_shift_hours: 16,
   attendance_grace_minutes: 5,
+  vacation_accrual_enabled: true,
+  vacation_annual_hours: 80,
+  vacation_max_eligible_hours_per_period: 80,
+  vacation_accrual_waiting_days: 90,
 };
 
 vi.mock('../lib/api', () => {
@@ -232,5 +236,29 @@ describe('Settings form — auto clock-out sequencing contract', () => {
     await renderSettings();
     const maxShift = screen.getByText('Max Open Shift (hours)').parentElement!;
     expect(maxShift.textContent).toContain('Safety cap');
+  });
+});
+
+describe('Settings form — Vacation Accrual section', () => {
+  it('renders the Kabba defaults: 80 annual, 80 eligible cap, 90-day wait', async () => {
+    await renderSettings();
+    expect(screen.getByText('Vacation Accrual')).toBeInTheDocument();
+    expect((control('Standard Annual Vacation Hours') as HTMLInputElement).value).toBe('80');
+    expect((control('Max Accrual-Eligible Hours / Pay Period') as HTMLInputElement).value).toBe('80');
+    expect((control('Accrual Starts After (days)') as HTMLInputElement).value).toBe('90');
+    // Enable toggle present and on by default.
+    expect((screen.getByText('Enable Vacation Accrual').closest('label')!.querySelector('input[type="checkbox"]') as HTMLInputElement).checked).toBe(true);
+  });
+
+  it('Save includes the vacation-accrual keys in the canonical payload', async () => {
+    const user = userEvent.setup();
+    await renderSettings();
+    await user.click(screen.getByRole('button', { name: /Save Settings/ }));
+    await vi.waitFor(() => expect(server.calls).toContain('PUT /admin/settings'));
+    const body = server.lastBody as Record<string, unknown>;
+    expect(body.vacation_annual_hours).toBe(80);
+    expect(body.vacation_max_eligible_hours_per_period).toBe(80);
+    expect(body.vacation_accrual_waiting_days).toBe(90);
+    expect(body.vacation_accrual_enabled).toBe(true);
   });
 });

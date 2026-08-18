@@ -7,6 +7,7 @@ import {
   TimeOffStatus,
   TimeOffType,
   TIME_OFF_STATUS_STYLE,
+  VacationAccrualRow,
   adminApprove,
   adminBalances,
   adminDeny,
@@ -14,10 +15,13 @@ import {
   adminListRequests,
   fetchOverlapExceptions,
   fetchTimeOffTypes,
+  fetchVacationAccrual,
   resolveOverlap,
+  runVacationAccrual,
+  setVacationEntitlement,
 } from '../../lib/timeOff';
 
-type Tab = 'requests' | 'balances' | 'overlaps';
+type Tab = 'requests' | 'balances' | 'accrual' | 'overlaps';
 
 /**
  * Admin time-off management on the real V2 API: approve/deny requests, view and
@@ -35,6 +39,22 @@ const VacationManagement: React.FC = () => {
 
   const [grant, setGrant] = useState({ employee_id: '', bucket: '', hours: '' });
   const [busy, setBusy] = useState(false);
+
+  const [accrualRows, setAccrualRows] = useState<VacationAccrualRow[]>([]);
+  const [companyDefault, setCompanyDefault] = useState(0);
+  const [accrualEnabled, setAccrualEnabled] = useState(true);
+  const [overrideEdit, setOverrideEdit] = useState<Record<number, string>>({});
+
+  const loadAccrual = async () => {
+    try {
+      const res = await fetchVacationAccrual();
+      setAccrualRows(res.data);
+      setCompanyDefault(res.company_default_hours);
+      setAccrualEnabled(res.accrual_enabled);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.firstError() : 'Could not load accrual.');
+    }
+  };
 
   const loadRequests = async () => {
     try {
@@ -72,6 +92,7 @@ const VacationManagement: React.FC = () => {
     setError(null);
     if (tab === 'requests') void loadRequests();
     if (tab === 'balances') void loadBalances();
+    if (tab === 'accrual') void loadAccrual();
     if (tab === 'overlaps') void loadOverlaps();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, statusFilter]);
@@ -103,7 +124,7 @@ const VacationManagement: React.FC = () => {
   return (
     <div className="space-y-4">
       <div className="flex gap-2 border-b border-gray-200">
-        {(['requests', 'balances', 'overlaps'] as Tab[]).map((t) => (
+        {(['requests', 'balances', 'accrual', 'overlaps'] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -233,6 +254,101 @@ const VacationManagement: React.FC = () => {
                 </div>
               ))}
             </div>
+          )}
+        </div>
+      )}
+
+      {tab === 'accrual' && (
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm text-gray-600">
+              Company default: <span className="font-semibold">{companyDefault}h/yr</span> ·{' '}
+              {accrualEnabled ? 'Accrual on' : <span className="text-amber-700">Accrual off</span>}
+            </p>
+            <button
+              disabled={busy || !accrualEnabled}
+              onClick={() => act(async () => { const r = await runVacationAccrual(); setError(`Accrual run: ${r.records_written} record(s) written.`); }, loadAccrual)}
+              className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              Run Accrual (previous period)
+            </button>
+          </div>
+
+          {accrualRows.length === 0 ? (
+            <p className="text-sm text-gray-500">No active employees.</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs uppercase text-gray-500">
+                  <th className="p-2">Employee</th>
+                  <th className="p-2">Balance</th>
+                  <th className="p-2">Annual Entitlement</th>
+                  <th className="p-2">Earned This Year</th>
+                  <th className="p-2">Eligibility</th>
+                  <th className="p-2">Rate/hr</th>
+                  <th className="p-2" />
+                </tr>
+              </thead>
+              <tbody>
+                {accrualRows.map((row) => (
+                  <tr key={row.employee.id} className="border-t border-gray-100">
+                    <td className="p-2">{row.employee.name}</td>
+                    <td className="p-2 font-semibold">{row.available.toFixed(2)}h</td>
+                    <td className="p-2">
+                      {row.annual_entitlement_hours}h{' '}
+                      <span className={`ml-1 rounded-full px-1.5 py-0.5 text-xs ${row.using_override ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-500'}`}>
+                        {row.using_override ? 'Override' : 'Company default'}
+                      </span>
+                    </td>
+                    <td className="p-2 text-gray-600">
+                      {row.accrued_this_year.toFixed(2)}h
+                      <span className="text-xs text-gray-400"> ({row.annual_remaining_capacity.toFixed(2)} left)</span>
+                    </td>
+                    <td className="p-2 text-gray-600">
+                      {row.eligibility_date ?? '—'}
+                      {row.eligibility_date && !row.is_eligible ? <span className="ml-1 text-xs text-amber-700">(pending)</span> : ''}
+                    </td>
+                    <td className="p-2 text-gray-600">{row.effective_rate.toFixed(6)}</td>
+                    <td className="p-2 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <input
+                          type="number"
+                          step="1"
+                          min="0"
+                          placeholder={String(companyDefault)}
+                          value={overrideEdit[row.employee.id] ?? (row.override_hours ?? '')}
+                          onChange={(e) => setOverrideEdit((o) => ({ ...o, [row.employee.id]: e.target.value }))}
+                          aria-label={`Override hours for ${row.employee.name}`}
+                          className="w-20 rounded border-gray-300 text-sm"
+                        />
+                        <button
+                          disabled={busy}
+                          onClick={() =>
+                            act(async () => {
+                              const raw = overrideEdit[row.employee.id];
+                              const val = raw === undefined ? row.override_hours : raw.trim() === '' ? null : Number(raw);
+                              await setVacationEntitlement(row.employee.id, val ?? null);
+                            }, loadAccrual)
+                          }
+                          className="rounded bg-gray-700 px-2 py-1 text-xs text-white hover:bg-gray-800"
+                        >
+                          Set
+                        </button>
+                        {row.using_override && (
+                          <button
+                            disabled={busy}
+                            onClick={() => act(() => setVacationEntitlement(row.employee.id, null), loadAccrual)}
+                            className="rounded border border-gray-300 px-2 py-1 text-xs"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           )}
         </div>
       )}

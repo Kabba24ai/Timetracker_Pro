@@ -42,6 +42,12 @@ export interface TimeTrackerSettings {
 
   // Attendance
   attendance_grace_minutes: number;
+
+  // Vacation accrual
+  vacation_accrual_enabled: boolean;
+  vacation_annual_hours: number;
+  vacation_max_eligible_hours_per_period: number;
+  vacation_accrual_waiting_days: number;
 }
 
 export interface SettingsResponse {
