@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 // Regression tests for the Settings input FOCUS bug: numeric/text fields were
@@ -7,7 +7,7 @@ import userEvent from '@testing-library/user-event';
 // were declared inside the render body (new identity each render → remount).
 // These tests exercise the real component + real settings lib over a mocked API.
 
-const server = vi.hoisted(() => ({ calls: [] as string[], lastBody: null as any }));
+const server = vi.hoisted(() => ({ calls: [] as string[], lastBody: null as any, putError: null as string | null }));
 
 const SETTINGS = {
   pay_increments: 5,
@@ -46,6 +46,7 @@ vi.mock('../lib/api', () => {
     put: async (path: string, body: unknown) => {
       server.calls.push(`PUT ${path}`);
       server.lastBody = body;
+      if (server.putError) throw new ApiError(server.putError, 422);
       return { success: true, data: { ...SETTINGS, ...(body as object) }, timezone: 'America/Chicago' };
     },
   };
@@ -78,6 +79,7 @@ const renderSettings = async () => {
 beforeEach(() => {
   server.calls = [];
   server.lastBody = null;
+  server.putError = null;
 });
 
 describe('Settings form — focus retention', () => {
@@ -238,6 +240,45 @@ describe('Settings form — auto clock-out sequencing contract', () => {
     await renderSettings();
     const maxShift = screen.getByText('Max Open Shift (hours)').parentElement!;
     expect(maxShift.textContent).toContain('Safety cap');
+  });
+});
+
+describe('Settings form — Missed-Lunch merge tokens', () => {
+  const field = (label: string) => screen.getByText(label).parentElement as HTMLElement;
+
+  it('advertises the canonical tokens for the missed-lunch message and not obsolete ones', async () => {
+    await renderSettings();
+    const container = field('Missed-Lunch Reminder Message');
+    const text = container.textContent ?? '';
+    expect(text).toContain('{lunch_minutes}');
+    expect(text).toContain('{name}');
+    // Obsolete / non-applicable tokens are NOT advertised for this message.
+    expect(text).not.toContain('{default_lunch_time}');
+    expect(text).not.toContain('{time}');
+  });
+
+  it('saves the edited canonical missed-lunch message', async () => {
+    const user = userEvent.setup();
+    await renderSettings();
+    // fireEvent (not user.keyboard) so the literal {tokens} are not parsed as keys.
+    const area = control('Missed-Lunch Reminder Message') as HTMLTextAreaElement;
+    fireEvent.change(area, { target: { value: 'Hi {name}, {lunch_minutes} minute lunch applies.' } });
+    await user.click(screen.getByRole('button', { name: /Save Settings/ }));
+
+    await vi.waitFor(() => expect(server.calls).toContain('PUT /admin/settings'));
+    expect((server.lastBody as typeof SETTINGS).auto_lunch_message).toBe('Hi {name}, {lunch_minutes} minute lunch applies.');
+  });
+
+  it('surfaces an unsupported-token validation error returned by the backend', async () => {
+    const user = userEvent.setup();
+    await renderSettings();
+    server.putError = 'Unsupported merge token: {foobar}';
+
+    const area = control('Missed-Lunch Reminder Message') as HTMLTextAreaElement;
+    fireEvent.change(area, { target: { value: 'Hi {name}, {foobar}.' } });
+    await user.click(screen.getByRole('button', { name: /Save Settings/ }));
+
+    expect(await screen.findByText('Unsupported merge token: {foobar}')).toBeInTheDocument();
   });
 });
 

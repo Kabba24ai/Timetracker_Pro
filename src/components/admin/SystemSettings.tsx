@@ -108,10 +108,14 @@ const ToggleField: React.FC<{ label: string; value: boolean; onChange: (v: boole
   </label>
 );
 
-const MessageField: React.FC<{ label: string; value: string; onChange: (v: string) => void; hint?: string }> = ({
+// `tokens` is the canonical merge-token list for THIS specific message — exactly
+// what the backend renderer resolves for it (kept in sync with the server's
+// per-message contract). It never advertises a token the message won't render.
+const MessageField: React.FC<{ label: string; value: string; onChange: (v: string) => void; tokens: string[]; hint?: string }> = ({
   label,
   value,
   onChange,
+  tokens,
   hint,
 }) => (
   <div>
@@ -125,7 +129,7 @@ const MessageField: React.FC<{ label: string; value: string; onChange: (v: strin
       placeholder="Enter message…"
     />
     <p className="text-xs text-gray-500 mt-1">
-      {hint ? `${hint} · ` : ''}Merge tokens: {'{name}'}, {'{time}'}, {'{lunch_minutes}'}
+      {hint ? `${hint} · ` : ''}Merge tokens: {tokens.join(', ')}
     </p>
   </div>
 );
@@ -352,7 +356,7 @@ const SystemSettings: React.FC = () => {
             <NumberField label="Mandatory Lunch (minutes)" value={settings.default_lunch_duration_minutes} onChange={num('default_lunch_duration_minutes')} max={240} hint="Applied by auto lunch remediation." />
             <NumberField label="Missed-Lunch Reminder Lead (minutes)" value={settings.auto_lunch_minutes} onChange={num('auto_lunch_minutes')} max={1440} hint="Before shift end." />
           </div>
-          <MessageField label="Missed-Lunch Reminder Message" value={settings.auto_lunch_message} onChange={msg('auto_lunch_message')} />
+          <MessageField label="Missed-Lunch Reminder Message" value={settings.auto_lunch_message} onChange={msg('auto_lunch_message')} tokens={['{name}', '{lunch_minutes}', '{shift_end}']} />
 
           {/* Auto Lunch eligibility: which weekdays it applies on and the minimum
               qualifying scheduled shift length before it applies. */}
@@ -387,8 +391,8 @@ const SystemSettings: React.FC = () => {
             <NumberField label="2nd Reminder (minutes after lunch start)" value={settings.second_clock_in_reminder_minutes} onChange={num('second_clock_in_reminder_minutes')} max={1440} />
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <MessageField label="1st Reminder Message" value={settings.clock_in_message_1} onChange={msg('clock_in_message_1')} />
-            <MessageField label="2nd Reminder Message" value={settings.clock_in_message_2} onChange={msg('clock_in_message_2')} />
+            <MessageField label="1st Reminder Message" value={settings.clock_in_message_1} onChange={msg('clock_in_message_1')} tokens={['{name}', '{minutes}']} />
+            <MessageField label="2nd Reminder Message" value={settings.clock_in_message_2} onChange={msg('clock_in_message_2')} tokens={['{name}', '{minutes}']} />
           </div>
         </Section>
 
@@ -406,9 +410,9 @@ const SystemSettings: React.FC = () => {
             <Clock className="h-3 w-3" /> All times are in {timezone || 'tenant tz'}. The warning’s {'{time}'} token shows the actual upcoming auto clock-out time.
           </p>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <MessageField label="Missed Clock-Out Message" value={settings.missed_clock_out_message} onChange={msg('missed_clock_out_message')} />
-            <MessageField label="Auto Clock-Out Warning Message" value={settings.auto_clock_out_warning_message} onChange={msg('auto_clock_out_warning_message')} />
-            <MessageField label="Auto Clock-Out Message" value={settings.auto_clock_out_message} onChange={msg('auto_clock_out_message')} />
+            <MessageField label="Missed Clock-Out Message" value={settings.missed_clock_out_message} onChange={msg('missed_clock_out_message')} tokens={['{name}', '{shift_end}']} />
+            <MessageField label="Auto Clock-Out Warning Message" value={settings.auto_clock_out_warning_message} onChange={msg('auto_clock_out_warning_message')} tokens={['{name}', '{time}']} />
+            <MessageField label="Auto Clock-Out Message" value={settings.auto_clock_out_message} onChange={msg('auto_clock_out_message')} tokens={['{name}', '{time}']} />
           </div>
         </Section>
 
