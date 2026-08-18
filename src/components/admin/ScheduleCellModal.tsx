@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { AlertCircle, Trash2, X } from 'lucide-react';
 import { ApiError } from '../../lib/api';
 import { createSegment, deleteSegment, updateSegment } from '../../lib/schedule';
-import { formatCalendarDate } from '../../lib/tz';
+import { formatShortCalendarDate } from '../../lib/tz';
 import TimeField, { Clock, parse24, to24 } from './TimeField';
 
 // The employee, store, and date are already chosen by the clicked cell, so the
@@ -98,7 +98,7 @@ const ScheduleCellModal: React.FC<Props> = ({ draft, onClose, onSaved }) => {
           </div>
           <div>
             <p className="text-xs text-gray-500 mb-0.5">Date</p>
-            <p className={ro}>{formatCalendarDate(draft.date)}</p>
+            <p className={ro}>{formatShortCalendarDate(draft.date)}</p>
           </div>
         </div>
 

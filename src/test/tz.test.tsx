@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
-import { tenantWallClockToUtcIso, toTenantDatetimeLocal } from '../lib/tz';
+import { formatShortCalendarDate, tenantWallClockToUtcIso, toTenantDatetimeLocal } from '../lib/tz';
 import CorrectionModal from '../components/admin/CorrectionModal';
 import type { CorrectionPayload } from '../lib/admin';
 
@@ -10,6 +10,18 @@ import type { CorrectionPayload } from '../lib/admin';
 // device timezone and uses the tenant timezone the server provides.
 
 const TENANT_TZ = 'America/Chicago';
+
+describe('formatShortCalendarDate — dddd, DD-MMM-YYYY (compact, tz-safe)', () => {
+  it('formats the canonical schedule date compactly', () => {
+    expect(formatShortCalendarDate('2026-08-21')).toBe('Friday, 21-Aug-2026');
+    expect(formatShortCalendarDate('2026-08-17')).toBe('Monday, 17-Aug-2026');
+    expect(formatShortCalendarDate('2026-09-05')).toBe('Saturday, 05-Sep-2026');
+  });
+
+  it('does not emit the old long month/day format', () => {
+    expect(formatShortCalendarDate('2026-08-21')).not.toBe('Friday, August 21, 2026');
+  });
+});
 
 describe('device timezone is different from the tenant timezone', () => {
   it('confirms the test browser is not in the tenant zone', () => {

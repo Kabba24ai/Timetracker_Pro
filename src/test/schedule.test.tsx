@@ -135,7 +135,9 @@ describe('Store View', () => {
     fireEvent.click(await screen.findByText('7:00 AM – 12:00 PM'));
 
     expect(await screen.findByText('Edit schedule')).toBeInTheDocument();
-    expect(screen.getByText('Monday, September 14, 2026')).toBeInTheDocument();
+    // Compact date format (dddd, DD-MMM-YYYY) — the old long format is gone.
+    expect(screen.getByText('Monday, 14-Sep-2026')).toBeInTheDocument();
+    expect(screen.queryByText('Monday, September 14, 2026')).toBeNull();
     expect(document.querySelector('input[type="date"]')).toBeNull();
     expect(document.querySelector('input[type="datetime-local"]')).toBeNull();
     expect((screen.getByLabelText('Start Hour') as HTMLInputElement).value).toBe('7');

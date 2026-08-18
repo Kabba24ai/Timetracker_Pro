@@ -92,6 +92,19 @@ export function formatCalendarDate(dateStr: string): string {
   }).format(new Date(Date.UTC(y, mo - 1, d)));
 }
 
+/**
+ * Compact calendar date for tight spaces: `dddd, DD-MMM-YYYY`
+ * (e.g. `Friday, 21-Aug-2026`). Same UTC-anchored, tz-safe interpretation of the
+ * canonical YYYY-MM-DD as formatCalendarDate — only the shape differs.
+ */
+export function formatShortCalendarDate(dateStr: string): string {
+  const [y, mo, d] = dateStr.split('-').map(Number);
+  const at = new Date(Date.UTC(y, mo - 1, d));
+  const weekday = new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', weekday: 'long' }).format(at);
+  const month = new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', month: 'short' }).format(at);
+  return `${weekday}, ${String(d).padStart(2, '0')}-${month}-${y}`;
+}
+
 /** Pre-fill a datetime-local input: an instant → 'YYYY-MM-DDTHH:MM' in tenant time. */
 export function toTenantDatetimeLocal(iso: string | null, tz: string): string {
   const p = partsInTz(iso ? new Date(iso) : new Date(), tz);
