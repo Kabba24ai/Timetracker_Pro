@@ -131,17 +131,20 @@ vi.mock('../lib/api', () => {
 });
 
 // Imported AFTER the mock is registered.
+import { MemoryRouter } from 'react-router-dom';
 import { AuthProvider, useAuth } from '../contexts/AuthContext';
 import { TimeClockProvider } from '../contexts/TimeClockContext';
 import TimeClockCard from '../components/TimeClockCard';
 
 function Harness() {
   return (
-    <AuthProvider>
-      <TimeClockProvider>
-        <TimeClockCard />
-      </TimeClockProvider>
-    </AuthProvider>
+    <MemoryRouter>
+      <AuthProvider>
+        <TimeClockProvider>
+          <TimeClockCard />
+        </TimeClockProvider>
+      </AuthProvider>
+    </MemoryRouter>
   );
 }
 
@@ -251,12 +254,14 @@ describe('TimeClock — login seeds the authoritative state', () => {
   function LoginHarness() {
     const { signIn } = useAuth();
     return (
-      <div>
-        <button onClick={() => void signIn(1, '123456')}>do-login</button>
-        <TimeClockProvider>
-          <TimeClockCard />
-        </TimeClockProvider>
-      </div>
+      <MemoryRouter>
+        <div>
+          <button onClick={() => void signIn(1, '123456')}>do-login</button>
+          <TimeClockProvider>
+            <TimeClockCard />
+          </TimeClockProvider>
+        </div>
+      </MemoryRouter>
     );
   }
 
@@ -272,5 +277,13 @@ describe('TimeClock — login seeds the authoritative state', () => {
 
     expect(await screen.findByRole('button', { name: /clock in/i })).toBeInTheDocument();
     expect(server.calls).toContain('POST /auth/login');
+  });
+
+  it('offers every employee a Work Schedule link to the read-only schedule page', async () => {
+    seedLoggedIn('off');
+    render(<Harness />);
+
+    const link = await screen.findByRole('link', { name: /work schedule/i });
+    expect(link).toHaveAttribute('href', '/schedule');
   });
 });

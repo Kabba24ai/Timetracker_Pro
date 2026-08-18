@@ -11,6 +11,7 @@ import {
   ScheduleView,
   StoreMeta,
   StoreView,
+  TimeOffCell,
   applyGroup,
   assignEmployee,
   fetchEmployeeView,
@@ -21,6 +22,7 @@ import {
 } from '../../lib/schedule';
 import ScheduleCellModal, { CellDraft } from './ScheduleCellModal';
 import ScheduleGroupsModal from './ScheduleGroupsModal';
+import ScheduleStatusBadge from '../schedule/ScheduleStatusBadge';
 
 type Mode = 'store' | 'employee';
 
@@ -156,8 +158,16 @@ const WorkScheduleV2: React.FC = () => {
     load();
   };
 
-  const Cell: React.FC<{ s: StoreMeta; uid: number; name: string; date: string; dow: number; segs: ScheduleSegmentCell[] }> = ({ s, uid, name, date, dow, segs }) => (
+  // Admin cells stay editable; an approved absence is shown as a small display-
+  // only tag so a scheduling manager sees it without losing the edit affordance.
+  // (Vacation Management remains the only place to change time off.)
+  const Cell: React.FC<{ s: StoreMeta; uid: number; name: string; date: string; dow: number; segs: ScheduleSegmentCell[]; timeOff?: TimeOffCell }> = ({ s, uid, name, date, dow, segs, timeOff }) => (
     <td className="px-1 py-1 align-top border-l border-gray-100 min-w-[7.5rem]">
+      {timeOff && (
+        <div className="mb-1">
+          <ScheduleStatusBadge status={timeOff.status} label={timeOff.label} partial={!timeOff.is_full_day} />
+        </div>
+      )}
       {segs.length === 0 ? (
         <button
           onClick={() => openCell(s, uid, name, date, dow)}
@@ -359,7 +369,7 @@ const WorkScheduleV2: React.FC = () => {
                             </div>
                           </td>
                           {dates.map((d) => (
-                            <Cell key={d.date} s={s} uid={r.employee.id} name={r.employee.full_name} date={d.date} dow={d.day_of_week} segs={r.cells[d.date] ?? []} />
+                            <Cell key={d.date} s={s} uid={r.employee.id} name={r.employee.full_name} date={d.date} dow={d.day_of_week} segs={r.cells[d.date] ?? []} timeOff={r.time_off?.[d.date]} />
                           ))}
                         </tr>
                       ))}
@@ -406,7 +416,7 @@ const WorkScheduleV2: React.FC = () => {
                           {s.name}
                         </td>
                         {dates.map((d) => (
-                          <Cell key={d.date} s={s} uid={emp.employee.id} name={emp.employee.full_name} date={d.date} dow={d.day_of_week} segs={row?.cells[d.date] ?? []} />
+                          <Cell key={d.date} s={s} uid={emp.employee.id} name={emp.employee.full_name} date={d.date} dow={d.day_of_week} segs={row?.cells[d.date] ?? []} timeOff={emp.time_off?.[d.date]} />
                         ))}
                       </tr>
                     );

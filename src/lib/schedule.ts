@@ -48,9 +48,23 @@ export interface ScheduleSegmentCell {
 
 export type Cells = Record<string, ScheduleSegmentCell[]>; // date → segments
 
+// Approved-time-off display overlay for one employee/date. Presentation only —
+// the underlying schedule is never changed; a cancelled request simply stops
+// appearing. Only the two employee-facing types are named; every other approved
+// type collapses to the privacy-safe generic "Time Off".
+export type TimeOffStatus = 'vacation' | 'unpaid_time_off' | 'time_off';
+
+export interface TimeOffCell {
+  status: TimeOffStatus;
+  label: string; // 'Vacation' | 'Unpaid Time Off' | 'Time Off'
+  is_full_day: boolean;
+}
+
+export type TimeOffOverlay = Record<string, TimeOffCell>; // date → overlay
+
 export interface StoreViewSection {
   store_id: number;
-  rows: { employee: { id: number; full_name: string }; cells: Cells }[];
+  rows: { employee: { id: number; full_name: string }; cells: Cells; time_off?: TimeOffOverlay }[];
 }
 
 export interface StoreView {
@@ -68,6 +82,7 @@ export interface EmployeeView {
   stores: StoreMeta[];
   employee_view: { store_id: number; cells: Cells }[];
   day_offs: string[];
+  time_off?: TimeOffOverlay;
 }
 
 interface ViewParams {
@@ -110,6 +125,39 @@ export async function fetchEmployeeView(userId: number, params: ViewParams): Pro
     stores: res.stores ?? [],
     employee_view: res.employee_view ?? [],
     day_offs: res.day_offs ?? [],
+    time_off: res.time_off ?? {},
+  };
+}
+
+// ── Employee READ-ONLY schedule (any authenticated employee) ──────────────────
+//
+// One canonical endpoint, mode-switched. The logged-in employee is always the
+// server-derived user for mode=me (never sent from the client), so there is no
+// employee selector and no way to request someone else's scoped view.
+
+/** The authenticated employee's own schedule (one row per store) + approved-time-off overlay. */
+export async function fetchMyEmployeeSchedule(params: ViewParams): Promise<EmployeeView> {
+  const res = (await api.get(`/schedule?mode=me${qs(params).replace(/^\?/, '&')}`)) as ApiEnvelope & EmployeeView;
+  return {
+    range: res.range,
+    employee: res.employee,
+    dates: res.dates ?? [],
+    stores: res.stores ?? [],
+    employee_view: res.employee_view ?? [],
+    day_offs: res.day_offs ?? [],
+    time_off: res.time_off ?? {},
+  };
+}
+
+/** The read-only roster (Store View) all employees can see, + approved-time-off overlay. */
+export async function fetchAllSchedule(params: ViewParams): Promise<StoreView> {
+  const res = (await api.get(`/schedule?mode=all${qs(params).replace(/^\?/, '&')}`)) as ApiEnvelope & StoreView;
+  return {
+    range: res.range,
+    dates: res.dates ?? [],
+    stores: res.stores ?? [],
+    employees: res.employees ?? [],
+    store_view: res.store_view ?? [],
   };
 }
 

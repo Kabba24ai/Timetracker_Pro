@@ -5,6 +5,7 @@ import { TimeClockProvider } from './contexts/TimeClockContext';
 import LoginPage from './pages/LoginPage';
 import EmployeeDashboard from './pages/EmployeeDashboard';
 import AdminDashboard from './pages/AdminDashboard';
+import SchedulePage from './pages/SchedulePage';
 import ProtectedRoute from './components/ProtectedRoute';
 
 function App() {
@@ -20,6 +21,14 @@ function App() {
                 element={
                   <ProtectedRoute>
                     <EmployeeDashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/schedule"
+                element={
+                  <ProtectedRoute>
+                    <SchedulePage />
                   </ProtectedRoute>
                 }
               />
