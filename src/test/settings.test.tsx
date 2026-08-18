@@ -16,6 +16,8 @@ const SETTINGS: TimeTrackerSettings = {
   default_lunch_duration_minutes: 30,
   auto_lunch_minutes: 60,
   auto_lunch_message: 'lunch msg',
+  auto_lunch_days: [1, 2, 3, 4, 5],
+  auto_lunch_min_work_minutes: 300,
   first_clock_in_reminder_minutes: 30,
   second_clock_in_reminder_minutes: 45,
   clock_in_message_1: 'back 1',

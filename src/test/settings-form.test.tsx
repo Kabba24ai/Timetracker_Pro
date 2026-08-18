@@ -17,6 +17,8 @@ const SETTINGS = {
   default_lunch_duration_minutes: 45,
   auto_lunch_minutes: 60,
   auto_lunch_message: 'lunch msg',
+  auto_lunch_days: [1, 2, 3, 4, 5],
+  auto_lunch_min_work_minutes: 300,
   first_clock_in_reminder_minutes: 30,
   second_clock_in_reminder_minutes: 45,
   clock_in_message_1: 'back 1',
@@ -236,6 +238,81 @@ describe('Settings form — auto clock-out sequencing contract', () => {
     await renderSettings();
     const maxShift = screen.getByText('Max Open Shift (hours)').parentElement!;
     expect(maxShift.textContent).toContain('Safety cap');
+  });
+});
+
+describe('Settings form — Auto Lunch eligibility', () => {
+  const weekdayBtn = (name: string) => screen.getByRole('button', { name });
+
+  it('renders seven weekday controls', async () => {
+    await renderSettings();
+    ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].forEach((d) => {
+      expect(weekdayBtn(d)).toBeInTheDocument();
+    });
+  });
+
+  it('reflects the approved defaults: Mon–Fri on, Sat and Sun off', async () => {
+    await renderSettings();
+    ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].forEach((d) => {
+      expect(weekdayBtn(d).getAttribute('aria-pressed')).toBe('true');
+    });
+    expect(weekdayBtn('Sat').getAttribute('aria-pressed')).toBe('false');
+    expect(weekdayBtn('Sun').getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('toggles a weekday independently', async () => {
+    const user = userEvent.setup();
+    await renderSettings();
+
+    await user.click(weekdayBtn('Sat'));
+    expect(weekdayBtn('Sat').getAttribute('aria-pressed')).toBe('true');
+    // Other days are unaffected.
+    expect(weekdayBtn('Mon').getAttribute('aria-pressed')).toBe('true');
+    expect(weekdayBtn('Sun').getAttribute('aria-pressed')).toBe('false');
+
+    await user.click(weekdayBtn('Sat'));
+    expect(weekdayBtn('Sat').getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('renders Minimum Work Hours as a dropdown with exactly the approved options and 5.0 default', async () => {
+    await renderSettings();
+
+    const select = screen.getByLabelText('Minimum Work Hours') as HTMLSelectElement;
+    expect(select.tagName).toBe('SELECT');
+    // Not a free-entry numeric input.
+    expect(select.getAttribute('type')).toBeNull();
+    const options = Array.from(select.options).map((o) => o.textContent);
+    expect(options).toEqual(['4.0 hours', '4.5 hours', '5.0 hours', '5.5 hours', '6.0 hours']);
+    expect(select.value).toBe('300'); // default 5.0h
+  });
+
+  it('lets the admin pick 4.5 and 5.5 hours', async () => {
+    const user = userEvent.setup();
+    await renderSettings();
+    const select = screen.getByLabelText('Minimum Work Hours') as HTMLSelectElement;
+
+    await user.selectOptions(select, '270');
+    expect(select.value).toBe('270');
+    await user.selectOptions(select, '330');
+    expect(select.value).toBe('330');
+  });
+
+  it('Save sends canonical weekdays and the selected minimum, and a reload restores them', async () => {
+    const user = userEvent.setup();
+    await renderSettings();
+
+    await user.click(weekdayBtn('Sat')); // enable Saturday
+    await user.selectOptions(screen.getByLabelText('Minimum Work Hours'), '330');
+    await user.click(screen.getByRole('button', { name: /Save Settings/ }));
+
+    await vi.waitFor(() => expect(server.calls).toContain('PUT /admin/settings'));
+    const body = server.lastBody as typeof SETTINGS;
+    expect(body.auto_lunch_days).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(body.auto_lunch_min_work_minutes).toBe(330);
+
+    // The mocked PUT echoes the saved values back → the controls reflect them.
+    expect(weekdayBtn('Sat').getAttribute('aria-pressed')).toBe('true');
+    expect((screen.getByLabelText('Minimum Work Hours') as HTMLSelectElement).value).toBe('330');
   });
 });
 

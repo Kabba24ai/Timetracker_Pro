@@ -130,6 +130,57 @@ const MessageField: React.FC<{ label: string; value: string; onChange: (v: strin
   </div>
 );
 
+// Weekday buttons for Auto Lunch. Displayed Mon→Sun, but each carries its
+// canonical schedule weekday number (0=Sun … 6=Sat) — what the backend stores.
+const WEEKDAYS: { num: number; label: string }[] = [
+  { num: 1, label: 'Mon' },
+  { num: 2, label: 'Tue' },
+  { num: 3, label: 'Wed' },
+  { num: 4, label: 'Thu' },
+  { num: 5, label: 'Fri' },
+  { num: 6, label: 'Sat' },
+  { num: 0, label: 'Sun' },
+];
+
+// The only Minimum Work Hours the backend accepts, stored as minutes (float-safe).
+const MIN_WORK_OPTIONS: { minutes: number; label: string }[] = [
+  { minutes: 240, label: '4.0 hours' },
+  { minutes: 270, label: '4.5 hours' },
+  { minutes: 300, label: '5.0 hours' },
+  { minutes: 330, label: '5.5 hours' },
+  { minutes: 360, label: '6.0 hours' },
+];
+
+const WeekdayField: React.FC<{ label: string; value: number[]; onToggle: (day: number) => void }> = ({
+  label,
+  value,
+  onToggle,
+}) => (
+  <div>
+    <label className={labelCls}>{label}</label>
+    <div className="flex flex-wrap gap-2">
+      {WEEKDAYS.map((d) => {
+        const on = value.includes(d.num);
+        return (
+          <button
+            key={d.num}
+            type="button"
+            aria-pressed={on}
+            onClick={() => onToggle(d.num)}
+            className={`px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${
+              on
+                ? 'bg-blue-600 border-blue-600 text-white'
+                : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'
+            }`}
+          >
+            {d.label}
+          </button>
+        );
+      })}
+    </div>
+  </div>
+);
+
 const SystemSettings: React.FC = () => {
   const [settings, setSettings] = useState<TimeTrackerSettings | null>(null);
   const [timezone, setTimezone] = useState<string>('');
@@ -165,6 +216,16 @@ const SystemSettings: React.FC = () => {
     setSettings((prev) => (prev ? { ...prev, [key]: v } : prev));
   const setVacationEnabled = (v: boolean) =>
     setSettings((prev) => (prev ? { ...prev, vacation_accrual_enabled: v } : prev));
+  // Toggle one Auto Lunch weekday, keeping the list normalized (unique, sorted).
+  const toggleAutoLunchDay = (day: number) =>
+    setSettings((prev) => {
+      if (!prev) return prev;
+      const has = prev.auto_lunch_days.includes(day);
+      const next = has
+        ? prev.auto_lunch_days.filter((d) => d !== day)
+        : [...prev.auto_lunch_days, day].sort((a, b) => a - b);
+      return { ...prev, auto_lunch_days: next };
+    });
 
   const handleSave = async () => {
     if (!settings) return;
@@ -292,6 +353,32 @@ const SystemSettings: React.FC = () => {
             <NumberField label="Missed-Lunch Reminder Lead (minutes)" value={settings.auto_lunch_minutes} onChange={num('auto_lunch_minutes')} max={1440} hint="Before shift end." />
           </div>
           <MessageField label="Missed-Lunch Reminder Message" value={settings.auto_lunch_message} onChange={msg('auto_lunch_message')} />
+
+          {/* Auto Lunch eligibility: which weekdays it applies on and the minimum
+              qualifying scheduled shift length before it applies. */}
+          <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+            <WeekdayField label="Auto Lunch Applies On" value={settings.auto_lunch_days} onToggle={toggleAutoLunchDay} />
+            <div>
+              <label className={labelCls}>Minimum Work Hours</label>
+              <select
+                aria-label="Minimum Work Hours"
+                value={settings.auto_lunch_min_work_minutes}
+                onChange={(e) =>
+                  setSettings((prev) => (prev ? { ...prev, auto_lunch_min_work_minutes: Number(e.target.value) } : prev))
+                }
+                className={inputCls}
+              >
+                {MIN_WORK_OPTIONS.map((o) => (
+                  <option key={o.minutes} value={o.minutes}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-500 mt-1">
+                Auto Lunch applies only when the qualifying shift is at least this long.
+              </p>
+            </div>
+          </div>
         </Section>
 
         <Section title="Return-from-Lunch Reminders">

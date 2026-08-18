@@ -24,6 +24,10 @@ export interface TimeTrackerSettings {
   default_lunch_duration_minutes: number;
   auto_lunch_minutes: number;
   auto_lunch_message: string;
+  // Auto Lunch eligibility: canonical weekday numbers (0=Sun … 6=Sat) it applies
+  // on, and the minimum qualifying scheduled work duration stored as minutes.
+  auto_lunch_days: number[];
+  auto_lunch_min_work_minutes: number;
 
   // Clock-back-from-lunch reminders
   first_clock_in_reminder_minutes: number;
