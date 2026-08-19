@@ -85,8 +85,9 @@ vi.mock('../lib/api', () => {
   return { api, ApiError, AUTH_ERROR_EVENT: 'tt:unauthorized' };
 });
 
-import { timeReviewToCsv, type TimeReview } from '../lib/admin';
+import { timeReviewToCsv, type TimeReview, type CorrectableKind } from '../lib/admin';
 import TimeReviewV2 from '../components/admin/TimeReviewV2';
+import CorrectionModal, { type CorrectionDraft } from '../components/admin/CorrectionModal';
 
 beforeEach(() => {
   server.calls = [];
@@ -211,6 +212,118 @@ describe('CorrectionModal — time + standardized reason', () => {
     expect(body.reason).toBe('Incorrect Time Entered');
     expect(body.effective_at).toContain('15:45');
     // Re-fetches the authoritative day grid (refreshes Paid/Unpaid/Worked totals).
+    await vi.waitFor(() => {
+      const afterPost = server.calls.slice(server.calls.indexOf('POST /admin/corrections') + 1);
+      expect(afterPost.some((c) => c.startsWith('GET /admin/employees/1/time-review'))).toBe(true);
+    });
+  });
+});
+
+// ── Cascading Delete Time ──────────────────────────────────────────────────
+
+// Open the adjust modal for a filled punch by clicking its time on the grid.
+async function openAdjust(timeText: string) {
+  render(<TimeReviewV2 />);
+  fireEvent.change(await screen.findByRole('combobox'), { target: { value: '1' } });
+  fireEvent.click(await screen.findByText(timeText));
+}
+
+// Render the modal directly with a crafted adjust draft (for punch kinds the
+// shared fixture doesn't fill, e.g. breaks) + a spying onSubmit.
+function renderDeleteModal(kind: CorrectableKind, kindLabel: string) {
+  const onSubmit = vi.fn(async () => {});
+  const draft: CorrectionDraft = { mode: 'adjust', eventId: 500, kind, kindLabel, date: '2026-09-14', time24: '12:00' };
+  render(<CorrectionModal draft={draft} tz="UTC" onClose={() => {}} onSubmit={onSubmit} />);
+  return onSubmit;
+}
+
+describe('CorrectionModal — cascading Delete', () => {
+  it('clicking an existing Clock In opens the edit modal with a Delete Clock In action', async () => {
+    await openAdjust('2:00 PM');
+    expect(await screen.findByText('Adjust Clock In')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Delete Clock In/ })).toBeInTheDocument();
+    // Edit-time (Apply) still works alongside delete.
+    expect(screen.getByRole('button', { name: /^Apply$/ })).toBeInTheDocument();
+  });
+
+  it('clicking Lunch Out exposes Delete Lunch', async () => {
+    await openAdjust('5:00 PM'); // lunch_start 17:00 UTC
+    expect(await screen.findByText('Adjust Lunch Out')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Delete Lunch/ })).toBeInTheDocument();
+  });
+
+  it('clicking Lunch In exposes Delete Lunch', async () => {
+    await openAdjust('5:30 PM'); // lunch_end 17:30 UTC
+    expect(await screen.findByText('Adjust Lunch In')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Delete Lunch/ })).toBeInTheDocument();
+  });
+
+  it('clicking Clock Out exposes Delete Clock Out', async () => {
+    await openAdjust('10:00 PM'); // clock_out 22:00 UTC
+    expect(await screen.findByText('Adjust Clock Out')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Delete Clock Out/ })).toBeInTheDocument();
+  });
+
+  it('Break Out / Break In expose Delete Break', () => {
+    renderDeleteModal('other_start', 'Break Out');
+    expect(screen.getByRole('button', { name: /Delete Break/ })).toBeInTheDocument();
+  });
+
+  it('Lunch confirmation explains BOTH Lunch Out and Lunch In are removed', () => {
+    renderDeleteModal('lunch_start', 'Lunch Out');
+    fireEvent.click(screen.getByRole('button', { name: /Delete Lunch/ }));
+    expect(screen.getByText(/Lunch Out and Lunch In will both be removed/)).toBeInTheDocument();
+  });
+
+  it('Break confirmation explains BOTH Break Out and Break In are removed', () => {
+    renderDeleteModal('other_end', 'Break In');
+    fireEvent.click(screen.getByRole('button', { name: /Delete Break/ }));
+    expect(screen.getByText(/Break Out and Break In will both be removed/)).toBeInTheDocument();
+  });
+
+  it('Clock-In confirmation explains the entire shift cascade', () => {
+    renderDeleteModal('clock_in', 'Clock In');
+    fireEvent.click(screen.getByRole('button', { name: /Delete Clock In/ }));
+    expect(screen.getByText(/entire shift, including all Lunch, Break, and Clock Out/)).toBeInTheDocument();
+  });
+
+  it('Clock-Out confirmation explains the shift becomes incomplete', () => {
+    renderDeleteModal('clock_out', 'Clock Out');
+    fireEvent.click(screen.getByRole('button', { name: /Delete Clock Out/ }));
+    expect(screen.getByText(/remain without a Clock Out until corrected/)).toBeInTheDocument();
+  });
+
+  it('Cancelling the confirmation (Keep) performs no action', async () => {
+    const onSubmit = renderDeleteModal('lunch_start', 'Lunch Out');
+    fireEvent.click(screen.getByRole('button', { name: /Delete Lunch/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Keep$/ }));
+    // Back to the edit view; nothing submitted.
+    expect(screen.queryByText(/both be removed/)).toBeNull();
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('confirming Delete posts a delete correction and reason stays optional', () => {
+    const onSubmit = renderDeleteModal('lunch_start', 'Lunch Out');
+    fireEvent.click(screen.getByRole('button', { name: /Delete Lunch/ })); // reveal confirm
+    fireEvent.click(screen.getByRole('button', { name: /Delete Lunch/ })); // confirm (no reason)
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    const payload = onSubmit.mock.calls[0][0] as Record<string, unknown>;
+    expect(payload.type).toBe('delete');
+    expect(payload.event_id).toBe(500);
+    expect(payload.reason_code).toBeUndefined();
+    expect(payload.reason).toBeUndefined();
+  });
+
+  it('a successful delete posts type=delete and refreshes the Time Review', async () => {
+    await openAdjust('5:00 PM'); // Lunch Out
+    fireEvent.click(await screen.findByRole('button', { name: /Delete Lunch/ })); // reveal confirm
+    fireEvent.click(screen.getByRole('button', { name: /Delete Lunch/ })); // confirm
+
+    await vi.waitFor(() => expect(server.calls).toContain('POST /admin/corrections'));
+    const body = server.lastBody as Record<string, unknown>;
+    expect(body.type).toBe('delete');
+    expect(body.event_id).toBe(102); // the lunch_start event id from the fixture
+    // Authoritative refresh so removed times disappear from the effective row.
     await vi.waitFor(() => {
       const afterPost = server.calls.slice(server.calls.indexOf('POST /admin/corrections') + 1);
       expect(afterPost.some((c) => c.startsWith('GET /admin/employees/1/time-review'))).toBe(true);

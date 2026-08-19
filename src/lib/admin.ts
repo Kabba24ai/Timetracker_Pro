@@ -37,13 +37,17 @@ export interface ClockEventRow {
   superseded?: boolean;
 }
 
-export type CorrectionType = 'adjust' | 'void' | 'insert' | 'insert_break';
+// `delete` = a cascading, append-only removal from the EFFECTIVE record: the
+// server decides the dependent set (whole shift for a clock-in, the paired
+// interval for a lunch/break, itself for a clock-out) and voids it atomically.
+// Nothing is physically erased; the immutable ledger is preserved.
+export type CorrectionType = 'adjust' | 'void' | 'insert' | 'insert_break' | 'delete';
 export type CorrectableKind = ClockEventRow['kind'];
 export type BreakKind = 'lunch' | 'other';
 
 export interface CorrectionPayload {
   type: CorrectionType;
-  event_id?: number; // adjust | void
+  event_id?: number; // adjust | void | delete
   user_id?: number; // insert | insert_break
   kind?: CorrectableKind; // insert
   effective_at?: string; // adjust | insert (ISO 8601, UTC from tenant wall-clock)

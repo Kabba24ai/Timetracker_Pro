@@ -4,6 +4,7 @@ import { ApiError } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 import {
   AdminEmployee,
+  CorrectableKind,
   CorrectionPayload,
   DayPosition,
   POSITION_COLUMNS,
@@ -143,7 +144,8 @@ const TimeReviewV2: React.FC<TimeReviewProps> = ({ initialUserId, initialFrom, i
     if (pos && pos.at) {
       // Use the event's OWN tenant date (an overnight clock-out belongs to the next day).
       const [date, time24] = toTenantDatetimeLocal(pos.at, tz).split('T');
-      setCorrection({ mode: 'adjust', eventId: pos.event_id, kindLabel: label, date, time24 });
+      // The position key IS the event kind — it tells the modal the delete cascade.
+      setCorrection({ mode: 'adjust', eventId: pos.event_id, kind: key as CorrectableKind, kindLabel: label, date, time24 });
       return;
     }
     if (!userId) return;
@@ -363,9 +365,9 @@ const TimeReviewV2: React.FC<TimeReviewProps> = ({ initialUserId, initialFrom, i
                               <DayLedger
                                 day={d}
                                 tz={tz}
-                                onAdjust={(eventId, kindLabel, at) => {
+                                onAdjust={(eventId, kind, kindLabel, at) => {
                                   const [date, time24] = (at ? toTenantDatetimeLocal(at, tz) : `${d.date}T12:00`).split('T');
-                                  setCorrection({ mode: 'adjust', eventId, kindLabel, date, time24 });
+                                  setCorrection({ mode: 'adjust', eventId, kind, kindLabel, date, time24 });
                                 }}
                                 onVoid={(eventId, kindLabel, at) => setCorrection({ mode: 'void', eventId, kindLabel, date: at ? toTenantDatetimeLocal(at, tz).split('T')[0] : d.date })}
                               />
@@ -422,7 +424,7 @@ const Card: React.FC<{ label: string; value: string; sub?: string; accent?: stri
 const DayLedger: React.FC<{
   day: TimeReviewDay;
   tz: string;
-  onAdjust: (eventId: number, kindLabel: string, at: string | null) => void;
+  onAdjust: (eventId: number, kind: CorrectableKind, kindLabel: string, at: string | null) => void;
   onVoid: (eventId: number, kindLabel: string, at: string | null) => void;
 }> = ({ day, tz, onAdjust, onVoid }) => (
   <div>
@@ -455,7 +457,7 @@ const DayLedger: React.FC<{
             <td className="px-2 py-1 text-right whitespace-nowrap">
               {!ev.superseded && ev.correction_type !== 'void' && (
                 <>
-                  <button onClick={() => onAdjust(ev.id, ev.kind_label, ev.effective_at)} className="text-blue-600 hover:underline mr-3">
+                  <button onClick={() => onAdjust(ev.id, ev.kind, ev.kind_label, ev.effective_at)} className="text-blue-600 hover:underline mr-3">
                     Adjust
                   </button>
                   <button onClick={() => onVoid(ev.id, ev.kind_label, ev.effective_at)} className="text-red-600 hover:underline">

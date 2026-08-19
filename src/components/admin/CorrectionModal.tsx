@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AlertCircle, X } from 'lucide-react';
+import { AlertCircle, Trash2, X } from 'lucide-react';
 import { ApiError } from '../../lib/api';
 import { BreakKind, CorrectableKind, CORRECTION_REASONS, CorrectionPayload } from '../../lib/admin';
 import { formatCalendarDate, tenantWallClockToUtcIso } from '../../lib/tz';
@@ -9,10 +9,33 @@ import TimeField, { Clock, parse24, to24 } from './TimeField';
 // already chosen on the grid, so the modal edits only TIME + reason — the date
 // is contextual and read-only. Times arrive as 24h 'HH:MM' on `date`.
 export type CorrectionDraft =
-  | { mode: 'adjust'; eventId: number; kindLabel: string; date: string; time24: string }
+  | { mode: 'adjust'; eventId: number; kind: CorrectableKind; kindLabel: string; date: string; time24: string }
   | { mode: 'void'; eventId: number; kindLabel: string; date: string }
   | { mode: 'insert'; userId: number; kind: CorrectableKind; kindLabel: string; date: string; time24: string; title?: string }
   | { mode: 'insert_break'; userId: number; breakType: BreakKind; date: string; startTime24: string; endTime24: string; title?: string };
+
+// A delete removes the punch AND its logical dependents from the effective
+// record. The server owns the cascade; these labels/messages just tell the admin
+// exactly what is about to disappear (the button text doubles as the scope).
+type DeleteScope = { label: string; confirm: string };
+function deleteScopeFor(kind: CorrectableKind): DeleteScope {
+  switch (kind) {
+    case 'clock_in':
+      return {
+        label: 'Delete Clock In',
+        confirm: 'Delete this Clock In? This will remove the entire shift, including all Lunch, Break, and Clock Out entries associated with it.',
+      };
+    case 'clock_out':
+      return { label: 'Delete Clock Out', confirm: 'Delete this Clock Out? The shift will remain without a Clock Out until corrected.' };
+    case 'lunch_start':
+    case 'lunch_end':
+      return { label: 'Delete Lunch', confirm: "Delete this Lunch? Lunch Out and Lunch In will both be removed from the employee's effective time record." };
+    case 'other_start':
+    case 'other_end':
+    default:
+      return { label: 'Delete Break', confirm: 'Delete this Break? Break Out and Break In will both be removed.' };
+  }
+}
 
 interface Props {
   draft: CorrectionDraft;
@@ -33,6 +56,11 @@ const CorrectionModal: React.FC<Props> = ({ draft, tz, onClose, onSubmit }) => {
   const [otherText, setOtherText] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Deleting an existing punch is a two-step, in-modal destructive action: the
+  // admin clicks "Delete …", then confirms the cascade before anything is sent.
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+
+  const del = draft.mode === 'adjust' ? deleteScopeFor(draft.kind) : null;
 
   const isOther = reasonCode === 'other';
   // Reason is OPTIONAL (the established TimeTracker rule) — the only block is
@@ -83,6 +111,20 @@ const CorrectionModal: React.FC<Props> = ({ draft, tz, onClose, onSubmit }) => {
     }
   };
 
+  // Cascading delete of an existing punch. The server determines the dependent
+  // set; the client only names the target event. Reason stays optional.
+  const submitDelete = async () => {
+    if (draft.mode !== 'adjust' || saving || !reasonReady) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await onSubmit({ type: 'delete', event_id: draft.eventId, ...buildReason() });
+    } catch (err) {
+      setError(err instanceof ApiError ? err.firstError() : 'The correction could not be applied.');
+      setSaving(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
       <form className="bg-white rounded-xl shadow-xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()} onSubmit={submit}>
@@ -106,7 +148,15 @@ const CorrectionModal: React.FC<Props> = ({ draft, tz, onClose, onSubmit }) => {
           <p className="text-sm font-medium text-gray-900">{formatCalendarDate(draft.date)}</p>
         </div>
 
-        {draft.mode === 'void' ? (
+        {/* Destructive confirmation — explains the exact cascade before anything is sent. */}
+        {confirmingDelete && del && (
+          <div className="mb-4 flex items-start gap-2 text-red-700 bg-red-50 border border-red-200 p-3 rounded-lg">
+            <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
+            <span className="text-sm">{del.confirm}</span>
+          </div>
+        )}
+
+        {confirmingDelete ? null : draft.mode === 'void' ? (
           <p className="text-sm text-gray-600 mb-4">
             This appends a void correction; the original event is preserved and the projection is rebuilt without it.
             The server rejects it if it would leave an impossible sequence.
@@ -164,8 +214,36 @@ const CorrectionModal: React.FC<Props> = ({ draft, tz, onClose, onSubmit }) => {
           )}
         </div>
 
-        <div className="flex justify-end gap-2">
-          <button type="button" onClick={onClose} className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+        {confirmingDelete && del ? (
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={() => setConfirmingDelete(false)} disabled={saving} className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50">
+              Keep
+            </button>
+            <button
+              type="button"
+              onClick={submitDelete}
+              disabled={saving || !reasonReady}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-white bg-red-600 hover:bg-red-700 transition-colors disabled:opacity-50"
+            >
+              <Trash2 className="h-4 w-4" />
+              {saving ? 'Deleting…' : del.label}
+            </button>
+          </div>
+        ) : (
+        <div className="flex items-center gap-2">
+          {/* Destructive action lives INSIDE the edit modal (adjust only), not on every cell. */}
+          {del && (
+            <button
+              type="button"
+              onClick={() => { setError(null); setConfirmingDelete(true); }}
+              disabled={saving}
+              className="inline-flex items-center gap-1.5 text-sm text-red-600 hover:text-red-700 hover:underline disabled:opacity-50 mr-auto"
+            >
+              <Trash2 className="h-4 w-4" />
+              {del.label}
+            </button>
+          )}
+          <button type="button" onClick={onClose} className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors ml-auto">
             Cancel
           </button>
           <button
@@ -178,6 +256,7 @@ const CorrectionModal: React.FC<Props> = ({ draft, tz, onClose, onSubmit }) => {
             {saving ? 'Applying…' : draft.mode === 'void' ? 'Void event' : 'Apply'}
           </button>
         </div>
+        )}
       </form>
     </div>
   );
