@@ -12,6 +12,8 @@ const SETTINGS: TimeTrackerSettings = {
   pay_increments: 5,
   pay_period_type: 'biweekly',
   pay_period_start_date: '2026-01-01',
+  overtime_workweek_starts_on: 0,
+  paid_leave_counts_toward_overtime: false,
   minimum_lunch_duration_minutes: 30,
   missed_lunch_reminder_minutes: 60,
   missed_lunch_reminder_message: 'lunch msg',

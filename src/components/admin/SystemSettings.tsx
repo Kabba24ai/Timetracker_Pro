@@ -36,9 +36,21 @@ type MessageKey =
 
 type BoolKey =
   | 'vacation_accrual_enabled'
+  | 'paid_leave_counts_toward_overtime'
   | 'pending_reminder_1_enabled'
   | 'pending_reminder_2_enabled'
   | 'pending_reminder_3_enabled';
+
+// Canonical weekday numbers (0=Sun … 6=Sat) for the Workweek Starts On dropdown.
+const WORKWEEK_DAYS: { value: number; label: string }[] = [
+  { value: 0, label: 'Sunday' },
+  { value: 1, label: 'Monday' },
+  { value: 2, label: 'Tuesday' },
+  { value: 3, label: 'Wednesday' },
+  { value: 4, label: 'Thursday' },
+  { value: 5, label: 'Friday' },
+  { value: 6, label: 'Saturday' },
+];
 
 const inputCls =
   'w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500';
@@ -420,6 +432,38 @@ const SystemSettings: React.FC = () => {
               />
               <p className="text-xs text-gray-500 mt-1">Periods are counted from this date.</p>
             </div>
+            <div>
+              <label className={labelCls} htmlFor="overtime_workweek_starts_on">Workweek Starts On</label>
+              <select
+                id="overtime_workweek_starts_on"
+                aria-label="Workweek Starts On"
+                value={settings.overtime_workweek_starts_on}
+                onChange={(e) =>
+                  setSettings((prev) =>
+                    prev ? { ...prev, overtime_workweek_starts_on: Number(e.target.value) } : prev,
+                  )
+                }
+                className={inputCls}
+              >
+                {WORKWEEK_DAYS.map((d) => (
+                  <option key={d.value} value={d.value}>
+                    {d.label}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-500 mt-1">
+                Defines the fixed seven-day workweek used to classify overtime (after 40 hours worked
+                per week, in the tenant timezone).
+              </p>
+            </div>
+          </div>
+          <div className="mt-6">
+            <ToggleField
+              label="Paid Leave Counts Toward Company Overtime Threshold"
+              value={settings.paid_leave_counts_toward_overtime}
+              onChange={flag('paid_leave_counts_toward_overtime')}
+              hint="Off (default): only actual worked hours over 40/week are overtime, and paid leave (Vacation) never counts toward the threshold. On: a more-generous company policy that lets paid leave help reach 40 — it can only ever increase overtime, never reduce it, and Vacation is never relabeled Overtime."
+            />
           </div>
         </Section>
 
