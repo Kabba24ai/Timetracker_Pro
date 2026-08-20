@@ -13,23 +13,21 @@ const SETTINGS = {
   pay_increments: 5,
   pay_period_type: 'biweekly',
   pay_period_start_date: '2026-01-01',
-  minimum_lunch_duration_minutes: 30,
-  default_lunch_duration_minutes: 45,
-  auto_lunch_minutes: 60,
-  auto_lunch_message: 'lunch msg',
-  auto_lunch_days: [1, 2, 3, 4, 5],
-  auto_lunch_min_work_minutes: 300,
+  minimum_lunch_duration_minutes: 45,
+  missed_lunch_reminder_minutes: 60,
+  missed_lunch_reminder_message: 'lunch msg',
+  lunch_required_days: [1, 2, 3, 4, 5],
+  lunch_required_min_work_minutes: 300,
   first_clock_in_reminder_minutes: 30,
   second_clock_in_reminder_minutes: 45,
   clock_in_message_1: 'back 1',
   clock_in_message_2: 'back 2',
-  missed_clock_out_reminder_minutes: 15,
+  missed_clock_out_reminder_minutes: 30,
   missed_clock_out_message: 'missed',
-  auto_clock_out_warning_minutes: 15,
-  auto_clock_out_warning_message: 'warn',
-  auto_clock_out_limit_minutes: 60,
-  auto_clock_out_message: 'auto',
-  max_shift_hours: 16,
+  missing_clock_out_warning_minutes: 45,
+  missing_clock_out_warning_message: 'warn',
+  missing_clock_out_trigger_minutes: 60,
+  missing_clock_out_pending_message: 'pending',
   attendance_grace_minutes: 5,
   vacation_accrual_enabled: true,
   vacation_annual_hours: 80,
@@ -98,7 +96,7 @@ describe('Settings form — focus retention', () => {
     const user = userEvent.setup();
     await renderSettings();
 
-    const input = control('Missed-Lunch Reminder Lead (minutes)') as HTMLInputElement;
+    const input = control('Missed-Lunch Reminder (minutes before shift end)') as HTMLInputElement;
     await user.click(input); // one click to focus
     expect(document.activeElement).toBe(input);
 
@@ -107,7 +105,7 @@ describe('Settings form — focus retention', () => {
 
     expect(input.value).toBe('180');
     // The SAME node is still mounted and focused (would fail if it remounted).
-    expect(control('Missed-Lunch Reminder Lead (minutes)')).toBe(input);
+    expect(control('Missed-Lunch Reminder (minutes before shift end)')).toBe(input);
     expect(document.activeElement).toBe(input);
   });
 
@@ -130,7 +128,7 @@ describe('Settings form — focus retention', () => {
     const user = userEvent.setup();
     await renderSettings();
 
-    const input = control('Mandatory Lunch (minutes)') as HTMLInputElement; // starts at 45
+    const input = control('Minimum Lunch (minutes)') as HTMLInputElement; // starts at 45
     expect(input.value).toBe('45');
     await user.tripleClick(input); // select existing value
     await user.keyboard('120');
@@ -143,7 +141,7 @@ describe('Settings form — focus retention', () => {
     const user = userEvent.setup();
     await renderSettings();
 
-    const input = control('Missed-Lunch Reminder Lead (minutes)') as HTMLInputElement; // 60
+    const input = control('Missed-Lunch Reminder (minutes before shift end)') as HTMLInputElement; // 60
     await user.click(input);
     await user.keyboard('{Control>}a{/Control}{Backspace}');
     // Cleared to empty and STAYS empty (no forced coercion back to 60/0 in the box).
@@ -158,7 +156,7 @@ describe('Settings form — focus retention', () => {
     const user = userEvent.setup();
     await renderSettings();
 
-    const input = control('Max Open Shift (hours)') as HTMLInputElement;
+    const input = control('Missing Clock-Out Trigger') as HTMLInputElement;
     await user.click(input);
     await user.keyboard('{Control>}a{/Control}');
     await user.paste('24');
@@ -217,67 +215,60 @@ describe('Settings form — persistence', () => {
     const body = server.lastBody as typeof SETTINGS;
     // Edited values, as NUMBERS / strings — not string-coerced numerics.
     expect(body.minimum_lunch_duration_minutes).toBe(90);
-    expect(body.auto_lunch_message).toBe('Take lunch');
-    // Full canonical key set still present and untouched where unedited — and the
-    // retired auto_clock_out_time is NOT part of the payload.
+    expect(body.missed_lunch_reminder_message).toBe('Take lunch');
+    // Full canonical key set present; the retired auto-clock-out / max-shift keys
+    // are gone entirely.
     expect(body.pay_period_type).toBe('biweekly');
-    expect(body.max_shift_hours).toBe(16);
-    expect(body.auto_clock_out_limit_minutes).toBe(60);
+    expect(body.missing_clock_out_trigger_minutes).toBe(60);
     expect(body).not.toHaveProperty('auto_clock_out_time');
+    expect(body).not.toHaveProperty('auto_clock_out_limit_minutes');
+    expect(body).not.toHaveProperty('max_shift_hours');
     expect(Object.keys(body).length).toBe(Object.keys(SETTINGS).length);
   });
 });
 
-describe('Settings form — auto clock-out sequencing contract', () => {
-  it('labels the warning as minutes after shift end and auto clock-out as minutes after store close', async () => {
+describe('Settings form — Missing Clock-Out contract (no auto clock-out)', () => {
+  it('labels reminder, warning and trigger all as minutes after shift end', async () => {
     await renderSettings();
 
-    // Warning is timed from shift end (not "minutes before").
-    const warning = screen.getByText('Auto Clock-Out Warning').parentElement!;
-    expect(warning.textContent).toContain('minutes after shift end');
-
-    // Auto clock-out is timed from store close.
-    const autoOut = screen.getByText('Auto Clock-Out', { selector: 'label' }).parentElement!;
-    expect(autoOut.textContent).toContain('minutes after store close');
+    expect(screen.getByText('Missed Clock-Out Reminder').parentElement!.textContent).toContain('minutes after shift end');
+    expect(screen.getByText('Missing Clock-Out Warning').parentElement!.textContent).toContain('minutes after shift end');
+    expect(screen.getByText('Missing Clock-Out Trigger').parentElement!.textContent).toContain('marks Pending');
   });
 
-  it('no longer renders a fixed Auto Clock-Out Time control', async () => {
+  it('no longer renders any Auto Clock-Out control, Max Open Shift, or store-close text', async () => {
     await renderSettings();
-    expect(screen.queryByText('Auto Clock-Out Time')).toBeNull();
+    expect(screen.queryByText('Auto Clock-Out')).toBeNull();
+    expect(screen.queryByText('Auto Clock-Out Warning')).toBeNull();
+    expect(screen.queryByText('Max Open Shift (hours)')).toBeNull();
     expect(document.querySelector('input[type="time"]')).toBeNull();
-  });
-
-  it('identifies Max Open Shift as a safety cap', async () => {
-    await renderSettings();
-    const maxShift = screen.getByText('Max Open Shift (hours)').parentElement!;
-    expect(maxShift.textContent).toContain('Safety cap');
+    expect(document.body.textContent).not.toContain('minutes after store close');
   });
 });
 
-describe('Settings form — Missed-Lunch merge tokens', () => {
+describe('Settings form — message merge tokens', () => {
   const field = (label: string) => screen.getByText(label).parentElement as HTMLElement;
 
-  it('advertises the canonical tokens for the missed-lunch message and not obsolete ones', async () => {
+  it('advertises the Pending-era tokens for the missed-lunch message and not retired ones', async () => {
     await renderSettings();
-    const container = field('Missed-Lunch Reminder Message');
-    const text = container.textContent ?? '';
-    expect(text).toContain('{lunch_minutes}');
+    const text = field('Missed-Lunch Reminder Message').textContent ?? '';
+    expect(text).toContain('{shift_end}');
     expect(text).toContain('{name}');
-    // Obsolete / non-applicable tokens are NOT advertised for this message.
-    expect(text).not.toContain('{default_lunch_time}');
+    // Retired tokens are NOT advertised (nothing is applied; no auto clock-out).
+    expect(text).not.toContain('{lunch_minutes}');
     expect(text).not.toContain('{time}');
   });
 
-  it('saves the edited canonical missed-lunch message', async () => {
+  it('saves the edited missed-lunch message', async () => {
     const user = userEvent.setup();
     await renderSettings();
     // fireEvent (not user.keyboard) so the literal {tokens} are not parsed as keys.
     const area = control('Missed-Lunch Reminder Message') as HTMLTextAreaElement;
-    fireEvent.change(area, { target: { value: 'Hi {name}, {lunch_minutes} minute lunch applies.' } });
+    fireEvent.change(area, { target: { value: 'Hi {name}, record your lunch by {shift_end}.' } });
     await user.click(screen.getByRole('button', { name: /Save Settings/ }));
 
     await vi.waitFor(() => expect(server.calls).toContain('PUT /admin/settings'));
-    expect((server.lastBody as typeof SETTINGS).auto_lunch_message).toBe('Hi {name}, {lunch_minutes} minute lunch applies.');
+    expect((server.lastBody as typeof SETTINGS).missed_lunch_reminder_message).toBe('Hi {name}, record your lunch by {shift_end}.');
   });
 
   it('surfaces an unsupported-token validation error returned by the backend', async () => {
@@ -293,7 +284,7 @@ describe('Settings form — Missed-Lunch merge tokens', () => {
   });
 });
 
-describe('Settings form — Auto Lunch eligibility', () => {
+describe('Settings form — Lunch requirement eligibility', () => {
   const weekdayBtn = (name: string) => screen.getByRole('button', { name });
 
   it('renders seven weekday controls', async () => {
@@ -359,8 +350,8 @@ describe('Settings form — Auto Lunch eligibility', () => {
 
     await vi.waitFor(() => expect(server.calls).toContain('PUT /admin/settings'));
     const body = server.lastBody as typeof SETTINGS;
-    expect(body.auto_lunch_days).toEqual([1, 2, 3, 4, 5, 6]);
-    expect(body.auto_lunch_min_work_minutes).toBe(330);
+    expect(body.lunch_required_days).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(body.lunch_required_min_work_minutes).toBe(330);
 
     // The mocked PUT echoes the saved values back → the controls reflect them.
     expect(weekdayBtn('Sat').getAttribute('aria-pressed')).toBe('true');

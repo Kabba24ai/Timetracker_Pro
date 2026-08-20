@@ -11,26 +11,24 @@ import { ApiError } from '../../lib/api';
 type NumericKey =
   | 'pay_increments'
   | 'minimum_lunch_duration_minutes'
-  | 'default_lunch_duration_minutes'
-  | 'auto_lunch_minutes'
+  | 'missed_lunch_reminder_minutes'
   | 'first_clock_in_reminder_minutes'
   | 'second_clock_in_reminder_minutes'
   | 'missed_clock_out_reminder_minutes'
-  | 'auto_clock_out_warning_minutes'
-  | 'auto_clock_out_limit_minutes'
-  | 'max_shift_hours'
+  | 'missing_clock_out_warning_minutes'
+  | 'missing_clock_out_trigger_minutes'
   | 'attendance_grace_minutes'
   | 'pending_reminder_1_minutes'
   | 'pending_reminder_2_minutes'
   | 'pending_reminder_3_minutes';
 
 type MessageKey =
-  | 'auto_lunch_message'
+  | 'missed_lunch_reminder_message'
   | 'clock_in_message_1'
   | 'clock_in_message_2'
   | 'missed_clock_out_message'
-  | 'auto_clock_out_warning_message'
-  | 'auto_clock_out_message'
+  | 'missing_clock_out_warning_message'
+  | 'missing_clock_out_pending_message'
   | 'pending_time_reminder_message'
   | 'pending_time_reminder_message_multi'
   | 'pending_time_escalation_message'
@@ -281,15 +279,15 @@ const SystemSettings: React.FC = () => {
     setSettings((prev) => (prev ? { ...prev, [key]: v } : prev));
   const text = (key: 'pending_time_escalation_phone') => (v: string) =>
     setSettings((prev) => (prev ? { ...prev, [key]: v } : prev));
-  // Toggle one Auto Lunch weekday, keeping the list normalized (unique, sorted).
-  const toggleAutoLunchDay = (day: number) =>
+  // Toggle one "Lunch Required On" weekday, keeping the list normalized.
+  const toggleLunchRequiredDay = (day: number) =>
     setSettings((prev) => {
       if (!prev) return prev;
-      const has = prev.auto_lunch_days.includes(day);
+      const has = prev.lunch_required_days.includes(day);
       const next = has
-        ? prev.auto_lunch_days.filter((d) => d !== day)
-        : [...prev.auto_lunch_days, day].sort((a, b) => a - b);
-      return { ...prev, auto_lunch_days: next };
+        ? prev.lunch_required_days.filter((d) => d !== day)
+        : [...prev.lunch_required_days, day].sort((a, b) => a - b);
+      return { ...prev, lunch_required_days: next };
     });
 
   const handleSave = async () => {
@@ -426,24 +424,27 @@ const SystemSettings: React.FC = () => {
         </Section>
 
         <Section title="Lunch">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-            <NumberField label="Minimum Lunch (minutes)" value={settings.minimum_lunch_duration_minutes} onChange={num('minimum_lunch_duration_minutes')} max={240} hint="Enforced when ending lunch manually." />
-            <NumberField label="Mandatory Lunch (minutes)" value={settings.default_lunch_duration_minutes} onChange={num('default_lunch_duration_minutes')} max={240} hint="Applied by auto lunch remediation." />
-            <NumberField label="Missed-Lunch Reminder Lead (minutes)" value={settings.auto_lunch_minutes} onChange={num('auto_lunch_minutes')} max={1440} hint="Before shift end." />
+          <p className="text-sm text-gray-600 mb-6">
+            No lunch is ever created automatically. If a required lunch is not recorded, the shift is marked
+            Pending — Missing Lunch and contributes zero hours until an admin corrects it.
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+            <NumberField label="Minimum Lunch (minutes)" value={settings.minimum_lunch_duration_minutes} onChange={num('minimum_lunch_duration_minutes')} max={240} hint="Validates an actual employee-recorded lunch." />
+            <NumberField label="Missed-Lunch Reminder (minutes before shift end)" value={settings.missed_lunch_reminder_minutes} onChange={num('missed_lunch_reminder_minutes')} max={1440} hint="Same-day reminder to record the lunch before the shift ends." />
           </div>
-          <MessageField label="Missed-Lunch Reminder Message" value={settings.auto_lunch_message} onChange={msg('auto_lunch_message')} tokens={['{name}', '{lunch_minutes}', '{shift_end}']} />
+          <MessageField label="Missed-Lunch Reminder Message" value={settings.missed_lunch_reminder_message} onChange={msg('missed_lunch_reminder_message')} tokens={['{name}', '{shift_end}']} />
 
-          {/* Auto Lunch eligibility: which weekdays it applies on and the minimum
-              qualifying scheduled shift length before it applies. */}
+          {/* Lunch-requirement eligibility: which weekdays a lunch is required on
+              and the minimum qualifying scheduled shift length that requires one. */}
           <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-            <WeekdayField label="Auto Lunch Applies On" value={settings.auto_lunch_days} onToggle={toggleAutoLunchDay} />
+            <WeekdayField label="Lunch Required On" value={settings.lunch_required_days} onToggle={toggleLunchRequiredDay} />
             <div>
               <label className={labelCls}>Minimum Work Hours</label>
               <select
                 aria-label="Minimum Work Hours"
-                value={settings.auto_lunch_min_work_minutes}
+                value={settings.lunch_required_min_work_minutes}
                 onChange={(e) =>
-                  setSettings((prev) => (prev ? { ...prev, auto_lunch_min_work_minutes: Number(e.target.value) } : prev))
+                  setSettings((prev) => (prev ? { ...prev, lunch_required_min_work_minutes: Number(e.target.value) } : prev))
                 }
                 className={inputCls}
               >
@@ -454,7 +455,7 @@ const SystemSettings: React.FC = () => {
                 ))}
               </select>
               <p className="text-xs text-gray-500 mt-1">
-                Auto Lunch applies only when the qualifying shift is at least this long.
+                A Lunch is required when the qualifying scheduled shift is at least this long.
               </p>
             </div>
           </div>
@@ -471,23 +472,24 @@ const SystemSettings: React.FC = () => {
           </div>
         </Section>
 
-        <Section title="Missed Clock-Out & Auto Clock-Out">
-          {/* The sequence reads top-to-bottom: reminder, then warning (both timed
-              from scheduled shift end), then auto clock-out (timed from store
-              close), then the failsafe cap. */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
+        <Section title="Missing Clock-Out">
+          <p className="text-sm text-gray-600 mb-6">
+            All three times are minutes AFTER the scheduled shift end. No clock-out is ever generated — at the
+            trigger the shift is marked Pending — Missing Clock Out and awaits admin review. The employee can
+            still clock in normally on their next shift.
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
             <NumberField label="Missed Clock-Out Reminder" value={settings.missed_clock_out_reminder_minutes} onChange={num('missed_clock_out_reminder_minutes')} max={1440} hint="minutes after shift end" />
-            <NumberField label="Auto Clock-Out Warning" value={settings.auto_clock_out_warning_minutes} onChange={num('auto_clock_out_warning_minutes')} max={1440} hint="minutes after shift end" />
-            <NumberField label="Auto Clock-Out" value={settings.auto_clock_out_limit_minutes} onChange={num('auto_clock_out_limit_minutes')} max={1440} hint="minutes after store close" />
-            <NumberField label="Max Open Shift (hours)" value={settings.max_shift_hours} onChange={num('max_shift_hours')} min={1} max={48} hint="Safety cap for unusually long open shifts." />
+            <NumberField label="Missing Clock-Out Warning" value={settings.missing_clock_out_warning_minutes} onChange={num('missing_clock_out_warning_minutes')} max={1440} hint="minutes after shift end" />
+            <NumberField label="Missing Clock-Out Trigger" value={settings.missing_clock_out_trigger_minutes} onChange={num('missing_clock_out_trigger_minutes')} max={1440} hint="minutes after shift end → marks Pending" />
           </div>
           <p className="text-xs text-gray-500 mb-6 flex items-center gap-1">
-            <Clock className="h-3 w-3" /> All times are in {timezone || 'tenant tz'}. The warning’s {'{time}'} token shows the actual upcoming auto clock-out time.
+            <Clock className="h-3 w-3" /> All times are in {timezone || 'tenant tz'}.
           </p>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <MessageField label="Missed Clock-Out Message" value={settings.missed_clock_out_message} onChange={msg('missed_clock_out_message')} tokens={['{name}', '{shift_end}']} />
-            <MessageField label="Auto Clock-Out Warning Message" value={settings.auto_clock_out_warning_message} onChange={msg('auto_clock_out_warning_message')} tokens={['{name}', '{time}']} />
-            <MessageField label="Auto Clock-Out Message" value={settings.auto_clock_out_message} onChange={msg('auto_clock_out_message')} tokens={['{name}', '{time}']} />
+            <MessageField label="Missed Clock-Out Reminder Message" value={settings.missed_clock_out_message} onChange={msg('missed_clock_out_message')} tokens={['{name}', '{shift_end}']} />
+            <MessageField label="Missing Clock-Out Warning Message" value={settings.missing_clock_out_warning_message} onChange={msg('missing_clock_out_warning_message')} tokens={['{name}', '{shift_end}']} />
+            <MessageField label="Pending Notice Message" value={settings.missing_clock_out_pending_message} onChange={msg('missing_clock_out_pending_message')} tokens={['{name}']} hint="Sent when the record becomes Pending" />
           </div>
         </Section>
 
@@ -612,8 +614,9 @@ const SystemSettings: React.FC = () => {
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-start space-x-3">
           <Info className="h-5 w-5 text-blue-600 mt-0.5" />
           <p className="text-sm text-blue-800">
-            These settings drive the V2 timekeeping engine directly — rounding, automation reminders, auto
-            clock-out, pay periods, and attendance. Changes are validated on the server and every change is audited.
+            These settings drive the V2 timekeeping engine directly — rounding, automation reminders, the
+            Missing-Clock-Out Pending trigger, pay periods, and attendance. Changes are validated on the server
+            and every change is audited.
           </p>
         </div>
       </div>

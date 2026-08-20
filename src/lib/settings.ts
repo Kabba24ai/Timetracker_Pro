@@ -19,30 +19,30 @@ export interface TimeTrackerSettings {
   pay_period_type: 'weekly' | 'biweekly';
   pay_period_start_date: string;
 
-  // Lunch
+  // Lunch (no auto lunch — a missing required lunch becomes Pending)
   minimum_lunch_duration_minutes: number;
-  default_lunch_duration_minutes: number;
-  auto_lunch_minutes: number;
-  auto_lunch_message: string;
-  // Auto Lunch eligibility: canonical weekday numbers (0=Sun … 6=Sat) it applies
-  // on, and the minimum qualifying scheduled work duration stored as minutes.
-  auto_lunch_days: number[];
-  auto_lunch_min_work_minutes: number;
+  missed_lunch_reminder_minutes: number;
+  missed_lunch_reminder_message: string;
+  // Lunch-requirement eligibility: canonical weekday numbers (0=Sun … 6=Sat) a
+  // lunch is required on, and the minimum qualifying scheduled work duration
+  // (stored as minutes) at/above which a lunch is required.
+  lunch_required_days: number[];
+  lunch_required_min_work_minutes: number;
 
-  // Clock-back-from-lunch reminders
+  // Return-from-lunch reminders
   first_clock_in_reminder_minutes: number;
   second_clock_in_reminder_minutes: number;
   clock_in_message_1: string;
   clock_in_message_2: string;
 
-  // Missed clock-out reminder + auto clock-out
+  // Missing Clock-Out: reminder → warning → Pending trigger (all minutes after
+  // the scheduled shift end). No clock-out is ever generated.
   missed_clock_out_reminder_minutes: number;
   missed_clock_out_message: string;
-  auto_clock_out_warning_minutes: number;
-  auto_clock_out_warning_message: string;
-  auto_clock_out_limit_minutes: number;
-  auto_clock_out_message: string;
-  max_shift_hours: number;
+  missing_clock_out_warning_minutes: number;
+  missing_clock_out_warning_message: string;
+  missing_clock_out_trigger_minutes: number;
+  missing_clock_out_pending_message: string;
 
   // Attendance
   attendance_grace_minutes: number;

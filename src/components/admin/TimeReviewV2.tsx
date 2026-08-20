@@ -328,7 +328,12 @@ const TimeReviewV2: React.FC<TimeReviewProps> = ({ initialUserId, initialFrom, i
                           </td>
                           {POSITION_COLUMNS.map((c) => (
                             <td key={c.key} className="px-2 py-2 text-center">
-                              <PunchCell pos={d.positions[c.key]} tz={tz} onClick={() => editPosition(d, c.key, c.label)} />
+                              <PunchCell
+                                pos={d.positions[c.key]}
+                                unverified={c.key === 'clock_out' && d.clock_out_unverified}
+                                tz={tz}
+                                onClick={() => editPosition(d, c.key, c.label)}
+                              />
                             </td>
                           ))}
                           <td className="px-3 py-2 text-right font-mono font-semibold text-blue-700 whitespace-nowrap">
@@ -402,16 +407,17 @@ const TimeReviewV2: React.FC<TimeReviewProps> = ({ initialUserId, initialFrom, i
   );
 };
 
-const PunchCell: React.FC<{ pos: DayPosition | null; tz: string; onClick: () => void }> = ({ pos, tz, onClick }) => {
-  // A system Auto-Clock-Out is NOT a verified employee clock-out: show it as
-  // "Missing / Pending" (needs admin review), not the machine-generated time.
-  // The real system timestamp still lives in the per-day ledger detail.
-  if (pos?.unverified) {
+const PunchCell: React.FC<{ pos: DayPosition | null; unverified?: boolean; tz: string; onClick: () => void }> = ({ pos, unverified, tz, onClick }) => {
+  // A Missing-Clock-Out Pending shift has NO clock-out (no time was ever
+  // fabricated): show the Clock Out cell as "Missing / Pending" (needs admin
+  // review). The Pending reason is carried on the day; the cell click opens the
+  // correction workflow to insert the verified Clock Out.
+  if (unverified || pos?.unverified) {
     return (
       <button
         onClick={onClick}
         className="px-2 py-1 rounded text-xs font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100 transition-colors"
-        title="System auto clock-out — verify the actual Clock Out time"
+        title="No Clock Out recorded — insert the verified Clock Out time"
       >
         Missing / Pending
       </button>
