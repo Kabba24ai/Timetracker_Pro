@@ -38,7 +38,11 @@ const ROWS = [
     system_event_count: 2,
     auto_clock_out_count: 1,
     mandatory_lunch_count: 1,
-    flags: ['has_corrections', 'auto_clock_out'],
+    // Unresolved Pending shift → the sole flag. Legacy auto/correction counts
+    // remain on the row for historical audit but never surface as flags.
+    pending_shift_count: 1,
+    has_pending_shift: true,
+    flags: ['pending'],
   },
   {
     employee: { id: 2, full_name: 'Bo Vance' },
@@ -57,7 +61,8 @@ const ROWS = [
     system_event_count: 0,
     auto_clock_out_count: 0,
     mandatory_lunch_count: 0,
-    flags: ['no_activity'],
+    // No activity is no longer a pseudo-flag → blank Flags cell.
+    flags: [],
   },
   {
     employee: { id: 3, full_name: 'Cy Open' },
@@ -76,7 +81,8 @@ const ROWS = [
     system_event_count: 0,
     auto_clock_out_count: 0,
     mandatory_lunch_count: 0,
-    flags: ['open_shift'],
+    // Open shift is an operational state (kept as has_open_shift), not a flag.
+    flags: [],
   },
 ];
 
@@ -170,8 +176,10 @@ describe('payPeriodToCsv()', () => {
     expect(ada[1]).toBe('7.50'); // Paid
     expect(ada[2]).toBe('0.50'); // Unpaid
     expect(ada[3]).toBe('8.00'); // Worked (gross)
-    expect(rows[1]).toContain('Corrected; Auto clock-out');
-    expect(rows[3]).toContain('Open shift');
+    // Pending is the only flag; legacy badges never appear in the CSV either.
+    expect(rows[1]).toContain('Pending');
+    expect(rows[1]).not.toContain('Auto clock-out');
+    expect(rows[3]).not.toContain('Open shift');
   });
 });
 
@@ -191,8 +199,28 @@ describe('PayPeriodSummaryGrid', () => {
     expect(screen.getAllByText('0:30').length).toBeGreaterThan(0);
     // Formula is shown.
     expect(screen.getByText(/= Worked Hours −/)).toBeInTheDocument();
-    // Open-shift row carries the "not final" marker.
+    // Open-shift row still carries the operational "not final" marker (not a flag).
     expect(screen.getByTitle(/open shift/i)).toBeInTheDocument();
+  });
+
+  it('shows ONLY a Pending flag and none of the retired legacy badges', async () => {
+    render(<PayPeriodSummaryGrid onDrillDown={() => {}} />);
+    // Ada has an unresolved Pending shift → a single Pending badge.
+    expect(await screen.findByText('Pending')).toBeInTheDocument();
+    expect(screen.getAllByText('Pending')).toHaveLength(1);
+    // The retired legacy badges never render.
+    expect(screen.queryByText('Open shift')).not.toBeInTheDocument();
+    expect(screen.queryByText('Auto clock-out')).not.toBeInTheDocument();
+    expect(screen.queryByText('Auto lunch')).not.toBeInTheDocument();
+    expect(screen.queryByText('No activity')).not.toBeInTheDocument();
+    expect(screen.queryByText('Corrected')).not.toBeInTheDocument();
+  });
+
+  it('sends flagged=1 when Exceptions only is checked', async () => {
+    render(<PayPeriodSummaryGrid onDrillDown={() => {}} />);
+    await screen.findByText('Ada Clockwell');
+    fireEvent.click(screen.getByLabelText('Exceptions only'));
+    await vi.waitFor(() => expect(server.calls.some((c) => c.includes('flagged=1'))).toBe(true));
   });
 
   it('drills down into an employee for the same period on row click', async () => {

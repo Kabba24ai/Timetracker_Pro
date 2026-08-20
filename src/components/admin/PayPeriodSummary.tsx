@@ -14,12 +14,10 @@ import { tenantToday } from '../../lib/tz';
 
 type Mode = 'current' | 'previous' | 'custom';
 
+// Post-cutover the Flags column shows ONLY Pending (from the canonical Pending
+// model); legacy badges are retired. A row with no Pending record renders blank.
 const FLAG_STYLE: Record<string, string> = {
-  open_shift: 'bg-green-100 text-green-700',
-  has_corrections: 'bg-amber-100 text-amber-800',
-  auto_clock_out: 'bg-purple-100 text-purple-700',
-  mandatory_lunch: 'bg-orange-100 text-orange-700',
-  no_activity: 'bg-gray-100 text-gray-500',
+  pending: 'bg-amber-50 text-amber-700',
 };
 
 interface Props {

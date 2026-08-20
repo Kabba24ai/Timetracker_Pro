@@ -1,10 +1,21 @@
 import React from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { Clock, LogOut, Shield } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 
 const Header: React.FC = () => {
   const { employee, isAdmin, signOut } = useAuth();
+  const location = useLocation();
+
+  // Admin ↔ Employee view toggle for the SAME authenticated user (no
+  // impersonation, no second login). While on an admin route the control offers
+  // "Employee View" → the employee dashboard; while on the employee side an
+  // authorized admin sees "Admin View" → /admin. Standard employees never see
+  // it. Server authorization for /admin is unchanged — this only navigates.
+  const onAdmin = location.pathname.startsWith('/admin');
+  const showToggle = onAdmin || isAdmin;
+  const toggleTo = onAdmin ? '/' : '/admin';
+  const toggleLabel = onAdmin ? 'Employee View' : 'Admin View';
 
   const handleSignOut = () => {
     // signOut revokes the token server-side then clears the local session.
@@ -26,16 +37,16 @@ const Header: React.FC = () => {
           </div>
 
           <div className="flex items-center space-x-4">
-            {isAdmin && (
+            {showToggle && (
               <Link
-                to="/admin"
+                to={toggleTo}
                 className="flex items-center space-x-2 px-3 py-2 text-sm text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
               >
                 <Shield className="h-4 w-4" />
-                <span>Admin</span>
+                <span>{toggleLabel}</span>
               </Link>
             )}
-            
+
             <div className="flex items-center space-x-3">
               <div className="text-right">
                 <p className="text-sm font-medium text-gray-900">

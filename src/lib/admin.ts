@@ -335,12 +335,12 @@ export async function fetchPayPeriodSummary(params: PayPeriodParams): Promise<Pa
   return { period: res.period, totals: res.totals, data: res.data ?? [] };
 }
 
+// Post-cutover the only Pay Period flag is Pending (unresolved Missing Lunch /
+// Incomplete Lunch / Missing Clock Out, from the canonical PendingTimeResolver).
+// The legacy badges (open shift / auto clock-out / auto lunch / no activity /
+// corrected) are retired and never rendered.
 const FLAG_LABEL: Record<string, string> = {
-  open_shift: 'Open shift',
-  has_corrections: 'Corrected',
-  auto_clock_out: 'Auto clock-out',
-  mandatory_lunch: 'Auto lunch',
-  no_activity: 'No activity',
+  pending: 'Pending',
 };
 
 export function flagLabel(flag: string): string {
