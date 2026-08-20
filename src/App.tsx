@@ -6,6 +6,7 @@ import LoginPage from './pages/LoginPage';
 import EmployeeDashboard from './pages/EmployeeDashboard';
 import AdminDashboard from './pages/AdminDashboard';
 import SchedulePage from './pages/SchedulePage';
+import WorkHistoryPage from './pages/WorkHistoryPage';
 import ProtectedRoute from './components/ProtectedRoute';
 
 function App() {
@@ -29,6 +30,14 @@ function App() {
                 element={
                   <ProtectedRoute>
                     <SchedulePage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/history"
+                element={
+                  <ProtectedRoute>
+                    <WorkHistoryPage />
                   </ProtectedRoute>
                 }
               />

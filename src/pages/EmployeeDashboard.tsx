@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import TimeClockCard from '../components/TimeClockCard';
 import TodayTimeEntries from '../components/TodayTimeEntries';
 import VacationSummary from '../components/VacationSummary';
+import WorkHistorySynopsis from '../components/history/WorkHistorySynopsis';
 import Header from '../components/Header';
 
 const EmployeeDashboard: React.FC = () => {
@@ -55,8 +56,9 @@ const EmployeeDashboard: React.FC = () => {
             <TimeClockCard />
             <TodayTimeEntries />
           </div>
-          <div>
+          <div className="space-y-6">
             <VacationSummary />
+            <WorkHistorySynopsis />
           </div>
         </div>
       </div>

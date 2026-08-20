@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { useTimeClock } from '../contexts/TimeClockContext';
 import { ClockAction, formatClockTime, formatDuration } from '../lib/timeclock';
-import { AlertCircle, CalendarDays, Clock, Coffee, LogIn, LogOut, Pause, Play } from 'lucide-react';
+import { AlertCircle, Clock, Coffee, LogIn, LogOut, Pause, Play } from 'lucide-react';
 
 // Presentation for each action the SERVER may offer. We never decide which of
 // these to show — `allowed_actions` from the server does. This map only styles
@@ -74,21 +73,14 @@ const TimeClockCard: React.FC = () => {
 
   return (
     <div className="bg-white rounded-xl shadow-sm border p-6">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center mb-6">
         <div className="flex items-center space-x-3">
           <div className="bg-blue-100 p-2 rounded-lg">
             <Clock className="h-6 w-6 text-blue-600" />
           </div>
           <h2 className="text-xl font-semibold text-gray-900">Time Clock</h2>
         </div>
-        {/* Every authenticated employee can open the read-only Work Schedule. */}
-        <Link
-          to="/schedule"
-          className="inline-flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-        >
-          <CalendarDays className="h-4 w-4" />
-          <span>Work Schedule</span>
-        </Link>
+        {/* Work Schedule / Work History navigation lives in the right sidebar. */}
       </div>
 
       {error && (

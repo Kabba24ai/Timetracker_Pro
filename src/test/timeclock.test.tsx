@@ -279,11 +279,13 @@ describe('TimeClock — login seeds the authoritative state', () => {
     expect(server.calls).toContain('POST /auth/login');
   });
 
-  it('offers every employee a Work Schedule link to the read-only schedule page', async () => {
+  it('no longer renders the Work Schedule link inside the Time Clock card', async () => {
+    // The Work Schedule / Work History navigation moved to the dashboard sidebar
+    // (see WorkHistorySynopsis); the Time Clock card no longer owns it.
     seedLoggedIn('off');
     render(<Harness />);
 
-    const link = await screen.findByRole('link', { name: /work schedule/i });
-    expect(link).toHaveAttribute('href', '/schedule');
+    await screen.findByText('Time Clock');
+    expect(screen.queryByRole('link', { name: /work schedule/i })).not.toBeInTheDocument();
   });
 });
