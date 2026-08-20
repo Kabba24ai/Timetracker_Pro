@@ -428,7 +428,14 @@ const WorkScheduleV2: React.FC = () => {
         ) : null
       )}
 
-      {draft && <ScheduleCellModal draft={draft} onClose={() => setDraft(null)} onSaved={onSaved} />}
+      {draft && (
+        <ScheduleCellModal
+          draft={draft}
+          stores={(mode === 'store' ? store?.stores : emp?.stores) ?? []}
+          onClose={() => setDraft(null)}
+          onSaved={onSaved}
+        />
+      )}
       {manageGroups && <ScheduleGroupsModal employees={store?.employees ?? employees.map((e) => ({ id: e.id, full_name: e.full_name }))} onClose={() => setManageGroups(false)} onChanged={loadGroups} />}
 
       {/* Remove-from-schedule confirmation. */}

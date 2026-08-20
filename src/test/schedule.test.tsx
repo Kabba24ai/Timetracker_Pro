@@ -161,6 +161,50 @@ describe('Store View', () => {
     await vi.waitFor(() => expect(server.calls.some((c) => c.method === 'PUT' && c.path === '/admin/schedule/segments/100')).toBe(true));
   });
 
+  it('shows Store as a dropdown preselected to the segment’s store, listing active stores', async () => {
+    render(<WorkScheduleV2 />);
+    fireEvent.click(await screen.findByText('7:00 AM – 12:00 PM')); // Waverly (10) segment
+    const select = (await screen.findByLabelText('Store')) as HTMLSelectElement;
+    expect(select.value).toBe('10'); // current store preselected
+    expect(Array.from(select.options).map((o) => o.textContent)).toEqual(['Waverly', 'Bon Aqua']);
+  });
+
+  it('moving the segment to another store PUTs the destination store_id', async () => {
+    render(<WorkScheduleV2 />);
+    fireEvent.click(await screen.findByText('7:00 AM – 12:00 PM'));
+    fireEvent.change(await screen.findByLabelText('Store'), { target: { value: '11' } }); // → Bon Aqua
+    fireEvent.click(await screen.findByRole('button', { name: /^Save$/ }));
+
+    await vi.waitFor(() => {
+      const put = server.calls.find((c) => c.method === 'PUT' && c.path === '/admin/schedule/segments/100');
+      expect(put).toBeTruthy();
+      expect((put!.body as { store_id: number }).store_id).toBe(11);
+    });
+  });
+
+  it('a same-store time edit still sends the current store_id (no move)', async () => {
+    render(<WorkScheduleV2 />);
+    fireEvent.click(await screen.findByText('7:00 AM – 12:00 PM'));
+    fireEvent.click(await screen.findByRole('button', { name: /^Save$/ }));
+
+    await vi.waitFor(() => {
+      const put = server.calls.find((c) => c.method === 'PUT' && c.path === '/admin/schedule/segments/100');
+      expect((put!.body as { store_id: number }).store_id).toBe(10);
+    });
+  });
+
+  it('a rejected store move surfaces the conflict without corrupting the grid', async () => {
+    render(<WorkScheduleV2 />);
+    fireEvent.click(await screen.findByText('7:00 AM – 12:00 PM'));
+    fireEvent.change(await screen.findByLabelText('Store'), { target: { value: '11' } });
+    server.failNext = 'This employee is already scheduled 12:00–17:00 that day; the times overlap.';
+    fireEvent.click(await screen.findByRole('button', { name: /^Save$/ }));
+
+    // Error shown inline; modal stays open (grid untouched — no manual mutation).
+    expect(await screen.findByText(/times overlap/)).toBeInTheDocument();
+    expect(screen.getByText('Edit schedule')).toBeInTheDocument();
+  });
+
   it('an overlapping save surfaces the backend validation message', async () => {
     render(<WorkScheduleV2 />);
     fireEvent.click(await screen.findByLabelText('Add Gary Jezorski Waverly 2026-09-15'));
