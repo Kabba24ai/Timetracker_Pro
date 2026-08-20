@@ -34,6 +34,17 @@ const SETTINGS: TimeTrackerSettings = {
   vacation_annual_hours: 80,
   vacation_max_eligible_hours_per_period: 80,
   vacation_accrual_waiting_days: 90,
+  pending_time_escalation_phone: '',
+  pending_reminder_1_enabled: true,
+  pending_reminder_1_minutes: 30,
+  pending_reminder_2_enabled: true,
+  pending_reminder_2_minutes: 90,
+  pending_reminder_3_enabled: true,
+  pending_reminder_3_minutes: 180,
+  pending_time_reminder_message: 'pending emp',
+  pending_time_reminder_message_multi: 'pending emp multi',
+  pending_time_escalation_message: 'pending esc',
+  pending_time_escalation_message_multi: 'pending esc multi',
 };
 
 vi.mock('../lib/api', () => {

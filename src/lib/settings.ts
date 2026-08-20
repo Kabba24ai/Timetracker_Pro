@@ -52,6 +52,23 @@ export interface TimeTrackerSettings {
   vacation_annual_hours: number;
   vacation_max_eligible_hours_per_period: number;
   vacation_accrual_waiting_days: number;
+
+  // Pending Time follow-up (next-shift escalation for unresolved prior shifts).
+  // The escalation phone is optional (blank = employee-only). Each reminder slot
+  // has an independent enable flag + minutes offset after the next-shift clock-in;
+  // enabled slots must be strictly ascending (no duplicate offsets). Separate
+  // single vs. consolidated (_multi) templates per recipient.
+  pending_time_escalation_phone: string;
+  pending_reminder_1_enabled: boolean;
+  pending_reminder_1_minutes: number;
+  pending_reminder_2_enabled: boolean;
+  pending_reminder_2_minutes: number;
+  pending_reminder_3_enabled: boolean;
+  pending_reminder_3_minutes: number;
+  pending_time_reminder_message: string;
+  pending_time_reminder_message_multi: string;
+  pending_time_escalation_message: string;
+  pending_time_escalation_message_multi: string;
 }
 
 export interface SettingsResponse {

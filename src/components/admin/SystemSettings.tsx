@@ -19,7 +19,10 @@ type NumericKey =
   | 'auto_clock_out_warning_minutes'
   | 'auto_clock_out_limit_minutes'
   | 'max_shift_hours'
-  | 'attendance_grace_minutes';
+  | 'attendance_grace_minutes'
+  | 'pending_reminder_1_minutes'
+  | 'pending_reminder_2_minutes'
+  | 'pending_reminder_3_minutes';
 
 type MessageKey =
   | 'auto_lunch_message'
@@ -27,7 +30,17 @@ type MessageKey =
   | 'clock_in_message_2'
   | 'missed_clock_out_message'
   | 'auto_clock_out_warning_message'
-  | 'auto_clock_out_message';
+  | 'auto_clock_out_message'
+  | 'pending_time_reminder_message'
+  | 'pending_time_reminder_message_multi'
+  | 'pending_time_escalation_message'
+  | 'pending_time_escalation_message_multi';
+
+type BoolKey =
+  | 'vacation_accrual_enabled'
+  | 'pending_reminder_1_enabled'
+  | 'pending_reminder_2_enabled'
+  | 'pending_reminder_3_enabled';
 
 const inputCls =
   'w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500';
@@ -106,6 +119,50 @@ const ToggleField: React.FC<{ label: string; value: boolean; onChange: (v: boole
       {hint && <span className="mt-0.5 block text-xs text-gray-500">{hint}</span>}
     </span>
   </label>
+);
+
+// A plain single-line text field (module scope — same focus-safety rule).
+const TextField: React.FC<{
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  hint?: string;
+  placeholder?: string;
+  type?: string;
+}> = ({ label, value, onChange, hint, placeholder, type = 'text' }) => (
+  <div>
+    <label className={labelCls}>{label}</label>
+    <input
+      type={type}
+      value={value ?? ''}
+      placeholder={placeholder}
+      onChange={(e) => onChange(e.target.value)}
+      className={inputCls}
+    />
+    {hint && <p className="text-xs text-gray-500 mt-1">{hint}</p>}
+  </div>
+);
+
+// One configurable Pending reminder slot: an independent enable toggle plus its
+// minutes-after-clock-in offset.
+const ReminderSlot: React.FC<{
+  label: string;
+  enabled: boolean;
+  minutes: number;
+  onToggle: (v: boolean) => void;
+  onMinutes: (n: number) => void;
+}> = ({ label, enabled, minutes, onToggle, onMinutes }) => (
+  <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-3">
+    <ToggleField label={label} value={enabled} onChange={onToggle} />
+    <NumberField
+      label="Minutes after clock-in"
+      value={minutes}
+      onChange={onMinutes}
+      min={1}
+      max={1440}
+      hint="minutes after the employee starts their next shift"
+    />
+  </div>
 );
 
 // `tokens` is the canonical merge-token list for THIS specific message — exactly
@@ -220,6 +277,10 @@ const SystemSettings: React.FC = () => {
     setSettings((prev) => (prev ? { ...prev, [key]: v } : prev));
   const setVacationEnabled = (v: boolean) =>
     setSettings((prev) => (prev ? { ...prev, vacation_accrual_enabled: v } : prev));
+  const flag = (key: BoolKey) => (v: boolean) =>
+    setSettings((prev) => (prev ? { ...prev, [key]: v } : prev));
+  const text = (key: 'pending_time_escalation_phone') => (v: string) =>
+    setSettings((prev) => (prev ? { ...prev, [key]: v } : prev));
   // Toggle one Auto Lunch weekday, keeping the list normalized (unique, sorted).
   const toggleAutoLunchDay = (day: number) =>
     setSettings((prev) => {
@@ -233,6 +294,20 @@ const SystemSettings: React.FC = () => {
 
   const handleSave = async () => {
     if (!settings) return;
+
+    // Mirror the server rule: ENABLED Pending reminders must be strictly
+    // ascending (which also forbids duplicate offsets). The server stays
+    // authoritative; this just gives immediate, local feedback.
+    const enabledOffsets = ([1, 2, 3] as const)
+      .filter((s) => settings[`pending_reminder_${s}_enabled` as BoolKey] as boolean)
+      .map((s) => settings[`pending_reminder_${s}_minutes` as NumericKey] as number);
+    for (let i = 1; i < enabledOffsets.length; i++) {
+      if (enabledOffsets[i] <= enabledOffsets[i - 1]) {
+        setError('Enabled Pending reminders must be in ascending order with no duplicate offsets.');
+        return;
+      }
+    }
+
     setSaving(true);
     setError(null);
     setSaved(false);
@@ -458,6 +533,80 @@ const SystemSettings: React.FC = () => {
           <p className="text-xs text-gray-500 mt-4">
             Accrual rate = annual hours ÷ (max eligible hours × pay periods per year). Balances feed the same Vacation ledger employees request against.
           </p>
+        </Section>
+
+        <Section title="Pending Time Follow-Up">
+          <p className="text-sm text-gray-600 mb-6">
+            When an employee starts a new shift while a prior shift is still Pending (missing clock-out, or a
+            missing/incomplete lunch), send escalating reminders — timed from their actual clock-in — until the
+            record is resolved. Pending time is excluded from calculated hours until then.
+          </p>
+
+          <div className="mb-6 md:w-1/2">
+            <TextField
+              label="Pending Time Escalation Phone"
+              type="tel"
+              value={settings.pending_time_escalation_phone}
+              onChange={text('pending_time_escalation_phone')}
+              placeholder="(optional)"
+              hint="Receives notifications when employees have unresolved Pending time. Leave blank to notify the employee only."
+            />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <ReminderSlot
+              label="First reminder"
+              enabled={settings.pending_reminder_1_enabled}
+              minutes={settings.pending_reminder_1_minutes}
+              onToggle={flag('pending_reminder_1_enabled')}
+              onMinutes={num('pending_reminder_1_minutes')}
+            />
+            <ReminderSlot
+              label="Second reminder"
+              enabled={settings.pending_reminder_2_enabled}
+              minutes={settings.pending_reminder_2_minutes}
+              onToggle={flag('pending_reminder_2_enabled')}
+              onMinutes={num('pending_reminder_2_minutes')}
+            />
+            <ReminderSlot
+              label="Third reminder"
+              enabled={settings.pending_reminder_3_enabled}
+              minutes={settings.pending_reminder_3_minutes}
+              onToggle={flag('pending_reminder_3_enabled')}
+              onMinutes={num('pending_reminder_3_minutes')}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <MessageField
+              label="Employee Message"
+              value={settings.pending_time_reminder_message}
+              onChange={msg('pending_time_reminder_message')}
+              tokens={['{name}', '{pending_date}', '{pending_reason}']}
+              hint="Sent to the employee (one Pending record)"
+            />
+            <MessageField
+              label="Employee Message — Multiple Pending"
+              value={settings.pending_time_reminder_message_multi}
+              onChange={msg('pending_time_reminder_message_multi')}
+              tokens={['{name}', '{count}']}
+              hint="Consolidated, when more than one date is Pending"
+            />
+            <MessageField
+              label="Escalation Message"
+              value={settings.pending_time_escalation_message}
+              onChange={msg('pending_time_escalation_message')}
+              tokens={['{employee_name}', '{pending_date}', '{pending_reason}']}
+              hint="Sent to the escalation phone (one Pending record)"
+            />
+            <MessageField
+              label="Escalation Message — Multiple Pending"
+              value={settings.pending_time_escalation_message_multi}
+              onChange={msg('pending_time_escalation_message_multi')}
+              tokens={['{employee_name}', '{count}']}
+              hint="Consolidated, when more than one date is Pending"
+            />
+          </div>
         </Section>
 
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-start space-x-3">

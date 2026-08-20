@@ -105,6 +105,9 @@ export interface DayPosition {
   event_id: number;
   at: string | null;
   source: string;
+  // A system Auto-Clock-Out that still needs admin verification — Time Review
+  // shows "Missing / Pending" rather than the machine-generated timestamp.
+  unverified?: boolean;
 }
 
 // Payroll fields mirror PayrollBreakdown: paid (net, the number to pay),
@@ -121,6 +124,9 @@ export interface PayrollFields {
   shift_count: number;
   open_shift_count: number;
   has_open_shift: boolean;
+  // Pending shifts (unresolved) contribute zero to the payroll figures above.
+  pending_shift_count?: number;
+  has_pending_shift?: boolean;
 }
 
 export interface TimeReviewDay extends PayrollFields {
@@ -146,6 +152,11 @@ export interface TimeReviewDay extends PayrollFields {
   positions: Record<PositionKey, DayPosition | null>;
   event_count: number;
   has_extra_events: boolean;
+  // Pending (unresolved) day + its reason labels; and whether the clock-out shown
+  // is an unverified system auto-clock-out needing administrative review.
+  pending: boolean;
+  pending_reasons: string[];
+  clock_out_unverified: boolean;
   flags: string[];
   events: ClockEventRow[];
 }

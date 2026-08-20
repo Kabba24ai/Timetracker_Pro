@@ -35,6 +35,17 @@ const SETTINGS = {
   vacation_annual_hours: 80,
   vacation_max_eligible_hours_per_period: 80,
   vacation_accrual_waiting_days: 90,
+  pending_time_escalation_phone: '',
+  pending_reminder_1_enabled: true,
+  pending_reminder_1_minutes: 30,
+  pending_reminder_2_enabled: true,
+  pending_reminder_2_minutes: 90,
+  pending_reminder_3_enabled: true,
+  pending_reminder_3_minutes: 180,
+  pending_time_reminder_message: 'Hi {name}, {pending_date} is Pending: {pending_reason}.',
+  pending_time_reminder_message_multi: 'Hi {name}, {count} Pending records.',
+  pending_time_escalation_message: '{employee_name} — {pending_date}: {pending_reason}.',
+  pending_time_escalation_message_multi: '{employee_name} has {count} Pending records.',
 };
 
 vi.mock('../lib/api', () => {
@@ -354,6 +365,94 @@ describe('Settings form — Auto Lunch eligibility', () => {
     // The mocked PUT echoes the saved values back → the controls reflect them.
     expect(weekdayBtn('Sat').getAttribute('aria-pressed')).toBe('true');
     expect((screen.getByLabelText('Minimum Work Hours') as HTMLSelectElement).value).toBe('330');
+  });
+});
+
+describe('Settings form — Pending Time Follow-Up', () => {
+  const slotCard = (label: string): HTMLElement => screen.getByText(label).closest('.bg-white') as HTMLElement;
+
+  it('renders the escalation phone field and the three reminder slots with defaults', async () => {
+    await renderSettings();
+
+    expect(screen.getByText('Pending Time Escalation Phone')).toBeInTheDocument();
+    ['First reminder', 'Second reminder', 'Third reminder'].forEach((l) =>
+      expect(screen.getByText(l)).toBeInTheDocument(),
+    );
+    expect((slotCard('First reminder').querySelector('input[type="number"]') as HTMLInputElement).value).toBe('30');
+    expect((slotCard('Second reminder').querySelector('input[type="number"]') as HTMLInputElement).value).toBe('90');
+    expect((slotCard('Third reminder').querySelector('input[type="number"]') as HTMLInputElement).value).toBe('180');
+  });
+
+  it('advertises the correct merge tokens per template', async () => {
+    await renderSettings();
+    const emp = screen.getByText('Employee Message').parentElement!.textContent ?? '';
+    expect(emp).toContain('{pending_date}');
+    expect(emp).toContain('{pending_reason}');
+
+    const esc = screen.getByText('Escalation Message').parentElement!.textContent ?? '';
+    expect(esc).toContain('{employee_name}');
+    // The escalation template does not use the employee-only {name} token.
+    expect(esc).not.toContain('{name},');
+
+    const empMulti = screen.getByText('Employee Message — Multiple Pending').parentElement!.textContent ?? '';
+    expect(empMulti).toContain('{count}');
+  });
+
+  it('saves the phone, offsets and messages in the canonical payload', async () => {
+    const user = userEvent.setup();
+    await renderSettings();
+
+    const phone = control('Pending Time Escalation Phone') as HTMLInputElement;
+    fireEvent.change(phone, { target: { value: '512-555-0142' } });
+
+    await user.click(screen.getByRole('button', { name: /Save Settings/ }));
+    await vi.waitFor(() => expect(server.calls).toContain('PUT /admin/settings'));
+
+    const body = server.lastBody as typeof SETTINGS;
+    expect(body.pending_time_escalation_phone).toBe('512-555-0142');
+    expect(body.pending_reminder_1_minutes).toBe(30);
+    expect(body.pending_reminder_2_minutes).toBe(90);
+    expect(body.pending_reminder_3_minutes).toBe(180);
+  });
+
+  it('respects a disabled reminder slot in the saved payload', async () => {
+    const user = userEvent.setup();
+    await renderSettings();
+
+    const toggle = slotCard('Second reminder').querySelector('input[type="checkbox"]') as HTMLInputElement;
+    expect(toggle.checked).toBe(true);
+    await user.click(toggle);
+
+    await user.click(screen.getByRole('button', { name: /Save Settings/ }));
+    await vi.waitFor(() => expect(server.calls).toContain('PUT /admin/settings'));
+    expect((server.lastBody as typeof SETTINGS).pending_reminder_2_enabled).toBe(false);
+  });
+
+  it('rejects out-of-order enabled reminders client-side (no PUT)', async () => {
+    const user = userEvent.setup();
+    await renderSettings();
+
+    // Make slot 1 (200) later than slot 2 (90) while all are enabled.
+    const first = slotCard('First reminder').querySelector('input[type="number"]') as HTMLInputElement;
+    fireEvent.change(first, { target: { value: '200' } });
+
+    await user.click(screen.getByRole('button', { name: /Save Settings/ }));
+
+    expect(await screen.findByText(/ascending order/i)).toBeInTheDocument();
+    expect(server.calls).not.toContain('PUT /admin/settings');
+  });
+
+  it('ignores a disabled slot in the ordering check', async () => {
+    const user = userEvent.setup();
+    await renderSettings();
+
+    // Slot 2 out of order but DISABLED → save proceeds (1=30 < 3=180).
+    const second = slotCard('Second reminder').querySelector('input[type="number"]') as HTMLInputElement;
+    fireEvent.change(second, { target: { value: '5' } });
+    await user.click(slotCard('Second reminder').querySelector('input[type="checkbox"]') as HTMLInputElement);
+
+    await user.click(screen.getByRole('button', { name: /Save Settings/ }));
+    await vi.waitFor(() => expect(server.calls).toContain('PUT /admin/settings'));
   });
 });
 

@@ -402,8 +402,23 @@ const TimeReviewV2: React.FC<TimeReviewProps> = ({ initialUserId, initialFrom, i
   );
 };
 
-const PunchCell: React.FC<{ pos: DayPosition | null; tz: string; onClick: () => void }> = ({ pos, tz, onClick }) =>
-  pos ? (
+const PunchCell: React.FC<{ pos: DayPosition | null; tz: string; onClick: () => void }> = ({ pos, tz, onClick }) => {
+  // A system Auto-Clock-Out is NOT a verified employee clock-out: show it as
+  // "Missing / Pending" (needs admin review), not the machine-generated time.
+  // The real system timestamp still lives in the per-day ledger detail.
+  if (pos?.unverified) {
+    return (
+      <button
+        onClick={onClick}
+        className="px-2 py-1 rounded text-xs font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100 transition-colors"
+        title="System auto clock-out — verify the actual Clock Out time"
+      >
+        Missing / Pending
+      </button>
+    );
+  }
+
+  return pos ? (
     <button onClick={onClick} className="font-mono text-gray-900 px-2 py-1 rounded hover:bg-blue-50 hover:text-blue-700 transition-colors" title="Click to edit">
       {formatClock(pos.at, tz)}
     </button>
@@ -412,6 +427,7 @@ const PunchCell: React.FC<{ pos: DayPosition | null; tz: string; onClick: () => 
       --:--
     </button>
   );
+};
 
 const Card: React.FC<{ label: string; value: string; sub?: string; accent?: string; emphasize?: boolean }> = ({ label, value, sub, accent, emphasize }) => (
   <div className={`rounded-lg p-4 border ${emphasize ? 'bg-blue-50 border-blue-200' : 'bg-gray-50'}`}>
