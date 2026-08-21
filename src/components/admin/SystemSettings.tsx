@@ -37,6 +37,7 @@ type MessageKey =
 type BoolKey =
   | 'vacation_accrual_enabled'
   | 'paid_leave_counts_toward_overtime'
+  | 'restrict_paid_time_to_shift_start'
   | 'pending_reminder_1_enabled'
   | 'pending_reminder_2_enabled'
   | 'pending_reminder_3_enabled';
@@ -538,8 +539,14 @@ const SystemSettings: React.FC = () => {
         </Section>
 
         <Section title="Attendance">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
             <NumberField label="Late Grace Period (minutes)" value={settings.attendance_grace_minutes} onChange={num('attendance_grace_minutes')} max={240} hint="After scheduled start before a punch counts late." />
+            <ToggleField
+              label="Restrict Paid Time to Shift Start"
+              value={settings.restrict_paid_time_to_shift_start}
+              onChange={flag('restrict_paid_time_to_shift_start')}
+              hint="Early Clock Ins are recorded, but paid time begins at the scheduled shift start."
+            />
           </div>
         </Section>
 

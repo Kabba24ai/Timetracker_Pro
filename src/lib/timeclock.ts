@@ -47,6 +47,12 @@ export interface ClockState {
   server_time: string;
   /** Canonical tenant TimeTracker timezone (IANA id) — the ONLY tz the client uses. */
   timezone: string;
+  /** Today's canonical scheduled shift start (ISO instant), null when unscheduled. */
+  today_shift_start_at: string | null;
+  /** Tenant setting: paid time begins at the scheduled shift start. */
+  restrict_paid_to_shift_start: boolean;
+  /** Canonical minimum lunch duration (minutes) — drives the On-Lunch notice. */
+  minimum_lunch_minutes: number;
   today: {
     shifts: ClockShift[];
     worked_seconds: number;

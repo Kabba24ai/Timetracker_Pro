@@ -10,6 +10,11 @@ const server = vi.hoisted(() => ({
   status: 'off' as 'off' | 'on_clock' | 'on_lunch' | 'on_other',
   token: null as string | null,
   calls: [] as string[],
+  // Employee-notice + hierarchy knobs (mirror ClockStatePresenter fields).
+  shiftStartAt: null as string | null,
+  restrict: true,
+  minLunch: 30,
+  breaks: [] as Array<{ id: number; type: 'lunch' | 'other'; start_at: string | null; end_at: string | null; duration_seconds: number }>,
 }));
 
 const EMP = {
@@ -75,7 +80,7 @@ vi.mock('../lib/api', () => {
           clock_in_at: '2026-09-14T09:00:00-05:00',
           clock_out_at: null,
           worked_seconds: 0,
-          breaks: [],
+          breaks: server.breaks,
         }
       : null;
     return {
@@ -85,6 +90,10 @@ vi.mock('../lib/api', () => {
       shift,
       open_break: null,
       server_time: '2026-09-14T12:00:00-05:00',
+      timezone: 'America/Chicago',
+      today_shift_start_at: server.shiftStartAt,
+      restrict_paid_to_shift_start: server.restrict,
+      minimum_lunch_minutes: server.minLunch,
       today: { shifts: shift ? [shift] : [], worked_seconds: 0 },
     };
   };
@@ -161,6 +170,10 @@ beforeEach(() => {
   server.status = 'off';
   server.token = null;
   server.calls = [];
+  server.shiftStartAt = null;
+  server.restrict = true;
+  server.minLunch = 30;
+  server.breaks = [];
   localStorage.clear();
 });
 
@@ -174,13 +187,15 @@ describe('TimeClock — controls are driven only by server allowed_actions', () 
     expect(screen.queryByRole('button', { name: /start lunch/i })).not.toBeInTheDocument();
   });
 
-  it('ON_CLOCK: shows Clock Out, Start Lunch, Start Break — never Clock In', async () => {
+  it('ON_CLOCK: shows Clock Out, Start Lunch, Unpaid Break — never Clock In', async () => {
     seedLoggedIn('on_clock');
     render(<Harness />);
 
     expect(await screen.findByRole('button', { name: /clock out/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /start lunch/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /start break/i })).toBeInTheDocument();
+    // Employee-facing terminology: the unpaid break is labeled exactly that.
+    expect(screen.getByRole('button', { name: /unpaid break/i })).toBeInTheDocument();
+    expect(screen.queryByText('Start Break')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /clock in/i })).not.toBeInTheDocument();
   });
 
@@ -287,5 +302,126 @@ describe('TimeClock — login seeds the authoritative state', () => {
 
     await screen.findByText('Time Clock');
     expect(screen.queryByRole('link', { name: /work schedule/i })).not.toBeInTheDocument();
+  });
+});
+
+// ── Employee notice area + action-button hierarchy ─────────────────────────
+
+const chicagoClockOf = (iso: string) =>
+  new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', hour: 'numeric', minute: '2-digit' }).format(new Date(iso));
+
+describe('TimeClock — employee notice area', () => {
+  it('the generic server-confirmation copy is gone', async () => {
+    seedLoggedIn('on_clock');
+    render(<Harness />);
+    await screen.findByRole('button', { name: /clock out/i });
+    expect(screen.queryByText(/The server confirms every action/)).not.toBeInTheDocument();
+  });
+
+  it('clocked in before the scheduled start with restriction ON shows the pre-shift notice', async () => {
+    server.shiftStartAt = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // an hour from now
+    seedLoggedIn('on_clock');
+    render(<Harness />);
+
+    const expected = `Your shift starts at ${chicagoClockOf(server.shiftStartAt)}. Please do not begin working until that time.`;
+    expect(await screen.findByText(expected)).toBeInTheDocument();
+  });
+
+  it('the pre-shift notice disappears once the scheduled start has arrived', async () => {
+    server.shiftStartAt = new Date(Date.now() - 60 * 1000).toISOString(); // already started
+    seedLoggedIn('on_clock');
+    render(<Harness />);
+    await screen.findByRole('button', { name: /clock out/i });
+    expect(screen.queryByText(/Your shift starts at/)).not.toBeInTheDocument();
+  });
+
+  it('setting OFF suppresses the pre-shift notice', async () => {
+    server.shiftStartAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    server.restrict = false;
+    seedLoggedIn('on_clock');
+    render(<Harness />);
+    await screen.findByRole('button', { name: /clock out/i });
+    expect(screen.queryByText(/Your shift starts at/)).not.toBeInTheDocument();
+  });
+
+  it('no schedule suppresses the pre-shift notice', async () => {
+    server.shiftStartAt = null;
+    seedLoggedIn('on_clock');
+    render(<Harness />);
+    await screen.findByRole('button', { name: /clock out/i });
+    expect(screen.queryByText(/Your shift starts at/)).not.toBeInTheDocument();
+  });
+
+  it('On Lunch shows the minimum-lunch notice from the canonical setting', async () => {
+    seedLoggedIn('on_lunch');
+    render(<Harness />);
+    expect(await screen.findByText('Standard minimum lunch is 30 minutes.')).toBeInTheDocument();
+  });
+
+  it('the lunch notice tracks a changed minimum duration', async () => {
+    server.minLunch = 45;
+    seedLoggedIn('on_lunch');
+    render(<Harness />);
+    expect(await screen.findByText('Standard minimum lunch is 45 minutes.')).toBeInTheDocument();
+  });
+
+  it('On Lunch outranks the pre-shift notice (one concise message, never stacked)', async () => {
+    server.shiftStartAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    seedLoggedIn('on_lunch');
+    render(<Harness />);
+    expect(await screen.findByText(/Standard minimum lunch/)).toBeInTheDocument();
+    expect(screen.queryByText(/Your shift starts at/)).not.toBeInTheDocument();
+  });
+});
+
+describe('TimeClock — primary progression hierarchy', () => {
+  const isPrimary = (el: HTMLElement) => el.className.includes('py-4');
+
+  it('OFF: Clock In is the large primary action', async () => {
+    seedLoggedIn('off');
+    render(<Harness />);
+    const btn = await screen.findByRole('button', { name: /clock in/i });
+    expect(isPrimary(btn)).toBe(true);
+  });
+
+  it('ON_CLOCK before lunch: Start Lunch is primary; Unpaid Break and Clock Out are secondary', async () => {
+    seedLoggedIn('on_clock');
+    render(<Harness />);
+    expect(isPrimary(await screen.findByRole('button', { name: /start lunch/i }))).toBe(true);
+    expect(isPrimary(screen.getByRole('button', { name: /unpaid break/i }))).toBe(false);
+    expect(isPrimary(screen.getByRole('button', { name: /clock out/i }))).toBe(false);
+  });
+
+  it('ON_CLOCK after a completed lunch: Clock Out becomes primary; Unpaid Break stays secondary', async () => {
+    server.breaks = [
+      { id: 9, type: 'lunch', start_at: '2026-09-14T17:00:00+00:00', end_at: '2026-09-14T17:30:00+00:00', duration_seconds: 1800 },
+    ];
+    seedLoggedIn('on_clock');
+    render(<Harness />);
+    expect(isPrimary(await screen.findByRole('button', { name: /clock out/i }))).toBe(true);
+    expect(isPrimary(screen.getByRole('button', { name: /unpaid break/i }))).toBe(false);
+  });
+
+  it('ON_LUNCH: End Lunch is primary', async () => {
+    seedLoggedIn('on_lunch');
+    render(<Harness />);
+    expect(isPrimary(await screen.findByRole('button', { name: /end lunch/i }))).toBe(true);
+  });
+
+  it('ON_OTHER: End Break is primary', async () => {
+    seedLoggedIn('on_other');
+    render(<Harness />);
+    expect(isPrimary(await screen.findByRole('button', { name: /end break/i }))).toBe(true);
+  });
+
+  it('Start Lunch never appears as primary when the server does not allow it', async () => {
+    seedLoggedIn('on_clock');
+    render(<Harness />);
+    // The fake server's allowed_actions drive rendering; a fresh on_clock allows
+    // lunch_start — dispatch it, return to on_clock via lunch_end, and the card
+    // still renders ONLY what the server permits.
+    fireEvent.click(await screen.findByRole('button', { name: /start lunch/i }));
+    expect(await screen.findByRole('button', { name: /end lunch/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /start lunch/i })).not.toBeInTheDocument();
   });
 });

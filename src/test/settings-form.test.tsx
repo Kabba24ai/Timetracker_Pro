@@ -31,6 +31,7 @@ const SETTINGS = {
   missing_clock_out_trigger_minutes: 60,
   missing_clock_out_pending_message: 'pending',
   attendance_grace_minutes: 5,
+  restrict_paid_time_to_shift_start: true,
   vacation_accrual_enabled: true,
   vacation_annual_hours: 80,
   vacation_max_eligible_hours_per_period: 80,
@@ -226,6 +227,23 @@ describe('Settings form — persistence', () => {
     expect(body).not.toHaveProperty('auto_clock_out_limit_minutes');
     expect(body).not.toHaveProperty('max_shift_hours');
     expect(Object.keys(body).length).toBe(Object.keys(SETTINGS).length);
+  });
+
+  it('Restrict Paid Time to Shift Start renders checked by default and saves an unchecked value', async () => {
+    const user = userEvent.setup();
+    await renderSettings();
+
+    // ToggleField nests the label text inside a span — climb to the <label>.
+    const toggle = screen.getByText('Restrict Paid Time to Shift Start').closest('label')!.querySelector('input') as HTMLInputElement;
+    expect(toggle.checked).toBe(true); // default ON
+    expect(screen.getByText('Early Clock Ins are recorded, but paid time begins at the scheduled shift start.')).toBeInTheDocument();
+
+    await user.click(toggle);
+    await user.click(screen.getByRole('button', { name: /Save Settings/ }));
+
+    await vi.waitFor(() => expect(server.calls).toContain('PUT /admin/settings'));
+    const body = server.lastBody as typeof SETTINGS;
+    expect(body.restrict_paid_time_to_shift_start).toBe(false);
   });
 });
 

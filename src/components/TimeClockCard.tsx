@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { useTimeClock } from '../contexts/TimeClockContext';
 import { ClockAction, formatClockTime, formatDuration } from '../lib/timeclock';
-import { AlertCircle, Clock, Coffee, LogIn, LogOut, Pause, Play } from 'lucide-react';
+import { formatClock } from '../lib/tz';
+import { AlertCircle, Clock, Coffee, Info, LogIn, LogOut, Pause, Play } from 'lucide-react';
 
 // Presentation for each action the SERVER may offer. We never decide which of
 // these to show — `allowed_actions` from the server does. This map only styles
-// and labels whatever the server permits.
+// and labels whatever the server permits. "Unpaid Break" is deliberate employee
+// terminology (the underlying event remains other_start; breaks stay unpaid).
 const ACTIONS: Record<
   ClockAction,
   { label: string; icon: React.ReactNode; className: string }
@@ -31,7 +33,7 @@ const ACTIONS: Record<
     className: 'bg-orange-600 hover:bg-orange-700 text-white',
   },
   other_start: {
-    label: 'Start Break',
+    label: 'Unpaid Break',
     icon: <Pause className="h-4 w-4" />,
     className: 'bg-purple-600 hover:bg-purple-700 text-white',
   },
@@ -51,10 +53,11 @@ const STATUS_STYLES: Record<string, string> = {
 };
 
 const TimeClockCard: React.FC = () => {
-  const { status, statusLabel, allowedActions, shift, loading, working, error, perform } =
+  const { state, status, statusLabel, allowedActions, shift, loading, working, error, perform } =
     useTimeClock();
 
-  // A 1s tick so the "on the clock since" elapsed time counts up live.
+  // A 1s tick so the elapsed time counts up live AND the pre-shift notice
+  // disappears on its own the moment the scheduled start arrives.
   const [, setTick] = useState(0);
   useEffect(() => {
     const t = setInterval(() => setTick((n) => n + 1), 1000);
@@ -70,6 +73,52 @@ const TimeClockCard: React.FC = () => {
   const elapsedSeconds = clockedInSince
     ? Math.max(0, Math.floor((Date.now() - new Date(clockedInSince).getTime()) / 1000))
     : 0;
+
+  // ── The one employee-facing notice (priority: Lunch → pre-shift → nothing) ──
+  const tz = state?.timezone ?? 'UTC';
+  const shiftStartAt = state?.today_shift_start_at ?? null;
+  const beforeShiftStart = !!shiftStartAt && Date.now() < new Date(shiftStartAt).getTime();
+  let notice: string | null = null;
+  if (status === 'on_lunch') {
+    notice = `Standard minimum lunch is ${state?.minimum_lunch_minutes ?? 30} minutes.`;
+  } else if (
+    (status === 'on_clock' || status === 'on_other') &&
+    state?.restrict_paid_to_shift_start &&
+    beforeShiftStart
+  ) {
+    notice = `Your shift starts at ${formatClock(shiftStartAt, tz)}. Please do not begin working until that time.`;
+  }
+
+  // ── Primary progression (visual hierarchy ONLY — the server's allowed_actions
+  // still decide what exists). The next NORMAL step is largest:
+  //   off → Clock In · on-clock pre-lunch → Start Lunch · on lunch/break → end it
+  //   on-clock after lunch → Clock Out. Unpaid Break is never the primary step.
+  const lunchCompleted = !!shift?.breaks?.some((b) => b.type === 'lunch' && b.end_at);
+  let primary: ClockAction | null = null;
+  if (status === 'off') primary = 'clock_in';
+  else if (status === 'on_lunch') primary = 'lunch_end';
+  else if (status === 'on_other') primary = 'other_end';
+  else if (status === 'on_clock') primary = !lunchCompleted && allowedActions.includes('lunch_start') ? 'lunch_start' : 'clock_out';
+  if (primary && !allowedActions.includes(primary)) primary = null;
+  const secondary = allowedActions.filter((a) => a !== primary);
+
+  const renderButton = (action: ClockAction, isPrimary: boolean) => {
+    const cfg = ACTIONS[action];
+    if (!cfg) return null;
+    return (
+      <button
+        key={action}
+        onClick={() => handle(action)}
+        disabled={working}
+        className={`rounded-lg transition-colors flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed ${
+          isPrimary ? 'w-full py-4 px-6 text-lg font-semibold' : 'py-2.5 px-4 text-sm font-medium'
+        } ${cfg.className}`}
+      >
+        {cfg.icon}
+        <span>{cfg.label}</span>
+      </button>
+    );
+  };
 
   return (
     <div className="bg-white rounded-xl shadow-sm border p-6">
@@ -108,37 +157,30 @@ const TimeClockCard: React.FC = () => {
         )}
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {loading && !status ? (
-          <p className="text-sm text-gray-400">Loading your clock status…</p>
-        ) : allowedActions.length === 0 ? (
-          <p className="text-sm text-gray-400">No actions available right now.</p>
-        ) : (
-          // Render ONLY what the server permits, in the server's order.
-          allowedActions.map((action) => {
-            const cfg = ACTIONS[action];
-            if (!cfg) return null;
-            return (
-              <button
-                key={action}
-                onClick={() => handle(action)}
-                disabled={working}
-                className={`w-full py-3 px-4 rounded-lg transition-colors font-medium flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed ${cfg.className}`}
-              >
-                {cfg.icon}
-                <span>{cfg.label}</span>
-              </button>
-            );
-          })
-        )}
-      </div>
+      {loading && !status ? (
+        <p className="text-sm text-gray-400">Loading your clock status…</p>
+      ) : allowedActions.length === 0 ? (
+        <p className="text-sm text-gray-400">No actions available right now.</p>
+      ) : (
+        // The next normal progression is the single large primary action; every
+        // other server-permitted action renders smaller beneath it.
+        <div className="space-y-3">
+          {primary && renderButton(primary, true)}
+          {secondary.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {secondary.map((action) => renderButton(action, false))}
+            </div>
+          )}
+        </div>
+      )}
 
-      <div className="mt-4 text-xs text-gray-500">
-        <p>
-          The server confirms every action and returns your new status — only valid options are
-          shown.
-        </p>
-      </div>
+      {/* One concise employee notice — never stacked technical copy. */}
+      {notice && (
+        <div className="mt-4 flex items-start gap-2 text-sm text-blue-800 bg-blue-50 border border-blue-100 rounded-lg p-3">
+          <Info className="h-4 w-4 shrink-0 mt-0.5" />
+          <span>{notice}</span>
+        </div>
+      )}
     </div>
   );
 };

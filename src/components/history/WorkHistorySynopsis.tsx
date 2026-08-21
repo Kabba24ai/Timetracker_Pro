@@ -61,7 +61,9 @@ const WorkHistorySynopsis: React.FC = () => {
         ) : days.length === 0 ? (
           <p className="text-xs text-gray-500">No recent time activity this pay period.</p>
         ) : (
-          <div className="overflow-x-auto">
+          // Whole current pay period, oldest → newest (server-ordered); the card
+          // scrolls on small screens rather than truncating the chronology.
+          <div className="overflow-x-auto max-h-72 overflow-y-auto">
             <table className="min-w-full text-xs">
               <thead className="text-gray-500">
                 <tr>

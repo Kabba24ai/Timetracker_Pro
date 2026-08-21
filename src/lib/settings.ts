@@ -51,6 +51,9 @@ export interface TimeTrackerSettings {
 
   // Attendance
   attendance_grace_minutes: number;
+  // Early Clock Ins are recorded, but paid time begins at the scheduled shift
+  // start (no schedule → paid time begins at the actual clock-in).
+  restrict_paid_time_to_shift_start: boolean;
 
   // Vacation accrual
   vacation_accrual_enabled: boolean;

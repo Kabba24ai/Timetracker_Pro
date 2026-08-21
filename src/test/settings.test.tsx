@@ -30,6 +30,7 @@ const SETTINGS: TimeTrackerSettings = {
   missing_clock_out_trigger_minutes: 60,
   missing_clock_out_pending_message: 'pending',
   attendance_grace_minutes: 5,
+  restrict_paid_time_to_shift_start: true,
   vacation_accrual_enabled: true,
   vacation_annual_hours: 80,
   vacation_max_eligible_hours_per_period: 80,

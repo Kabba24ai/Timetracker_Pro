@@ -14,14 +14,15 @@ const ZERO = {
 
 const NO_POS = { clock_in: null, lunch_start: null, lunch_end: null, other_start: null, other_end: null, clock_out: null };
 
-// Sidebar synopsis: two worked days + one Missing-Clock-Out Pending day, newest first.
+// Sidebar synopsis: two worked days + one Missing-Clock-Out Pending day, in the
+// canonical server order — start of the pay period FIRST, latest date LAST.
 const SYNOPSIS = {
   period: { from: '2026-09-14', to: '2026-09-27', timezone: 'UTC', label: 'Sep 14 – Sep 27, 2026' },
   days: [
     {
-      date: '2026-09-16', day_label: 'Wed, Sep 16', weekday_label: 'Wed',
-      clock_in: '2026-09-16T13:02:00+00:00', clock_out: null, lunch_seconds: 0,
-      paid_seconds: 0, paid_hours: 0, pending: true, pending_reasons: ['Missing Clock Out'], clock_out_unverified: true,
+      date: '2026-09-14', day_label: 'Mon, Sep 14', weekday_label: 'Mon',
+      clock_in: '2026-09-14T13:00:00+00:00', clock_out: '2026-09-14T22:00:00+00:00', lunch_seconds: 1800,
+      paid_seconds: 34200, paid_hours: 9.5, pending: false, pending_reasons: [], clock_out_unverified: false,
     },
     {
       date: '2026-09-15', day_label: 'Tue, Sep 15', weekday_label: 'Tue',
@@ -29,9 +30,9 @@ const SYNOPSIS = {
       paid_seconds: 32400, paid_hours: 9.0, pending: false, pending_reasons: [], clock_out_unverified: false,
     },
     {
-      date: '2026-09-14', day_label: 'Mon, Sep 14', weekday_label: 'Mon',
-      clock_in: '2026-09-14T13:00:00+00:00', clock_out: '2026-09-14T22:00:00+00:00', lunch_seconds: 1800,
-      paid_seconds: 34200, paid_hours: 9.5, pending: false, pending_reasons: [], clock_out_unverified: false,
+      date: '2026-09-16', day_label: 'Wed, Sep 16', weekday_label: 'Wed',
+      clock_in: '2026-09-16T13:02:00+00:00', clock_out: null, lunch_seconds: 0,
+      paid_seconds: 0, paid_hours: 0, pending: true, pending_reasons: ['Missing Clock Out'], clock_out_unverified: true,
     },
   ],
 };
@@ -145,11 +146,11 @@ describe('Sidebar Work History synopsis', () => {
     for (const h of ['Date', 'Clock In', 'Lunch', 'Clock Out', 'Hours']) {
       expect(await screen.findByText(h)).toBeInTheDocument();
     }
-    // Most recent first.
+    // Standard chronological order: start of the pay period first, latest last.
     const rows = screen.getAllByRole('row');
-    // rows[0] is the header; rows[1] is the newest day (Wed).
-    expect(within(rows[1]).getByText('Wed, Sep 16')).toBeInTheDocument();
-    expect(within(rows[3]).getByText('Mon, Sep 14')).toBeInTheDocument();
+    // rows[0] is the header; rows[1] is the OLDEST day (Mon).
+    expect(within(rows[1]).getByText('Mon, Sep 14')).toBeInTheDocument();
+    expect(within(rows[3]).getByText('Wed, Sep 16')).toBeInTheDocument();
   });
 
   it('shows Lunch as a duration and Hours as the canonical paid value', async () => {
@@ -163,7 +164,7 @@ describe('Sidebar Work History synopsis', () => {
   it('shows a Pending day as Pending / Missing rather than a zero-hour day', async () => {
     renderRouted(<WorkHistorySynopsis />);
     const rows = await screen.findAllByRole('row');
-    const pendingRow = rows[1]; // Wed, Sep 16 (Missing Clock Out)
+    const pendingRow = rows[3]; // Wed, Sep 16 (Missing Clock Out) — latest, last
     expect(within(pendingRow).getByText('Missing')).toBeInTheDocument();
     expect(within(pendingRow).getByText('Pending')).toBeInTheDocument();
     // It is NOT rendered as 0 / 0.0.
