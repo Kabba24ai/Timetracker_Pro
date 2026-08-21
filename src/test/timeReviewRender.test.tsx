@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import TimeReviewV2 from '../components/admin/TimeReviewV2';
-import type { CorrectionPayload, TimeReview, TimeReviewDay, DayPosition, PositionKey } from '../lib/admin';
+import type { ClockEventRow, CorrectionPayload, TimeReview, TimeReviewDay, DayPosition, PositionKey } from '../lib/admin';
 
 // THE RENDERED-CELL TIMEZONE REGRESSION (Defect 1) + unified lunch-modal routing
 // (Defect 3). This renders the REAL Time Review grid — not the stored value, not
@@ -174,6 +174,67 @@ describe('Time Review — rendered row shows the tenant-local time (Defect 1)', 
     // And the refreshed rendered row agrees with what was entered.
     expect(await screen.findByRole('button', { name: '6:02 PM' })).toBeTruthy();
     expect(screen.queryByText('11:02 PM')).toBeNull();
+  });
+});
+
+describe('Time Review — resolving a Missing Clock Out Pending shift', () => {
+  const eventRow = (id: number, kind: ClockEventRow['kind'], at: string, source: ClockEventRow['source']): ClockEventRow => ({
+    id,
+    kind,
+    kind_label: kind === 'pending_close' ? 'Pending (No Clock Out)' : 'Clock In',
+    raw_at: at,
+    effective_at: at,
+    source,
+    actor_id: null,
+    correction_type: null,
+    corrects_event_id: null,
+    reason: null,
+    shift_id: 1,
+    break_id: null,
+    metadata: null,
+    created_at: at,
+    superseded: false,
+  });
+
+  // The exact production shape: 3:00 PM Clock In, 6:00 PM PendingClose marker.
+  const pendingDay = (): TimeReviewDay => ({
+    ...day('2026-08-20', 'Thu', { clock_in: pos('2026-08-20T20:00:00+00:00') }),
+    pending: true,
+    pending_reasons: ['Missing Clock Out'],
+    clock_out_unverified: true,
+    events: [
+      eventRow(801, 'clock_in', '2026-08-20T20:00:00+00:00', 'employee'),
+      eventRow(802, 'pending_close', '2026-08-20T23:00:00+00:00', 'system'),
+    ],
+  });
+
+  it('clicking Missing/Pending opens Resolve Missing Clock Out — not Add Clock Out', async () => {
+    const user = userEvent.setup();
+    await setup([pendingDay()]);
+
+    await user.click(await screen.findByRole('button', { name: /Missing \/ Pending/ }));
+    expect(screen.getByText(/^Resolve Missing Clock Out/)).toBeTruthy();
+    expect(screen.queryByText(/^Add Clock Out/)).toBeNull();
+    expect(screen.getByRole('button', { name: /^Resolve$/ })).toBeTruthy();
+  });
+
+  it('resolving posts resolve_pending_clock_out against the PendingClose marker with the verified instant', async () => {
+    const user = userEvent.setup();
+    await setup([pendingDay()]);
+
+    await user.click(await screen.findByRole('button', { name: /Missing \/ Pending/ }));
+    // Enter the verified 4:30 PM — EARLIER than the 6:00 PM marker (valid).
+    await user.click(screen.getByLabelText('Hour'));
+    await user.keyboard('4'); // >1 auto-advances to Minute
+    await user.keyboard('30');
+    await user.selectOptions(screen.getByLabelText('AM/PM'), 'PM');
+    await user.click(screen.getByRole('button', { name: /^Resolve$/ }));
+
+    await vi.waitFor(() => expect(applyCorrectionMock).toHaveBeenCalled());
+    const p = applyCorrectionMock.mock.calls[0][0];
+    expect(p.type).toBe('resolve_pending_clock_out');
+    expect(p.event_id).toBe(802); // the PendingClose marker, not the clock-in
+    expect(p.effective_at).toBe('2026-08-20T21:30:00.000Z'); // 4:30 PM America/Chicago
   });
 });
 

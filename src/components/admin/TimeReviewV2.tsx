@@ -199,6 +199,23 @@ const TimeReviewV2: React.FC<TimeReviewProps> = ({ initialUserId, initialFrom, i
       return;
     }
 
+    // Missing / Pending clock-out: the verified time RESOLVES the PendingClose
+    // marker (supersedes it) — never ordinary Add Clock Out, which the state
+    // machine rightly rejects once the marker has returned the employee to OFF.
+    if (key === 'clock_out' && day.clock_out_unverified) {
+      const marker = day.events.find((e) => e.kind === 'pending_close' && !e.superseded && e.correction_type !== 'void');
+      if (marker) {
+        setCorrection({
+          mode: 'resolve_pending',
+          eventId: marker.id,
+          date: day.date,
+          time24: time24Of(day.schedule?.end_at, DEFAULT_TIME.clock_out),
+          title: `Resolve Missing Clock Out · ${day.day_label}`,
+        });
+        return;
+      }
+    }
+
     const pos = day.positions[key];
     if (pos && pos.at) {
       // Use the event's OWN tenant date (an overnight clock-out belongs to the next day).

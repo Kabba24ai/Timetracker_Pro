@@ -16,7 +16,10 @@ export type CorrectionDraft =
   // ONE atomic edit of an EXISTING lunch/break interval (Edit = both endpoints
   // exist; Complete = one side exists and the other is being repaired in). The
   // event ids identify the existing endpoints; the times are the FINAL interval.
-  | { mode: 'edit_break'; breakType: BreakKind; startEventId?: number; endEventId?: number; date: string; startTime24: string; endTime24: string; title: string };
+  | { mode: 'edit_break'; breakType: BreakKind; startEventId?: number; endEventId?: number; date: string; startTime24: string; endTime24: string; title: string }
+  // Resolve a Missing-Clock-Out Pending shift: the verified time supersedes the
+  // PendingClose marker identified by eventId (never an ordinary insert).
+  | { mode: 'resolve_pending'; eventId: number; date: string; time24: string; title: string };
 
 // A delete removes the punch AND its logical dependents from the effective
 // record. The server owns the cascade; these labels/messages just tell the admin
@@ -51,7 +54,7 @@ interface Props {
 
 const CorrectionModal: React.FC<Props> = ({ draft, tz, onClose, onSubmit }) => {
   const [time, setTime] = useState<Clock>(() =>
-    draft.mode === 'adjust' || draft.mode === 'insert' ? parse24(draft.time24) : { h: 12, m: 0, ampm: 'PM' },
+    draft.mode === 'adjust' || draft.mode === 'insert' || draft.mode === 'resolve_pending' ? parse24(draft.time24) : { h: 12, m: 0, ampm: 'PM' },
   );
   const [start, setStart] = useState<Clock>(() =>
     draft.mode === 'insert_break' || draft.mode === 'edit_break' ? parse24(draft.startTime24) : { h: 12, m: 0, ampm: 'PM' },
@@ -87,7 +90,7 @@ const CorrectionModal: React.FC<Props> = ({ draft, tz, onClose, onSubmit }) => {
       ? `Adjust ${draft.kindLabel}`
       : draft.mode === 'void'
         ? `Void ${draft.kindLabel}`
-        : draft.mode === 'edit_break'
+        : draft.mode === 'edit_break' || draft.mode === 'resolve_pending'
           ? draft.title
           : draft.mode === 'insert_break'
             ? (draft.title ?? (draft.breakType === 'lunch' ? 'Add lunch' : 'Add break'))
@@ -126,6 +129,9 @@ const CorrectionModal: React.FC<Props> = ({ draft, tz, onClose, onSubmit }) => {
         end_at: iso(end),
         ...r,
       };
+    } else if (draft.mode === 'resolve_pending') {
+      // The verified Clock Out supersedes the PendingClose marker on the server.
+      payload = { type: 'resolve_pending_clock_out', event_id: draft.eventId, effective_at: iso(time), ...r };
     } else if (draft.mode === 'insert_break') {
       payload = { type: 'insert_break', user_id: draft.userId, break_type: draft.breakType, start_at: iso(start), end_at: iso(end), ...r };
     } else {
@@ -285,7 +291,7 @@ const CorrectionModal: React.FC<Props> = ({ draft, tz, onClose, onSubmit }) => {
               draft.mode === 'void' ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'
             }`}
           >
-            {saving ? 'Applying…' : draft.mode === 'void' ? 'Void event' : 'Apply'}
+            {saving ? 'Applying…' : draft.mode === 'void' ? 'Void event' : draft.mode === 'resolve_pending' ? 'Resolve' : 'Apply'}
           </button>
         </div>
         )}

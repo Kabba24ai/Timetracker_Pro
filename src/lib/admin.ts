@@ -21,7 +21,8 @@ export interface AdminEmployee {
 // day payload adds `superseded`).
 export interface ClockEventRow {
   id: number;
-  kind: 'clock_in' | 'clock_out' | 'lunch_start' | 'lunch_end' | 'other_start' | 'other_end';
+  // pending_close = the system Missing-Clock-Out boundary marker (non-timekeeping).
+  kind: 'clock_in' | 'clock_out' | 'lunch_start' | 'lunch_end' | 'other_start' | 'other_end' | 'pending_close';
   kind_label: string;
   raw_at: string | null;
   effective_at: string | null;
@@ -45,7 +46,10 @@ export interface ClockEventRow {
 // move either or both endpoints, or complete a one-sided interval. The server
 // validates the FINAL sequence once (no temporary intermediate state), leaves
 // an unchanged endpoint completely untouched, and applies all-or-nothing.
-export type CorrectionType = 'adjust' | 'void' | 'insert' | 'insert_break' | 'edit_break' | 'delete';
+// `resolve_pending_clock_out` = the verified admin Clock Out SUPERSEDES the
+// system PendingClose marker (never an ordinary insert, which the state
+// machine rightly rejects once the marker has returned the employee to OFF).
+export type CorrectionType = 'adjust' | 'void' | 'insert' | 'insert_break' | 'edit_break' | 'resolve_pending_clock_out' | 'delete';
 export type CorrectableKind = ClockEventRow['kind'];
 export type BreakKind = 'lunch' | 'other';
 
