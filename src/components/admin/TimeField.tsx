@@ -1,9 +1,16 @@
-import React, { useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 // A fast, purpose-built 12-hour time control: Hour (1–12) · Minute (00–59) ·
 // AM/PM. Digits overwrite on focus; two hour digits advance to minute; tab order
 // is Hour → Minute → AM/PM. Shared by the Time Review correction modal and the
 // Work Schedule cell editor — one time-entry surface, no duplication.
+//
+// While a field is focused it holds a raw EDITING STRING BUFFER ("", "2", "27")
+// so a half-typed value is never zero-padded, clamped, or reordered mid-entry
+// (typing "27" must show "27", never collapse to "02"). The buffer is normalized
+// — clamped to range and, for minutes, zero-padded — only on blur. The parent
+// always receives the parsed numeric value so a commit (Apply) works even without
+// an explicit blur.
 
 export interface Clock {
   h: number; // 1–12
@@ -12,6 +19,11 @@ export interface Clock {
 }
 
 const pad = (n: number) => String(n).padStart(2, '0');
+// Keep the LAST two digits typed. Select-on-focus makes the first keystroke
+// replace the old value; but if the caret ever appends instead (mouse click that
+// collapses the selection), keeping the trailing two digits still yields what the
+// admin just typed — e.g. "02" + "7" → "027" → "27", never a stuck "02".
+const digitsOf = (raw: string) => raw.replace(/\D/g, '').slice(-2);
 
 /** 'HH:MM' (24h) → {h,m,ampm}. */
 export function parse24(t: string): Clock {
@@ -35,19 +47,53 @@ interface Props {
   label?: string; // used to disambiguate the Hour/Minute aria-labels when several are on screen
 }
 
+const hourText = (h: number) => (h ? String(h) : '');
+
 const TimeField: React.FC<Props> = ({ value, onChange, autoFocus, label }) => {
   const minuteRef = useRef<HTMLInputElement>(null);
   const prefix = label ? `${label} ` : '';
 
+  // Editing buffers (see file header). Hour renders unpadded; minute renders
+  // zero-padded ONLY when not being edited.
+  const [hStr, setHStr] = useState<string>(() => hourText(value.h));
+  const [mStr, setMStr] = useState<string>(() => pad(value.m));
+  const [hEditing, setHEditing] = useState(false);
+  const [mEditing, setMEditing] = useState(false);
+
+  // Reflect external value changes (e.g. prefill, programmatic set) only while the
+  // field is NOT being edited, so live typing is never overwritten by a re-render.
+  useEffect(() => {
+    if (!hEditing) setHStr(hourText(value.h));
+  }, [value.h, hEditing]);
+  useEffect(() => {
+    if (!mEditing) setMStr(pad(value.m));
+  }, [value.m, mEditing]);
+
   const setHour = (raw: string, andAdvance: boolean) => {
-    const digits = raw.replace(/\D/g, '').slice(0, 2);
+    const digits = digitsOf(raw);
+    setHStr(digits); // show exactly what was typed — no padding mid-entry
     const h = digits === '' ? 0 : Math.min(12, parseInt(digits, 10));
     onChange({ ...value, h });
     if (andAdvance && (digits.length === 2 || parseInt(digits || '0', 10) > 1)) minuteRef.current?.select();
   };
   const setMinute = (raw: string) => {
-    const digits = raw.replace(/\D/g, '').slice(0, 2);
+    const digits = digitsOf(raw);
+    setMStr(digits); // show exactly what was typed — the two-digit-entry fix
     const m = digits === '' ? 0 : Math.min(59, parseInt(digits, 10));
+    onChange({ ...value, m });
+  };
+
+  // Normalize on blur only: clamp to range; minute zero-pads to two digits.
+  const commitHour = () => {
+    setHEditing(false);
+    const h = hStr === '' ? 0 : Math.min(12, parseInt(hStr, 10));
+    setHStr(hourText(h));
+    onChange({ ...value, h });
+  };
+  const commitMinute = () => {
+    setMEditing(false);
+    const m = mStr === '' ? 0 : Math.min(59, parseInt(mStr, 10));
+    setMStr(pad(m));
     onChange({ ...value, m });
   };
 
@@ -57,11 +103,11 @@ const TimeField: React.FC<Props> = ({ value, onChange, autoFocus, label }) => {
       <input
         aria-label={`${prefix}Hour`}
         inputMode="numeric"
-        value={value.h ? String(value.h) : ''}
+        value={hStr}
         autoFocus={autoFocus}
-        onFocus={(e) => e.currentTarget.select()}
+        onFocus={(e) => { setHEditing(true); e.currentTarget.select(); }}
         onChange={(e) => setHour(e.target.value, true)}
-        onBlur={(e) => setHour(e.target.value, false)}
+        onBlur={commitHour}
         className={cell}
       />
       <span className="text-lg font-semibold text-gray-400">:</span>
@@ -69,9 +115,10 @@ const TimeField: React.FC<Props> = ({ value, onChange, autoFocus, label }) => {
         aria-label={`${prefix}Minute`}
         ref={minuteRef}
         inputMode="numeric"
-        value={pad(value.m)}
-        onFocus={(e) => e.currentTarget.select()}
+        value={mStr}
+        onFocus={(e) => { setMEditing(true); e.currentTarget.select(); }}
         onChange={(e) => setMinute(e.target.value)}
+        onBlur={commitMinute}
         className={cell}
       />
       <select
