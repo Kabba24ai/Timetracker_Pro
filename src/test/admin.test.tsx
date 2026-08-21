@@ -246,15 +246,17 @@ describe('CorrectionModal — cascading Delete', () => {
     expect(screen.getByRole('button', { name: /^Apply$/ })).toBeInTheDocument();
   });
 
-  it('clicking Lunch Out exposes Delete Lunch', async () => {
+  // Lunch endpoints route to the UNIFIED Edit Lunch interval modal (both
+  // endpoints editable in one place); Delete Lunch still removes the whole pair.
+  it('clicking Lunch Out opens Edit Lunch and exposes Delete Lunch', async () => {
     await openAdjust('5:00 PM'); // lunch_start 17:00 UTC
-    expect(await screen.findByText('Adjust Lunch Out')).toBeInTheDocument();
+    expect(await screen.findByText(/^Edit Lunch/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Delete Lunch/ })).toBeInTheDocument();
   });
 
-  it('clicking Lunch In exposes Delete Lunch', async () => {
+  it('clicking Lunch In opens the SAME Edit Lunch modal with Delete Lunch', async () => {
     await openAdjust('5:30 PM'); // lunch_end 17:30 UTC
-    expect(await screen.findByText('Adjust Lunch In')).toBeInTheDocument();
+    expect(await screen.findByText(/^Edit Lunch/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Delete Lunch/ })).toBeInTheDocument();
   });
 

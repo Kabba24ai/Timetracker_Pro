@@ -54,58 +54,95 @@ const TimeField: React.FC<Props> = ({ value, onChange, autoFocus, label }) => {
   const prefix = label ? `${label} ` : '';
 
   // Editing buffers (see file header). Hour renders unpadded; minute renders
-  // zero-padded ONLY when not being edited.
+  // zero-padded ONLY when not being edited. Each buffer is mirrored in a ref so
+  // a blur that fires synchronously (e.g. the hour auto-advance moving focus in
+  // a real browser) normalizes from the LIVE buffer, never a stale render.
   const [hStr, setHStr] = useState<string>(() => hourText(value.h));
   const [mStr, setMStr] = useState<string>(() => pad(value.m));
+  const hBuf = useRef(hStr);
+  const mBuf = useRef(mStr);
   const [hEditing, setHEditing] = useState(false);
   const [mEditing, setMEditing] = useState(false);
+  // The last hour the parent held that was actually valid (1–12) — the blur
+  // fallback when the field is left empty, so hour 0 is never committed.
+  const lastValidHour = useRef(value.h >= 1 && value.h <= 12 ? value.h : 12);
+  if (value.h >= 1 && value.h <= 12) lastValidHour.current = value.h;
+
+  const putH = (s: string) => {
+    hBuf.current = s;
+    setHStr(s);
+  };
+  const putM = (s: string) => {
+    mBuf.current = s;
+    setMStr(s);
+  };
 
   // Reflect external value changes (e.g. prefill, programmatic set) only while the
   // field is NOT being edited, so live typing is never overwritten by a re-render.
   useEffect(() => {
-    if (!hEditing) setHStr(hourText(value.h));
+    if (!hEditing) {
+      hBuf.current = hourText(value.h);
+      setHStr(hBuf.current);
+    }
   }, [value.h, hEditing]);
   useEffect(() => {
-    if (!mEditing) setMStr(pad(value.m));
+    if (!mEditing) {
+      mBuf.current = pad(value.m);
+      setMStr(mBuf.current);
+    }
   }, [value.m, mEditing]);
 
   const setHour = (raw: string, andAdvance: boolean) => {
     const digits = digitsOf(raw);
-    setHStr(digits); // show exactly what was typed — no padding mid-entry
-    const h = digits === '' ? 0 : Math.min(12, parseInt(digits, 10));
-    onChange({ ...value, h });
-    if (andAdvance && (digits.length === 2 || parseInt(digits || '0', 10) > 1)) minuteRef.current?.select();
+    putH(digits); // show exactly what was typed — no padding mid-entry
+    const p = digits === '' ? 0 : parseInt(digits, 10);
+    // Only a REAL hour (≥1, clamped to 12) reaches the parent; "" or a lone "0"
+    // keeps the last valid hour so Apply mid-edit never commits hour 0.
+    if (p >= 1) onChange({ ...value, h: Math.min(12, p) });
+    if (andAdvance && (digits.length === 2 || p > 1)) {
+      // Explicit focus + select: the hour blurs (normalizing its buffer) and the
+      // minute is ready for replacement typing, in every browser.
+      minuteRef.current?.focus();
+      minuteRef.current?.select();
+    }
   };
   const setMinute = (raw: string) => {
     const digits = digitsOf(raw);
-    setMStr(digits); // show exactly what was typed — the two-digit-entry fix
+    putM(digits); // show exactly what was typed — the two-digit-entry fix
     const m = digits === '' ? 0 : Math.min(59, parseInt(digits, 10));
     onChange({ ...value, m });
   };
 
-  // Normalize on blur only: clamp to range; minute zero-pads to two digits.
+  // Normalize on blur only: clamp to range (hour 1–12, minute 00–59); an
+  // emptied hour restores the last valid hour instead of becoming 0.
   const commitHour = () => {
     setHEditing(false);
-    const h = hStr === '' ? 0 : Math.min(12, parseInt(hStr, 10));
-    setHStr(hourText(h));
+    const p = hBuf.current === '' ? 0 : parseInt(hBuf.current, 10);
+    const h = p >= 1 ? Math.min(12, p) : lastValidHour.current;
+    putH(hourText(h));
     onChange({ ...value, h });
   };
   const commitMinute = () => {
     setMEditing(false);
-    const m = mStr === '' ? 0 : Math.min(59, parseInt(mStr, 10));
-    setMStr(pad(m));
+    const m = mBuf.current === '' ? 0 : Math.min(59, parseInt(mBuf.current, 10));
+    putM(pad(m));
     onChange({ ...value, m });
   };
 
   const cell = 'w-14 text-center px-2 py-2 border border-gray-300 rounded-lg font-mono text-lg focus:outline-none focus:ring-2 focus:ring-blue-500';
   return (
     <div className="flex items-center gap-1">
+      {/* select() on BOTH focus and mouseup: clicking an already-focused field
+          would otherwise collapse the selection so the next digit APPENDS —
+          the value behaves like a native time-input segment: every click
+          selects it whole and typing replaces. */}
       <input
         aria-label={`${prefix}Hour`}
         inputMode="numeric"
         value={hStr}
         autoFocus={autoFocus}
         onFocus={(e) => { setHEditing(true); e.currentTarget.select(); }}
+        onMouseUp={(e) => e.currentTarget.select()}
         onChange={(e) => setHour(e.target.value, true)}
         onBlur={commitHour}
         className={cell}
@@ -117,6 +154,7 @@ const TimeField: React.FC<Props> = ({ value, onChange, autoFocus, label }) => {
         inputMode="numeric"
         value={mStr}
         onFocus={(e) => { setMEditing(true); e.currentTarget.select(); }}
+        onMouseUp={(e) => e.currentTarget.select()}
         onChange={(e) => setMinute(e.target.value)}
         onBlur={commitMinute}
         className={cell}

@@ -134,28 +134,59 @@ const TimeReviewV2: React.FC<TimeReviewProps> = ({ initialUserId, initialFrom, i
   };
 
   // The employee/day/punch are already chosen on the grid; the modal edits TIME
-  // only (the date is read-only context). Filled punch → adjust; empty punch →
-  // insert (single for clock in/out; atomic break pair for lunch/other).
+  // only (the date is read-only context). Clock in/out: filled → adjust, empty →
+  // insert. Lunch/break: the interval is ONE logical unit — clicking either
+  // endpoint opens the same Edit (pair exists) / Complete (one side exists) /
+  // Add (nothing exists) modal, never two competing correction flows.
   const time24Of = (iso: string | null | undefined, fallback: string) =>
     iso ? toTenantDatetimeLocal(iso, tz).split('T')[1] : fallback;
 
+  // Wall-clock 'HH:MM' ± minutes, clamped to the same calendar day.
+  const shiftTime24 = (t: string, delta: number) => {
+    const [h, m] = t.split(':').map(Number);
+    const total = Math.min(Math.max(h * 60 + m + delta, 0), 23 * 60 + 59);
+    return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+  };
+
   const editPosition = (day: TimeReviewDay, key: PositionKey, label: string) => {
-    const pos = day.positions[key];
-    if (pos && pos.at) {
-      // Use the event's OWN tenant date (an overnight clock-out belongs to the next day).
-      const [date, time24] = toTenantDatetimeLocal(pos.at, tz).split('T');
-      // The position key IS the event kind — it tells the modal the delete cascade.
-      setCorrection({ mode: 'adjust', eventId: pos.event_id, kind: key as CorrectableKind, kindLabel: label, date, time24 });
-      return;
-    }
-    if (!userId) return;
-    if (key === 'clock_in' || key === 'clock_out') {
-      const iso = key === 'clock_in' ? day.schedule?.start_at : day.schedule?.end_at;
-      setCorrection({ mode: 'insert', userId, kind: key, kindLabel: label, date: day.date, time24: time24Of(iso, DEFAULT_TIME[key]), title: `Add ${label} · ${day.day_label}` });
-    } else {
+    if (key !== 'clock_in' && key !== 'clock_out') {
       const breakType = key === 'lunch_start' || key === 'lunch_end' ? 'lunch' : 'other';
       const [startKey, endKey]: [PositionKey, PositionKey] =
         breakType === 'lunch' ? ['lunch_start', 'lunch_end'] : ['other_start', 'other_end'];
+      const startPos = day.positions[startKey];
+      const endPos = day.positions[endKey];
+      const breakLabel = breakType === 'lunch' ? 'Lunch' : 'Break';
+
+      // Any part of the interval already exists → the unified Edit/Complete
+      // modal for the WHOLE interval. An existing endpoint is prefilled from its
+      // own event (and preserved untouched by the server unless edited); a
+      // missing endpoint is derived from the existing one — never the generic
+      // Add defaults, which is what used to create impossible-sequence errors.
+      if (startPos?.at || endPos?.at) {
+        const anchor = (startPos?.at ?? endPos?.at)!;
+        const date = toTenantDatetimeLocal(anchor, tz).split('T')[0];
+        const startTime24 = startPos?.at
+          ? toTenantDatetimeLocal(startPos.at, tz).split('T')[1]
+          : shiftTime24(toTenantDatetimeLocal(endPos!.at!, tz).split('T')[1], -30);
+        const endTime24 = endPos?.at
+          ? toTenantDatetimeLocal(endPos.at, tz).split('T')[1]
+          : shiftTime24(startTime24, 30);
+        const complete = !(startPos?.at && endPos?.at);
+        setCorrection({
+          mode: 'edit_break',
+          breakType,
+          startEventId: startPos?.at ? startPos.event_id : undefined,
+          endEventId: endPos?.at ? endPos.event_id : undefined,
+          date,
+          startTime24,
+          endTime24,
+          title: `${complete ? 'Complete' : 'Edit'} ${breakLabel} · ${day.day_label}`,
+        });
+        return;
+      }
+
+      // No interval on this day at all → Add a brand-new pair.
+      if (!userId) return;
       setCorrection({
         mode: 'insert_break',
         userId,
@@ -165,7 +196,20 @@ const TimeReviewV2: React.FC<TimeReviewProps> = ({ initialUserId, initialFrom, i
         endTime24: DEFAULT_TIME[endKey],
         title: `Add ${breakType === 'lunch' ? 'lunch' : 'break'} · ${day.day_label}`,
       });
+      return;
     }
+
+    const pos = day.positions[key];
+    if (pos && pos.at) {
+      // Use the event's OWN tenant date (an overnight clock-out belongs to the next day).
+      const [date, time24] = toTenantDatetimeLocal(pos.at, tz).split('T');
+      // The position key IS the event kind — it tells the modal the delete cascade.
+      setCorrection({ mode: 'adjust', eventId: pos.event_id, kind: key as CorrectableKind, kindLabel: label, date, time24 });
+      return;
+    }
+    if (!userId) return;
+    const iso = key === 'clock_in' ? day.schedule?.start_at : day.schedule?.end_at;
+    setCorrection({ mode: 'insert', userId, kind: key, kindLabel: label, date: day.date, time24: time24Of(iso, DEFAULT_TIME[key]), title: `Add ${label} · ${day.day_label}` });
   };
 
   const addTimeForDay = (day: TimeReviewDay) => {

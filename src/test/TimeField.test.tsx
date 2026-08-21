@@ -88,6 +88,71 @@ describe('TimeField — two-digit entry (Bug 1)', () => {
     expect(screen.getByTestId('readout').textContent).toContain('11:');
   });
 
+  it('hour 10 works', async () => {
+    const user = userEvent.setup();
+    render(<Harness initial={{ h: 1, m: 0, ampm: 'PM' }} />);
+    await user.click(hourOf());
+    await user.keyboard('10');
+    expect(hourOf().value).toBe('10');
+    expect(screen.getByTestId('readout').textContent).toContain('10:');
+  });
+
+  it('hour 12 works (the live "Cannot enter 2 digits" case)', async () => {
+    const user = userEvent.setup();
+    render(<Harness initial={{ h: 6, m: 0, ampm: 'PM' }} />);
+    await user.click(hourOf());
+    await user.keyboard('12');
+    expect(hourOf().value).toBe('12');
+    expect(screen.getByTestId('readout').textContent).toContain('12:');
+  });
+
+  it('a single-digit hour (7) commits and auto-advances to minutes', async () => {
+    const user = userEvent.setup();
+    render(<Harness initial={{ h: 6, m: 2, ampm: 'PM' }} />);
+    await user.click(hourOf());
+    await user.keyboard('7');
+    expect(screen.getByTestId('readout').textContent).toContain('7:');
+    expect(document.activeElement).toBe(minuteOf()); // >1 can't start a two-digit hour
+  });
+
+  it('an out-of-range hour (13) is clamped to 12 on blur', async () => {
+    const user = userEvent.setup();
+    render(<Harness initial={{ h: 6, m: 2, ampm: 'PM' }} />);
+    await user.click(hourOf());
+    await user.keyboard('13');
+    hourOf().blur();
+    expect(hourOf().value).toBe('12');
+    expect(screen.getByTestId('readout').textContent).toContain('12:');
+  });
+
+  it('an emptied hour restores the last valid hour on blur — never 0', async () => {
+    const user = userEvent.setup();
+    render(<Harness initial={{ h: 6, m: 2, ampm: 'PM' }} />);
+    await user.click(hourOf());
+    await user.clear(hourOf());
+    expect(hourOf().value).toBe('');
+    expect(screen.getByTestId('readout').textContent).toContain('6:'); // parent keeps the last valid hour mid-edit
+    await user.tab();
+    expect(hourOf().value).toBe('6');
+    expect(screen.getByTestId('readout').textContent).toContain('6:');
+  });
+
+  it('keyboard Tab into the hour then typing 12 replaces, not appends', async () => {
+    const user = userEvent.setup();
+    render(
+      <div>
+        <button>before</button>
+        <Harness initial={{ h: 6, m: 2, ampm: 'PM' }} />
+      </div>,
+    );
+    screen.getByRole('button', { name: 'before' }).focus();
+    await user.tab(); // Tab into Hour — select-on-focus replacement
+    expect(document.activeElement).toBe(hourOf());
+    await user.keyboard('12');
+    expect(hourOf().value).toBe('12');
+    expect(screen.getByTestId('readout').textContent).toContain('12:');
+  });
+
   it('supports Tab navigation Hour → Minute → AM/PM', async () => {
     const user = userEvent.setup();
     render(<Harness initial={{ h: 6, m: 2, ampm: 'PM' }} />);

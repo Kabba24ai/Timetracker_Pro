@@ -41,7 +41,11 @@ export interface ClockEventRow {
 // server decides the dependent set (whole shift for a clock-in, the paired
 // interval for a lunch/break, itself for a clock-out) and voids it atomically.
 // Nothing is physically erased; the immutable ledger is preserved.
-export type CorrectionType = 'adjust' | 'void' | 'insert' | 'insert_break' | 'delete';
+// `edit_break` = ONE atomic logical edit of an EXISTING lunch/break interval:
+// move either or both endpoints, or complete a one-sided interval. The server
+// validates the FINAL sequence once (no temporary intermediate state), leaves
+// an unchanged endpoint completely untouched, and applies all-or-nothing.
+export type CorrectionType = 'adjust' | 'void' | 'insert' | 'insert_break' | 'edit_break' | 'delete';
 export type CorrectableKind = ClockEventRow['kind'];
 export type BreakKind = 'lunch' | 'other';
 
@@ -51,9 +55,11 @@ export interface CorrectionPayload {
   user_id?: number; // insert | insert_break
   kind?: CorrectableKind; // insert
   effective_at?: string; // adjust | insert (ISO 8601, UTC from tenant wall-clock)
-  break_type?: BreakKind; // insert_break
-  start_at?: string; // insert_break (ISO 8601)
-  end_at?: string; // insert_break (ISO 8601)
+  break_type?: BreakKind; // insert_break | edit_break
+  start_at?: string; // insert_break | edit_break (ISO 8601)
+  end_at?: string; // insert_break | edit_break (ISO 8601)
+  start_event_id?: number; // edit_break — the existing start endpoint (if any)
+  end_event_id?: number; // edit_break — the existing end endpoint (if any)
   reason_code?: string; // standardized code (mirrors CorrectionReasonCode)
   reason?: string; // human label, or the free-text explanation when code = 'other'
 }

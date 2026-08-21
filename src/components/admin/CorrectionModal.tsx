@@ -12,7 +12,11 @@ export type CorrectionDraft =
   | { mode: 'adjust'; eventId: number; kind: CorrectableKind; kindLabel: string; date: string; time24: string }
   | { mode: 'void'; eventId: number; kindLabel: string; date: string }
   | { mode: 'insert'; userId: number; kind: CorrectableKind; kindLabel: string; date: string; time24: string; title?: string }
-  | { mode: 'insert_break'; userId: number; breakType: BreakKind; date: string; startTime24: string; endTime24: string; title?: string };
+  | { mode: 'insert_break'; userId: number; breakType: BreakKind; date: string; startTime24: string; endTime24: string; title?: string }
+  // ONE atomic edit of an EXISTING lunch/break interval (Edit = both endpoints
+  // exist; Complete = one side exists and the other is being repaired in). The
+  // event ids identify the existing endpoints; the times are the FINAL interval.
+  | { mode: 'edit_break'; breakType: BreakKind; startEventId?: number; endEventId?: number; date: string; startTime24: string; endTime24: string; title: string };
 
 // A delete removes the punch AND its logical dependents from the effective
 // record. The server owns the cascade; these labels/messages just tell the admin
@@ -49,8 +53,12 @@ const CorrectionModal: React.FC<Props> = ({ draft, tz, onClose, onSubmit }) => {
   const [time, setTime] = useState<Clock>(() =>
     draft.mode === 'adjust' || draft.mode === 'insert' ? parse24(draft.time24) : { h: 12, m: 0, ampm: 'PM' },
   );
-  const [start, setStart] = useState<Clock>(() => (draft.mode === 'insert_break' ? parse24(draft.startTime24) : { h: 12, m: 0, ampm: 'PM' }));
-  const [end, setEnd] = useState<Clock>(() => (draft.mode === 'insert_break' ? parse24(draft.endTime24) : { h: 12, m: 30, ampm: 'PM' }));
+  const [start, setStart] = useState<Clock>(() =>
+    draft.mode === 'insert_break' || draft.mode === 'edit_break' ? parse24(draft.startTime24) : { h: 12, m: 0, ampm: 'PM' },
+  );
+  const [end, setEnd] = useState<Clock>(() =>
+    draft.mode === 'insert_break' || draft.mode === 'edit_break' ? parse24(draft.endTime24) : { h: 12, m: 30, ampm: 'PM' },
+  );
 
   const [reasonCode, setReasonCode] = useState('');
   const [otherText, setOtherText] = useState('');
@@ -60,7 +68,14 @@ const CorrectionModal: React.FC<Props> = ({ draft, tz, onClose, onSubmit }) => {
   // admin clicks "Delete …", then confirms the cascade before anything is sent.
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
-  const del = draft.mode === 'adjust' ? deleteScopeFor(draft.kind) : null;
+  // Deleting from the interval modal always removes the WHOLE interval (the
+  // approved rule) — regardless of which endpoint cell opened it.
+  const del =
+    draft.mode === 'adjust'
+      ? deleteScopeFor(draft.kind)
+      : draft.mode === 'edit_break'
+        ? deleteScopeFor(draft.breakType === 'lunch' ? 'lunch_start' : 'other_start')
+        : null;
 
   const isOther = reasonCode === 'other';
   // Reason is OPTIONAL (the established TimeTracker rule) — the only block is
@@ -72,9 +87,11 @@ const CorrectionModal: React.FC<Props> = ({ draft, tz, onClose, onSubmit }) => {
       ? `Adjust ${draft.kindLabel}`
       : draft.mode === 'void'
         ? `Void ${draft.kindLabel}`
-        : draft.mode === 'insert_break'
-          ? (draft.title ?? (draft.breakType === 'lunch' ? 'Add lunch' : 'Add break'))
-          : (draft.title ?? `Add ${draft.kindLabel}`);
+        : draft.mode === 'edit_break'
+          ? draft.title
+          : draft.mode === 'insert_break'
+            ? (draft.title ?? (draft.breakType === 'lunch' ? 'Add lunch' : 'Add break'))
+            : (draft.title ?? `Add ${draft.kindLabel}`);
 
   // Only send reason fields when a standardized reason is actually chosen.
   const buildReason = (): Pick<CorrectionPayload, 'reason_code' | 'reason'> => {
@@ -97,6 +114,18 @@ const CorrectionModal: React.FC<Props> = ({ draft, tz, onClose, onSubmit }) => {
       payload = { type: 'adjust', event_id: draft.eventId, effective_at: iso(time), ...r };
     } else if (draft.mode === 'void') {
       payload = { type: 'void', event_id: draft.eventId, ...r };
+    } else if (draft.mode === 'edit_break') {
+      // The FINAL interval, atomically: the server adjusts a changed endpoint,
+      // inserts a missing one, and leaves an unchanged one untouched.
+      payload = {
+        type: 'edit_break',
+        break_type: draft.breakType,
+        ...(draft.startEventId ? { start_event_id: draft.startEventId } : {}),
+        ...(draft.endEventId ? { end_event_id: draft.endEventId } : {}),
+        start_at: iso(start),
+        end_at: iso(end),
+        ...r,
+      };
     } else if (draft.mode === 'insert_break') {
       payload = { type: 'insert_break', user_id: draft.userId, break_type: draft.breakType, start_at: iso(start), end_at: iso(end), ...r };
     } else {
@@ -112,13 +141,16 @@ const CorrectionModal: React.FC<Props> = ({ draft, tz, onClose, onSubmit }) => {
   };
 
   // Cascading delete of an existing punch. The server determines the dependent
-  // set; the client only names the target event. Reason stays optional.
+  // set; the client only names the target event. From the interval modal either
+  // existing endpoint identifies the interval — the server voids both sides.
   const submitDelete = async () => {
-    if (draft.mode !== 'adjust' || saving || !reasonReady) return;
+    const targetId =
+      draft.mode === 'adjust' ? draft.eventId : draft.mode === 'edit_break' ? (draft.startEventId ?? draft.endEventId) : undefined;
+    if (targetId === undefined || saving || !reasonReady) return;
     setSaving(true);
     setError(null);
     try {
-      await onSubmit({ type: 'delete', event_id: draft.eventId, ...buildReason() });
+      await onSubmit({ type: 'delete', event_id: targetId, ...buildReason() });
     } catch (err) {
       setError(err instanceof ApiError ? err.firstError() : 'The correction could not be applied.');
       setSaving(false);
@@ -161,19 +193,19 @@ const CorrectionModal: React.FC<Props> = ({ draft, tz, onClose, onSubmit }) => {
             This appends a void correction; the original event is preserved and the projection is rebuilt without it.
             The server rejects it if it would leave an impossible sequence.
           </p>
-        ) : draft.mode === 'insert_break' ? (
+        ) : draft.mode === 'insert_break' || draft.mode === 'edit_break' ? (
           <div className="mb-4 grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">
                 {draft.breakType === 'lunch' ? 'Lunch Out' : 'Break Out'} <span className="text-gray-400">({tz})</span>
               </label>
-              <TimeField value={start} onChange={setStart} autoFocus />
+              <TimeField value={start} onChange={setStart} autoFocus label={draft.breakType === 'lunch' ? 'Lunch Out' : 'Break Out'} />
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">
                 {draft.breakType === 'lunch' ? 'Lunch In' : 'Break In'}
               </label>
-              <TimeField value={end} onChange={setEnd} />
+              <TimeField value={end} onChange={setEnd} label={draft.breakType === 'lunch' ? 'Lunch In' : 'Break In'} />
             </div>
           </div>
         ) : (
