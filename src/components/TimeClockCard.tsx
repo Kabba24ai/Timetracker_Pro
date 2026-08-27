@@ -22,6 +22,13 @@ const ACTIONS: Record<
     icon: <LogOut className="h-4 w-4" />,
     className: 'bg-red-600 hover:bg-red-700 text-white',
   },
+  // Offered while on lunch/unpaid break — same "Clock Out" affordance, but it
+  // routes through a confirmation (the interval start becomes the clock-out).
+  clock_out_from_break: {
+    label: 'Clock Out',
+    icon: <LogOut className="h-4 w-4" />,
+    className: 'bg-red-600 hover:bg-red-700 text-white',
+  },
   lunch_start: {
     label: 'Start Lunch',
     icon: <Coffee className="h-4 w-4" />,
@@ -53,7 +60,7 @@ const STATUS_STYLES: Record<string, string> = {
 };
 
 const TimeClockCard: React.FC = () => {
-  const { state, status, statusLabel, allowedActions, shift, loading, working, error, perform } =
+  const { state, status, statusLabel, allowedActions, shift, openBreak, loading, working, error, perform } =
     useTimeClock();
 
   // A 1s tick so the elapsed time counts up live AND the pre-shift notice
@@ -64,9 +71,21 @@ const TimeClockCard: React.FC = () => {
     return () => clearInterval(t);
   }, []);
 
+  // Clock Out while on lunch/unpaid break is explicit: confirm before it fires.
+  const [confirmBreakOut, setConfirmBreakOut] = useState(false);
+
   const handle = (action: ClockAction) => {
+    if (action === 'clock_out_from_break') {
+      setConfirmBreakOut(true); // require explicit confirmation
+      return;
+    }
     // Errors surface via context state; swallow the rejection here.
     perform(action).catch(() => undefined);
+  };
+
+  const confirmClockOutFromBreak = () => {
+    setConfirmBreakOut(false);
+    perform('clock_out_from_break').catch(() => undefined);
   };
 
   const clockedInSince = shift?.status === 'open' ? shift.clock_in_at : null;
@@ -179,6 +198,46 @@ const TimeClockCard: React.FC = () => {
         <div className="mt-4 flex items-start gap-2 text-sm text-blue-800 bg-blue-50 border border-blue-100 rounded-lg p-3">
           <Info className="h-4 w-4 shrink-0 mt-0.5" />
           <span>{notice}</span>
+        </div>
+      )}
+
+      {/* Clock Out while on lunch / unpaid break — the interval start becomes the
+          official clock-out. The employee must explicitly confirm. */}
+      {confirmBreakOut && openBreak && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="clock-out-break-title"
+        >
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+            <h3 id="clock-out-break-title" className="text-lg font-semibold text-gray-900">
+              {openBreak.type === 'lunch' ? 'Clock Out While on Lunch?' : 'Clock Out While on Unpaid Break?'}
+            </h3>
+            <p className="mt-3 text-sm text-gray-600">
+              {openBreak.type === 'lunch'
+                ? `You are currently on lunch. Your lunch started at ${formatClock(openBreak.start_at, tz)}. If you clock out now, ${formatClock(openBreak.start_at, tz)} will be used as your official clock-out time.`
+                : `You are currently on an unpaid break. Your break started at ${formatClock(openBreak.start_at, tz)}. If you clock out now, ${formatClock(openBreak.start_at, tz)} will be used as your official clock-out time.`}
+            </p>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setConfirmBreakOut(false)}
+                disabled={working}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmClockOutFromBreak}
+                disabled={working}
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                Clock Out
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

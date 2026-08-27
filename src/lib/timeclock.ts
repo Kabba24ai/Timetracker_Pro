@@ -12,9 +12,12 @@ import { api, ApiEnvelope } from './api';
 export type ClockStatus = 'off' | 'on_clock' | 'on_lunch' | 'on_other';
 
 // The action names the server emits in `allowed_actions` (mirror the enum).
+// `clock_out_from_break` is offered while on lunch / unpaid break: the explicit,
+// confirmed workflow that ends the shift at the interval start (server-owned).
 export type ClockAction =
   | 'clock_in'
   | 'clock_out'
+  | 'clock_out_from_break'
   | 'lunch_start'
   | 'lunch_end'
   | 'other_start'
@@ -65,6 +68,7 @@ export interface ClockState {
 const ACTION_ENDPOINTS: Record<ClockAction, string> = {
   clock_in: '/clock/in',
   clock_out: '/clock/out',
+  clock_out_from_break: '/clock/out-from-break',
   lunch_start: '/clock/lunch/start',
   lunch_end: '/clock/lunch/end',
   other_start: '/clock/other/start',

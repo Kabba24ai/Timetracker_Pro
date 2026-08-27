@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 
 // A mutable fake of the kabba2 TimeTracker V2 API. It models the authoritative
 // state machine on the "server" so these tests prove the WIRING: the client
@@ -59,12 +59,13 @@ vi.mock('../lib/api', () => {
   const ALLOWED: Record<string, string[]> = {
     off: ['clock_in'],
     on_clock: ['clock_out', 'lunch_start', 'other_start'],
-    on_lunch: ['lunch_end'],
-    on_other: ['other_end'],
+    on_lunch: ['lunch_end', 'clock_out_from_break'],
+    on_other: ['other_end', 'clock_out_from_break'],
   };
   const TRANSITION: Record<string, typeof server.status> = {
     '/clock/in': 'on_clock',
     '/clock/out': 'off',
+    '/clock/out-from-break': 'off',
     '/clock/lunch/start': 'on_lunch',
     '/clock/lunch/end': 'on_clock',
     '/clock/other/start': 'on_other',
@@ -83,12 +84,22 @@ vi.mock('../lib/api', () => {
           breaks: server.breaks,
         }
       : null;
+    const openBreak =
+      server.status === 'on_lunch' || server.status === 'on_other'
+        ? {
+            id: 5,
+            type: server.status === 'on_lunch' ? ('lunch' as const) : ('other' as const),
+            start_at: '2026-09-14T12:00:00-05:00', // 12:00 PM America/Chicago
+            end_at: null,
+            duration_seconds: 0,
+          }
+        : null;
     return {
       status: server.status,
       status_label: LABELS[server.status],
       allowed_actions: ALLOWED[server.status],
       shift,
-      open_break: null,
+      open_break: openBreak,
       server_time: '2026-09-14T12:00:00-05:00',
       timezone: 'America/Chicago',
       today_shift_start_at: server.shiftStartAt,
@@ -199,21 +210,22 @@ describe('TimeClock — controls are driven only by server allowed_actions', () 
     expect(screen.queryByRole('button', { name: /clock in/i })).not.toBeInTheDocument();
   });
 
-  it('ON_LUNCH: shows only End Lunch', async () => {
+  it('ON_LUNCH: shows End Lunch (primary) plus Clock Out (confirmed break exit)', async () => {
     seedLoggedIn('on_lunch');
     render(<Harness />);
 
     expect(await screen.findByRole('button', { name: /end lunch/i })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /clock out/i })).not.toBeInTheDocument();
+    // Clock Out is now offered as the confirmed "end the shift at lunch start" path.
+    expect(screen.getByRole('button', { name: /clock out/i })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /start break/i })).not.toBeInTheDocument();
   });
 
-  it('ON_OTHER: shows only End Break', async () => {
+  it('ON_OTHER: shows End Break (primary) plus Clock Out (confirmed break exit)', async () => {
     seedLoggedIn('on_other');
     render(<Harness />);
 
     expect(await screen.findByRole('button', { name: /end break/i })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /clock out/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /clock out/i })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /end lunch/i })).not.toBeInTheDocument();
   });
 });
@@ -238,7 +250,8 @@ describe('TimeClock — actions dispatch the right endpoint and re-render from t
     fireEvent.click(await screen.findByRole('button', { name: /start lunch/i }));
 
     expect(await screen.findByRole('button', { name: /end lunch/i })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /clock out/i })).not.toBeInTheDocument();
+    // On lunch now also offers the confirmed "clock out at lunch start" path.
+    expect(screen.getByRole('button', { name: /clock out/i })).toBeInTheDocument();
     expect(server.calls).toContain('POST /clock/lunch/start');
   });
 
@@ -248,7 +261,9 @@ describe('TimeClock — actions dispatch the right endpoint and re-render from t
 
     fireEvent.click(await screen.findByRole('button', { name: /end lunch/i }));
 
-    expect(await screen.findByRole('button', { name: /clock out/i })).toBeInTheDocument();
+    // Start Lunch reappears — an on_clock-only affordance (unlike Clock Out,
+    // which now also exists while on lunch), so it cleanly proves the transition.
+    expect(await screen.findByRole('button', { name: /start lunch/i })).toBeInTheDocument();
     expect(server.calls).toContain('POST /clock/lunch/end');
   });
 });
@@ -371,6 +386,60 @@ describe('TimeClock — employee notice area', () => {
     render(<Harness />);
     expect(await screen.findByText(/Standard minimum lunch/)).toBeInTheDocument();
     expect(screen.queryByText(/Your shift starts at/)).not.toBeInTheDocument();
+  });
+});
+
+describe('TimeClock — Clock Out while on lunch / unpaid break (explicit confirm)', () => {
+  it('ON_LUNCH: Clock Out opens a confirmation naming the lunch-start time; it does not fire yet', async () => {
+    seedLoggedIn('on_lunch');
+    render(<Harness />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /clock out/i }));
+
+    expect(await screen.findByText('Clock Out While on Lunch?')).toBeInTheDocument();
+    expect(
+      screen.getByText(/Your lunch started at 12:00 PM\. If you clock out now, 12:00 PM will be used as your official clock-out time\./),
+    ).toBeInTheDocument();
+    // Nothing dispatched until the employee confirms.
+    expect(server.calls).not.toContain('POST /clock/out-from-break');
+  });
+
+  it('ON_LUNCH: Cancel closes the dialog and dispatches nothing', async () => {
+    seedLoggedIn('on_lunch');
+    render(<Harness />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /clock out/i }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: /cancel/i }));
+
+    expect(screen.queryByText('Clock Out While on Lunch?')).not.toBeInTheDocument();
+    expect(server.calls).not.toContain('POST /clock/out-from-break');
+    // Still on lunch — unchanged.
+    expect(screen.getByRole('button', { name: /end lunch/i })).toBeInTheDocument();
+  });
+
+  it('ON_LUNCH: confirming dispatches /clock/out-from-break and returns the card to OFF', async () => {
+    seedLoggedIn('on_lunch');
+    render(<Harness />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /clock out/i }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: /clock out/i }));
+
+    expect(await screen.findByRole('button', { name: /clock in/i })).toBeInTheDocument();
+    expect(server.calls).toContain('POST /clock/out-from-break');
+  });
+
+  it('ON_OTHER: the confirmation uses unpaid-break copy', async () => {
+    seedLoggedIn('on_other');
+    render(<Harness />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /clock out/i }));
+
+    expect(await screen.findByText('Clock Out While on Unpaid Break?')).toBeInTheDocument();
+    expect(
+      screen.getByText(/Your break started at 12:00 PM\. If you clock out now, 12:00 PM will be used as your official clock-out time\./),
+    ).toBeInTheDocument();
   });
 });
 
