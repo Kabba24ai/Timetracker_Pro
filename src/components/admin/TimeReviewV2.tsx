@@ -12,14 +12,17 @@ import {
   TimeReview,
   TimeReviewDay,
   applyCorrection,
+  applyLunchOverride,
   downloadCsv,
   fetchEmployees,
   fetchTimeReview,
   formatDuration,
+  removeLunchOverride,
   timeReviewToCsv,
 } from '../../lib/admin';
 import { formatClock, formatInstant, toTenantDatetimeLocal } from '../../lib/tz';
 import CorrectionModal, { CorrectionDraft } from './CorrectionModal';
+import { LunchOverrideDetailsModal, ResolveMissingLunchModal } from './LunchOverrideModal';
 
 type Mode = 'current' | 'previous' | 'custom';
 
@@ -84,6 +87,10 @@ const TimeReviewV2: React.FC<TimeReviewProps> = ({ initialUserId, initialFrom, i
   const [error, setError] = useState<string | null>(null);
   const [correction, setCorrection] = useState<CorrectionDraft | null>(null);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  // Missing Lunch / Pending → Resolve Missing Lunch (Add Lunch | Override);
+  // Lunch Override badge → details + reversal.
+  const [lunchResolve, setLunchResolve] = useState<TimeReviewDay | null>(null);
+  const [lunchOverrideView, setLunchOverrideView] = useState<TimeReviewDay | null>(null);
 
   useEffect(() => {
     fetchEmployees()
@@ -242,6 +249,52 @@ const TimeReviewV2: React.FC<TimeReviewProps> = ({ initialUserId, initialFrom, i
     });
   };
 
+  // Option A of Resolve Missing Lunch: the REAL lunch — reuse the existing
+  // unified lunch editor (Add lunch = insert_break), never a second editor.
+  const addLunchFor = (day: TimeReviewDay) => {
+    if (!userId) return;
+    setLunchResolve(null);
+    setCorrection({
+      mode: 'insert_break',
+      userId,
+      breakType: 'lunch',
+      date: day.date,
+      startTime24: DEFAULT_TIME.lunch_start,
+      endTime24: DEFAULT_TIME.lunch_end,
+      title: `Add lunch · ${day.day_label}`,
+    });
+  };
+
+  // Option B: explicit administrator override for THIS employee on THIS logical
+  // shift only — anchored to the row's (primary shift's) Clock In event, never
+  // the date. The server re-derives Pending; we refetch the authoritative grid.
+  const overrideLunchFor = async (day: TimeReviewDay, reason: { reason_code?: string; reason?: string }) => {
+    if (!userId) return;
+    const clockIn = day.positions.clock_in;
+    if (!clockIn) {
+      throw new ApiError('This day has no Clock In to anchor the override to.', 0);
+    }
+    await applyLunchOverride({ user_id: userId, clock_in_event_id: clockIn.event_id, ...reason });
+    setLunchResolve(null);
+    await load();
+  };
+
+  const removeOverrideFor = async (day: TimeReviewDay, reason: { reason_code?: string; reason?: string }) => {
+    if (!day.lunch_override) return;
+    await removeLunchOverride(day.lunch_override.id, reason);
+    setLunchOverrideView(null);
+    await load();
+  };
+
+  // The Lunch area renders ONE spanning indicator when there is no lunch
+  // interval and the day is either Missing Lunch / Pending or Lunch-Overridden.
+  const lunchIndicator = (day: TimeReviewDay): 'missing' | 'override' | null => {
+    if (day.positions.lunch_start || day.positions.lunch_end) return null;
+    if (day.lunch_missing) return 'missing';
+    if (day.lunch_override) return 'override';
+    return null;
+  };
+
   const totals = review?.totals;
 
   return (
@@ -387,16 +440,43 @@ const TimeReviewV2: React.FC<TimeReviewProps> = ({ initialUserId, initialFrom, i
                               {d.day_type}
                             </span>
                           </td>
-                          {POSITION_COLUMNS.map((c) => (
-                            <td key={c.key} className="px-2 py-2 text-center">
-                              <PunchCell
-                                pos={d.positions[c.key]}
-                                unverified={c.key === 'clock_out' && d.clock_out_unverified}
-                                tz={tz}
-                                onClick={() => editPosition(d, c.key, c.label)}
-                              />
-                            </td>
-                          ))}
+                          {POSITION_COLUMNS.map((c) => {
+                            const lunch = lunchIndicator(d);
+                            if (lunch && c.key === 'lunch_end') return null;
+                            if (lunch && c.key === 'lunch_start') {
+                              return (
+                                <td key="lunch" colSpan={2} className="px-2 py-2 text-center">
+                                  {lunch === 'missing' ? (
+                                    <button
+                                      onClick={() => setLunchResolve(d)}
+                                      className="px-2 py-1 rounded text-xs font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100 transition-colors"
+                                      title="A lunch is required for this shift but none was recorded — click to resolve"
+                                    >
+                                      Missing Lunch / Pending
+                                    </button>
+                                  ) : (
+                                    <button
+                                      onClick={() => setLunchOverrideView(d)}
+                                      className="px-2 py-1 rounded text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors"
+                                      title="No lunch was required for this shift (administrator override) — click for details"
+                                    >
+                                      Lunch Override
+                                    </button>
+                                  )}
+                                </td>
+                              );
+                            }
+                            return (
+                              <td key={c.key} className="px-2 py-2 text-center">
+                                <PunchCell
+                                  pos={d.positions[c.key]}
+                                  unverified={c.key === 'clock_out' && d.clock_out_unverified}
+                                  tz={tz}
+                                  onClick={() => editPosition(d, c.key, c.label)}
+                                />
+                              </td>
+                            );
+                          })}
                           <td className="px-3 py-2 text-right font-mono font-semibold text-blue-700 whitespace-nowrap">
                             {formatDuration(d.paid_seconds)}
                             {d.has_open_shift && (
@@ -464,6 +544,23 @@ const TimeReviewV2: React.FC<TimeReviewProps> = ({ initialUserId, initialFrom, i
       )}
 
       {correction && <CorrectionModal draft={correction} tz={tz} onClose={() => setCorrection(null)} onSubmit={submitCorrection} />}
+      {lunchResolve && (
+        <ResolveMissingLunchModal
+          day={lunchResolve}
+          onAddLunch={() => addLunchFor(lunchResolve)}
+          onOverride={(reason) => overrideLunchFor(lunchResolve, reason)}
+          onClose={() => setLunchResolve(null)}
+        />
+      )}
+      {lunchOverrideView?.lunch_override && (
+        <LunchOverrideDetailsModal
+          day={lunchOverrideView}
+          override={lunchOverrideView.lunch_override}
+          tz={tz}
+          onRemove={(reason) => removeOverrideFor(lunchOverrideView, reason)}
+          onClose={() => setLunchOverrideView(null)}
+        />
+      )}
     </div>
   );
 };

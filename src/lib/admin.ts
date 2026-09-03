@@ -101,6 +101,26 @@ export async function applyCorrection(payload: CorrectionPayload): Promise<void>
   await api.post('/admin/corrections', payload);
 }
 
+export interface LunchOverridePayload {
+  user_id: number;
+  // The shift's Clock In event (the effective one shown in positions.clock_in);
+  // the server resolves the immutable lineage root = the logical-shift identity.
+  clock_in_event_id: number;
+  reason_code?: string;
+  reason?: string;
+}
+
+/** Apply a case-by-case Lunch Override for ONE employee logical shift. Not a
+ * punch: nothing is added to the ledger or deducted; the server re-derives Pending. */
+export async function applyLunchOverride(payload: LunchOverridePayload): Promise<void> {
+  await api.post('/admin/lunch-overrides', payload);
+}
+
+/** Reverse a Lunch Override (dated soft removal; the audit row is kept). */
+export async function removeLunchOverride(id: number, reason: Pick<LunchOverridePayload, 'reason_code' | 'reason'> = {}): Promise<void> {
+  await api.del(`/admin/lunch-overrides/${id}`, reason);
+}
+
 // ── Per-day Time Review (pay-period correction workspace) ─────────────────
 
 export type PositionKey =
@@ -139,6 +159,27 @@ export interface PayrollFields {
   has_pending_shift?: boolean;
 }
 
+// The active case-by-case Lunch Override for one employee logical shift (who /
+// when / why), anchored to the shift's immutable Clock In lineage. Never a lunch
+// interval — lunch totals stay 0:00 when none was taken; it only satisfies the
+// lunch requirement for that exact shift.
+export interface LunchOverrideInfo {
+  id: number;
+  user_id: number;
+  clock_in_event_id: number;
+  work_date: string;
+  shift_id: number | null;
+  applied_at: string | null;
+  applied_by: { id: number; full_name: string } | null;
+  reason_code: string | null;
+  reason: string | null;
+  active: boolean;
+  removed_at: string | null;
+  removed_by: { id: number; full_name: string } | null;
+  removal_reason_code: string | null;
+  removal_reason: string | null;
+}
+
 export interface TimeReviewDay extends PayrollFields {
   date: string;
   day_of_week: number;
@@ -166,7 +207,16 @@ export interface TimeReviewDay extends PayrollFields {
   // is an unverified system auto-clock-out needing administrative review.
   pending: boolean;
   pending_reasons: string[];
+  // Machine-readable PendingReason values (missing_clock_out | missing_lunch |
+  // incomplete_lunch). Reasons compose and resolve independently.
+  pending_reason_codes?: string[];
   clock_out_unverified: boolean;
+  // A lunch is REQUIRED for this shift but none was recorded → the Lunch area
+  // shows "Missing Lunch / Pending" and offers Add Lunch / Override.
+  lunch_missing?: boolean;
+  // Active per-shift/date Lunch Override (explains a qualifying no-lunch day
+  // that is not Pending), or null.
+  lunch_override?: LunchOverrideInfo | null;
   flags: string[];
   events: ClockEventRow[];
 }
