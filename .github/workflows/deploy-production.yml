@@ -1,0 +1,305 @@
+# TimeTracker Pro — production deployment (main → https://timetrackerpro.rentnking.com)
+#
+# Automates the proven manual process without anyone SSH-ing in to run `git pull`:
+#   checkout the EXACT triggering SHA → npm ci → Vitest → tsc → production Vite
+#   build → rsync dry-run preflight → rsync dist/ (server-owned .htaccess
+#   preserved) → rsync --checksum dry-run proves nothing differs → verify the
+#   live site serves THIS build (same asset hashes) → /admin SPA-fallback check.
+#
+# Production access is an rrsync-restricted key (forced command
+# `rrsync -wo /home/rentnking/timetrackerpro.rentnking.com`):
+#   - the key has NO shell: every SSH interaction here is an rsync transfer or
+#     rsync dry-run — there are no remote `test`/`ls`/`stat` preflights;
+#   - the production directory IS the restricted root, so the rsync destination
+#     is `${SSH_USERNAME}@${SSH_HOST}:/` (never the absolute server path);
+#   - write-only: nothing is ever pulled back from production.
+#
+# Two jobs on purpose:
+#   build  — obsolete builds may be cancelled (a newer push supersedes them).
+#   deploy — never cancelled mid-flight (an interrupted rsync --delete could leave
+#            a half-swapped tree); serialized in its own group, and it refuses to
+#            run once a newer commit is the head of main, so an older workflow can
+#            never overwrite a newer production deployment.
+#
+# Ownership boundary inside the production root:
+#   React deployment owns  index.html, assets/ and every other file emitted to dist/
+#   server / cPanel owns   .htaccess (SPA routing), .well-known/ (ACME/DCV/SSL
+#                          validation), cgi-bin/ (vhost ScriptAlias)
+# The server-owned paths are never in dist/ and never deployed from here: ONE
+# shared rsync option set excludes all three, so --delete (kept — it mirrors the
+# React-owned contents exactly) can neither transfer nor delete them. The
+# .htaccess SPA fallback is proven after every deploy by the HTTPS checks on /
+# and /admin (both must be HTTP 200 and serve this build).
+#
+# Repository secrets (Settings → Secrets and variables → Actions):
+#   SSH_PRIVATE_KEY   the rrsync-restricted deploy key (OpenSSH format)
+#   SSH_HOST          production host
+#   SSH_USERNAME      deploy user
+#   SSH_PORT          SSH port (defaults to 22 when empty)
+#   SSH_KNOWN_HOSTS   the host's known_hosts line(s) — fingerprint-verified — so
+#                     StrictHostKeyChecking stays ON (no trust-on-first-use).
+# The obsolete FRONTEND_DEPLOY_PATH secret is NOT used: the path lives in the
+# server-side forced command, not in this workflow.
+# The API base is public build configuration and is kept explicit below.
+
+name: Deploy Production
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Every run: step is bash (GitHub's Linux default, made explicit): the shared
+# RSYNC_FLAGS variable relies on ordinary bash word splitting when expanded.
+defaults:
+  run:
+    shell: bash
+
+env:
+  NODE_VERSION: '20'
+  VITE_API_URL: https://api.rentnking.com/api
+  PRODUCTION_URL: https://timetrackerpro.rentnking.com
+
+jobs:
+  build:
+    name: Test, type-check and build the exact commit
+    runs-on: ubuntu-latest
+    # A newer push makes an in-progress BUILD obsolete — cancelling it is safe
+    # (nothing has touched production yet).
+    concurrency:
+      group: timetracker-pro-build
+      cancel-in-progress: true
+    outputs:
+      built_sha: ${{ steps.sha.outputs.sha }}
+    steps:
+      - name: Checkout the triggering commit
+        uses: actions/checkout@v4
+        # actions/checkout defaults to github.sha — the exact commit that
+        # triggered this run (push) or the head of the chosen ref (dispatch).
+
+      - name: Record and assert the exact SHA being built
+        id: sha
+        run: |
+          set -euo pipefail
+          HEAD_SHA="$(git rev-parse HEAD)"
+          echo "Triggering SHA: ${GITHUB_SHA}"
+          echo "Checked out:    ${HEAD_SHA}"
+          [ "${HEAD_SHA}" = "${GITHUB_SHA}" ] || { echo "::error::Checked-out commit differs from the triggering SHA"; exit 1; }
+          echo "sha=${HEAD_SHA}" >> "${GITHUB_OUTPUT}"
+
+      - name: Set up Node ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies (lockfile-exact; never audit fix)
+        run: npm ci
+
+      - name: Vitest
+        run: npm test
+
+      - name: TypeScript
+        run: npx tsc --noEmit
+
+      - name: Production build
+        run: npm run build
+        env:
+          VITE_API_URL: ${{ env.VITE_API_URL }}
+
+      - name: Inspect the build (SPA index, asset manifest, API base)
+        run: |
+          set -euo pipefail
+          test -f dist/index.html || { echo "::error::dist/index.html missing"; exit 1; }
+          grep -q 'id="root"' dist/index.html || { echo "::error::dist/index.html is not the SPA shell"; exit 1; }
+          grep -oE '/assets/[A-Za-z0-9._-]+\.(js|css)' dist/index.html | sort -u > dist-assets.txt
+          [ -s dist-assets.txt ] || { echo "::error::No hashed JS/CSS assets referenced by dist/index.html"; exit 1; }
+          echo "Assets built for ${GITHUB_SHA}:"; cat dist-assets.txt
+          grep -lq "api.rentnking.com/api" dist/assets/*.js || { echo "::error::Production API base is not baked into the bundle"; exit 1; }
+          echo "Production API base confirmed in the bundle."
+          for reserved in .htaccess .well-known cgi-bin; do
+            if [ -e "dist/${reserved}" ]; then
+              echo "::error::dist contains ${reserved} — that path is server/cPanel-owned and must never be built or deployed from here"
+              exit 1
+            fi
+          done
+
+      - name: Upload the built dist for the deploy job
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ github.sha }}
+          path: |
+            dist
+            dist-assets.txt
+          if-no-files-found: error
+          retention-days: 7
+
+  deploy:
+    name: Deploy to production
+    needs: build
+    runs-on: ubuntu-latest
+    # Deploys are SERIALIZED and never cancelled once started. GitHub keeps at
+    # most one running + one pending run per group and cancels an older pending
+    # one when a newer arrives, so the newest commit always deploys last.
+    concurrency:
+      group: timetracker-pro-production
+      cancel-in-progress: false
+    steps:
+      - name: Production deploys only from main
+        run: |
+          set -euo pipefail
+          [ "${GITHUB_REF}" = "refs/heads/main" ] || { echo "::error::Refusing to deploy ref ${GITHUB_REF}: production is main only"; exit 1; }
+
+      - name: Refuse to deploy a superseded commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          MAIN_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/branches/main" --jq .commit.sha)"
+          echo "This run:    ${GITHUB_SHA}"
+          echo "main is now: ${MAIN_SHA}"
+          if [ "${MAIN_SHA}" != "${GITHUB_SHA}" ]; then
+            echo "::error::main has moved to ${MAIN_SHA}; refusing to overwrite production with the older ${GITHUB_SHA}. The newer run deploys."
+            exit 1
+          fi
+
+      - name: Download the tested build
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-${{ github.sha }}
+
+      - name: Verify the artifact is the tested build
+        run: |
+          set -euo pipefail
+          test -f dist/index.html || { echo "::error::Artifact has no dist/index.html"; exit 1; }
+          for reserved in .htaccess .well-known cgi-bin; do
+            [ ! -e "dist/${reserved}" ] || { echo "::error::Artifact contains server-owned ${reserved} — refusing to deploy"; exit 1; }
+          done
+          grep -oE '/assets/[A-Za-z0-9._-]+\.(js|css)' dist/index.html | sort -u > built-assets.txt
+          diff -u dist-assets.txt built-assets.txt || { echo "::error::Artifact index.html does not match the build job's asset manifest"; exit 1; }
+          echo "Deploying assets:"; cat built-assets.txt
+
+      - name: Configure SSH (key + verified known_hosts; secrets never echoed)
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USERNAME: ${{ secrets.SSH_USERNAME }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+        run: |
+          set -euo pipefail
+          for v in SSH_PRIVATE_KEY SSH_KNOWN_HOSTS SSH_HOST SSH_USERNAME; do
+            [ -n "${!v}" ] || { echo "::error::Missing required secret ${v}"; exit 1; }
+          done
+          install -d -m 700 "${HOME}/.ssh"
+          umask 077
+          printf '%s\n' "${SSH_PRIVATE_KEY}" > "${HOME}/.ssh/deploy_key"
+          printf '%s\n' "${SSH_KNOWN_HOSTS}" > "${HOME}/.ssh/known_hosts"
+          chmod 600 "${HOME}/.ssh/deploy_key" "${HOME}/.ssh/known_hosts"
+          PORT="${SSH_PORT:-22}"
+          # Host verification stays STRICT: the host key must match the stored,
+          # fingerprint-verified known_hosts entry. IdentitiesOnly prevents agent
+          # key leakage; BatchMode fails fast instead of prompting.
+          SSH_OPTS="-i ${HOME}/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=${HOME}/.ssh/known_hosts -p ${PORT}"
+          {
+            echo "SSH_OPTS=${SSH_OPTS}"
+            # rrsync restricted root: the production directory is "/" for this key.
+            echo "RSYNC_DEST=${SSH_USERNAME}@${SSH_HOST}:/"
+            # ONE option set shared by the preflight dry-run, the real transfer
+            # and the post-deploy checksum dry-run:
+            #   -rlptD = archive minus owner/group (a non-root deploy user cannot
+            #            set them and they would only add noise to the itemized
+            #            dry-runs); -O ignores directory mtimes;
+            #   --delete mirrors the React-owned contents exactly (kept);
+            #   --exclude x3 narrows --delete: the server/cPanel-owned .htaccess,
+            #            .well-known/ and cgi-bin/ are kept out of BOTH the
+            #            transfer AND the deletion set (required safeguards).
+            # (Values are unquoted on purpose: this variable is word-split when
+            #  expanded; the patterns contain no shell-special characters.)
+            echo "RSYNC_FLAGS=-rlptD --omit-dir-times --delete --exclude=.htaccess --exclude=.well-known/ --exclude=cgi-bin/"
+          } >> "${GITHUB_ENV}"
+          echo "SSH configured for port ${PORT} with strict host verification; rsync target is the rrsync restricted root."
+
+      - name: Preflight — rsync dry-run against the restricted root (no shell, no changes)
+        run: |
+          set -euo pipefail
+          # Proves: key accepted, host key verified, rrsync accepts this exact
+          # command shape, and shows every change the real run will make. Nothing
+          # is written. The server-owned paths are excluded, so they can never
+          # appear as deletions.
+          # shellcheck disable=SC2086
+          rsync ${RSYNC_FLAGS} --dry-run --itemize-changes --out-format='%i %n' \
+            -e "ssh ${SSH_OPTS}" dist/ "${RSYNC_DEST}" > preflight.txt
+          echo "Planned changes ($(wc -l < preflight.txt | tr -d ' ') item(s)):"; cat preflight.txt
+          # Belt and braces: the excludes make this impossible, but never let a
+          # server-owned path show up in the deletion set.
+          if grep -Eq '^\*deleting +(\.htaccess|\.well-known(/|$)|cgi-bin(/|$))' preflight.txt; then
+            echo "::error::Dry-run would delete a server-owned path (.htaccess / .well-known/ / cgi-bin/) — aborting"
+            exit 1
+          fi
+
+      - name: rsync dist/ to production (preserving .htaccess)
+        run: |
+          set -euo pipefail
+          # The proven manual command, from the runner: the same flags as the
+          # preflight, for real. Itemized so the log shows exactly what changed.
+          # shellcheck disable=SC2086
+          rsync ${RSYNC_FLAGS} -v --itemize-changes \
+            -e "ssh ${SSH_OPTS}" dist/ "${RSYNC_DEST}"
+
+      - name: Verify production files match the artifact (rsync --checksum dry-run)
+        run: |
+          set -euo pipefail
+          # Content-level proof without shell access: a checksum dry-run against
+          # the same destination must itemize NOTHING. Without -v, rsync prints
+          # only itemized changes, so any surviving line is a real difference.
+          # shellcheck disable=SC2086
+          rsync ${RSYNC_FLAGS} --checksum --dry-run --itemize-changes --out-format='%i %n' \
+            -e "ssh ${SSH_OPTS}" dist/ "${RSYNC_DEST}" > post-sync.txt
+          # Itemize codes are 11 chars on GNU rsync (YXcstpoguax) and 9 on some
+          # other implementations — accept both so a difference is never missed.
+          changes="$(grep -E '^(\*deleting +|[<>ch.][fdLDS][^ ]{7,9} )' post-sync.txt || true)"
+          if [ -n "${changes}" ]; then
+            echo "::error::Production still differs from the built artifact after deploy:"
+            echo "${changes}"
+            exit 1
+          fi
+          echo "Production files are byte-identical to the built artifact (server-owned .htaccess, .well-known/, cgi-bin/ excluded)."
+
+      - name: Verify the live site serves THIS build
+        run: |
+          set -euo pipefail
+          # 1. Root responds 200 and is the SPA shell.
+          curl -fsSL --retry 3 --retry-delay 2 -o live-index.html "${PRODUCTION_URL}/"
+          grep -q 'id="root"' live-index.html || { echo "::error::Production root is not the SPA index"; exit 1; }
+          # 2. Production references EXACTLY the asset files this workflow built.
+          grep -oE '/assets/[A-Za-z0-9._-]+\.(js|css)' live-index.html | sort -u > live-assets.txt
+          if ! diff -u built-assets.txt live-assets.txt; then
+            echo "::error::Production index.html references different assets than this build (stale or partial deploy)"
+            exit 1
+          fi
+          echo "Production references exactly this build's assets."
+          # 3. Every referenced asset is served.
+          while read -r asset; do
+            code="$(curl -sS -o /dev/null -w '%{http_code}' "${PRODUCTION_URL}${asset}")"
+            [ "${code}" = "200" ] || { echo "::error::${asset} returned HTTP ${code}"; exit 1; }
+            echo "200 ${asset}"
+          done < built-assets.txt
+
+      - name: Verify /admin SPA fallback (server-owned .htaccess still works)
+        run: |
+          set -euo pipefail
+          code="$(curl -sS -o admin.html -w '%{http_code}' "${PRODUCTION_URL}/admin")"
+          [ "${code}" = "200" ] || { echo "::error::${PRODUCTION_URL}/admin returned HTTP ${code} — SPA fallback (.htaccess) is broken"; exit 1; }
+          grep -q 'id="root"' admin.html || { echo "::error::/admin did not return the SPA shell"; exit 1; }
+          grep -oE '/assets/[A-Za-z0-9._-]+\.(js|css)' admin.html | sort -u > admin-assets.txt
+          diff -u built-assets.txt admin-assets.txt || { echo "::error::/admin serves a different bundle than the root"; exit 1; }
+          echo "/admin serves the current SPA shell (HTTP 200, same bundle)."
+
+      - name: Remove the deploy key
+        if: always()
+        run: rm -rf "${HOME}/.ssh/deploy_key" "${HOME}/.ssh/known_hosts"
