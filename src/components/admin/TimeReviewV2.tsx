@@ -17,6 +17,7 @@ import {
   fetchEmployees,
   fetchTimeReview,
   formatDuration,
+  paidFromAt,
   removeLunchOverride,
   timeReviewToCsv,
 } from '../../lib/admin';
@@ -466,6 +467,10 @@ const TimeReviewV2: React.FC<TimeReviewProps> = ({ initialUserId, initialFrom, i
                                 </td>
                               );
                             }
+                            // Restrict Paid Time to Shift Start: the Clock In cell keeps
+                            // the REAL punch; a small note names where paid time began
+                            // when the server clamped it to the scheduled start.
+                            const paidFrom = c.key === 'clock_in' ? paidFromAt(d) : null;
                             return (
                               <td key={c.key} className="px-2 py-2 text-center">
                                 <PunchCell
@@ -474,6 +479,14 @@ const TimeReviewV2: React.FC<TimeReviewProps> = ({ initialUserId, initialFrom, i
                                   tz={tz}
                                   onClick={() => editPosition(d, c.key, c.label)}
                                 />
+                                {paidFrom && (
+                                  <div
+                                    className="mt-0.5 text-[11px] leading-tight text-gray-500 whitespace-nowrap"
+                                    title="Early clock-in: paid time begins at the scheduled shift start (Restrict Paid Time to Shift Start). The actual Clock In is kept on record."
+                                  >
+                                    Paid from {formatClock(paidFrom, tz)}
+                                  </div>
+                                )}
                               </td>
                             );
                           })}

@@ -201,6 +201,10 @@ export interface TimeReviewDay extends PayrollFields {
     is_full_day: boolean;
   } | null;
   positions: Record<PositionKey, DayPosition | null>;
+  // Where the PRIMARY shift's paid time began when Restrict Paid Time to Shift
+  // Start clamped it to the scheduled start (canonical tt_shifts.paid_start_at);
+  // null = paid from the actual Clock In. Display only — see paidFromAt().
+  paid_start_at?: string | null;
   event_count: number;
   has_extra_events: boolean;
   // Pending (unresolved) day + its reason labels; and whether the clock-out shown
@@ -261,6 +265,20 @@ export const POSITION_COLUMNS: { key: PositionKey; label: string }[] = [
   { key: 'other_end', label: 'Break In' },
   { key: 'clock_out', label: 'Clock Out' },
 ];
+
+/**
+ * The instant the day's paid time began when it is LATER than the actual Clock
+ * In (Restrict Paid Time to Shift Start clamped it to the scheduled start), else
+ * null. Drives the "Paid from 7:00 AM" note beside the real punch so Paid vs the
+ * punches is explainable. Pure display: the decision is the server's
+ * paid_start_at — nothing is calculated here.
+ */
+export function paidFromAt(day: Pick<TimeReviewDay, 'paid_start_at' | 'positions'>): string | null {
+  const paid = day.paid_start_at ?? null;
+  const punch = day.positions?.clock_in?.at ?? null;
+  if (!paid || !punch) return null;
+  return new Date(paid).getTime() > new Date(punch).getTime() ? paid : null;
+}
 
 function csvCell(value: string | number): string {
   const s = String(value);

@@ -545,7 +545,7 @@ const SystemSettings: React.FC = () => {
               label="Restrict Paid Time to Shift Start"
               value={settings.restrict_paid_time_to_shift_start}
               onChange={flag('restrict_paid_time_to_shift_start')}
-              hint="Early Clock Ins are recorded, but paid time begins at the scheduled shift start."
+              hint="When enabled, an early clock-in is recorded but paid time does not begin until the employee's scheduled shift start. Late clock-ins begin paid time at the actual clock-in. Employees without a scheduled shift begin paid time at the actual clock-in."
             />
           </div>
         </Section>

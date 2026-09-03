@@ -35,6 +35,12 @@ export interface ClockShift {
   id: number;
   status: 'open' | 'closed';
   clock_in_at: string | null;
+  /**
+   * Canonical paid start (ISO instant) when Restrict Paid Time to Shift Start
+   * clamped it to the scheduled start; null = paid from the actual clock-in.
+   * Display only ("Paid from 7:00 AM") — the rule lives server-side.
+   */
+  paid_start_at?: string | null;
   clock_out_at: string | null;
   worked_seconds: number;
   breaks: ClockBreak[];

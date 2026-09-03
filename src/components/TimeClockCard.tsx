@@ -59,6 +59,18 @@ const STATUS_STYLES: Record<string, string> = {
   on_other: 'bg-purple-100 text-purple-800 border-purple-200',
 };
 
+// ── Restrict Paid Time to Shift Start — employee-facing policy copy ──────────
+// Shown only while the tenant setting is ON, the employee has a scheduled start
+// today, and that start has not arrived yet. Never shown when the setting is
+// OFF or there is no schedule (paid time then begins at the actual punch).
+//
+// Before clocking in: the standing policy.
+export const EARLY_CLOCK_IN_POLICY_NOTICE =
+  'Early clock-ins do not start paid time. If you clock in before your scheduled shift, do not begin working until your scheduled start time.';
+// After an early clock-in: the specific instruction, with the scheduled time.
+export const earlyClockInNotice = (scheduledStart: string): string =>
+  `Your shift starts at ${scheduledStart}. Your clock-in was recorded, but paid time begins at ${scheduledStart}. Please do not begin working until then.`;
+
 const TimeClockCard: React.FC = () => {
   const { state, status, statusLabel, allowedActions, shift, openBreak, loading, working, error, perform } =
     useTimeClock();
@@ -94,19 +106,37 @@ const TimeClockCard: React.FC = () => {
     : 0;
 
   // ── The one employee-facing notice (priority: Lunch → pre-shift → nothing) ──
+  // Pre-shift copy exists only while the paid-time restriction is ON and today's
+  // canonical scheduled start (server-resolved, tenant timezone) is still ahead:
+  //   OFF the clock  → the standing policy (early clock-ins do not start paid time)
+  //   ON the clock   → the specific instruction naming the scheduled start
+  // Both vanish on their own at the scheduled start (1s tick above). Instants are
+  // compared as instants — never as browser-local wall clocks.
   const tz = state?.timezone ?? 'UTC';
   const shiftStartAt = state?.today_shift_start_at ?? null;
+  const restrictPaid = !!state?.restrict_paid_to_shift_start;
   const beforeShiftStart = !!shiftStartAt && Date.now() < new Date(shiftStartAt).getTime();
   let notice: string | null = null;
   if (status === 'on_lunch') {
     notice = `Standard minimum lunch is ${state?.minimum_lunch_minutes ?? 30} minutes.`;
-  } else if (
-    (status === 'on_clock' || status === 'on_other') &&
-    state?.restrict_paid_to_shift_start &&
-    beforeShiftStart
-  ) {
-    notice = `Your shift starts at ${formatClock(shiftStartAt, tz)}. Please do not begin working until that time.`;
+  } else if (restrictPaid && beforeShiftStart) {
+    if (status === 'off') {
+      notice = EARLY_CLOCK_IN_POLICY_NOTICE;
+    } else if (status === 'on_clock' || status === 'on_other') {
+      notice = earlyClockInNotice(formatClock(shiftStartAt, tz));
+    }
   }
+
+  // "Paid from": the server's canonical paid start for the OPEN shift when it is
+  // later than the real punch (early clock-in under the restriction). The punch
+  // stays the Clock In shown to the employee; this only names where pay begins.
+  const paidFromAt =
+    shift?.status === 'open' &&
+    shift.paid_start_at &&
+    clockedInSince &&
+    new Date(shift.paid_start_at).getTime() > new Date(clockedInSince).getTime()
+      ? shift.paid_start_at
+      : null;
 
   // ── Primary progression (visual hierarchy ONLY — the server's allowed_actions
   // still decide what exists). The next NORMAL step is largest:
@@ -172,6 +202,14 @@ const TimeClockCard: React.FC = () => {
             On the clock since{' '}
             <span className="font-medium text-gray-700">{formatClockTime(clockedInSince)}</span>
             <span className="ml-2 font-mono text-gray-700">({formatDuration(elapsedSeconds)})</span>
+            {paidFromAt && (
+              <span
+                className="ml-2 whitespace-nowrap"
+                title="Your clock-in is recorded as shown. Paid time begins at your scheduled shift start."
+              >
+                · Paid from <span className="font-medium text-gray-700">{formatClock(paidFromAt, tz)}</span>
+              </span>
+            )}
           </div>
         )}
       </div>

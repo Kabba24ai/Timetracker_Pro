@@ -20,7 +20,7 @@ export type HistoryDay = Omit<TimeReviewDay, 'events'>;
 export type HistoryReview = Omit<TimeReview, 'days'> & { days: HistoryDay[] };
 
 export type { PayrollFields, TimeReviewParams, PositionKey, DayPosition } from './admin';
-export { POSITION_COLUMNS } from './admin';
+export { POSITION_COLUMNS, paidFromAt } from './admin';
 
 /** The authenticated employee's own per-day Work History (server derives the user). */
 export async function fetchMyHistory(params: TimeReviewParams): Promise<HistoryReview> {

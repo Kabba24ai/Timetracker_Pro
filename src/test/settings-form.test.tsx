@@ -236,7 +236,11 @@ describe('Settings form — persistence', () => {
     // ToggleField nests the label text inside a span — climb to the <label>.
     const toggle = screen.getByText('Restrict Paid Time to Shift Start').closest('label')!.querySelector('input') as HTMLInputElement;
     expect(toggle.checked).toBe(true); // default ON
-    expect(screen.getByText('Early Clock Ins are recorded, but paid time begins at the scheduled shift start.')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "When enabled, an early clock-in is recorded but paid time does not begin until the employee's scheduled shift start. Late clock-ins begin paid time at the actual clock-in. Employees without a scheduled shift begin paid time at the actual clock-in.",
+      ),
+    ).toBeInTheDocument();
 
     await user.click(toggle);
     await user.click(screen.getByRole('button', { name: /Save Settings/ }));

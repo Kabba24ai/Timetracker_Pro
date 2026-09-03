@@ -8,6 +8,7 @@ import {
   HistoryReview,
   POSITION_COLUMNS,
   fetchMyHistory,
+  paidFromAt,
   formatDuration,
 } from '../../lib/history';
 import { formatClock } from '../../lib/tz';
@@ -157,15 +158,28 @@ const EmployeeWorkHistory: React.FC = () => {
                       </span>
                     )}
                   </td>
-                  {POSITION_COLUMNS.map((c) => (
-                    <td key={c.key} className="px-2 py-2 text-center">
-                      <PunchCell
-                        pos={d.positions[c.key]}
-                        unverified={c.key === 'clock_out' && d.clock_out_unverified}
-                        tz={tz}
-                      />
-                    </td>
-                  ))}
+                  {POSITION_COLUMNS.map((c) => {
+                    // Early clock-in under Restrict Paid Time to Shift Start: the
+                    // real punch stays; the note names where paid time began.
+                    const paidFrom = c.key === 'clock_in' ? paidFromAt(d) : null;
+                    return (
+                      <td key={c.key} className="px-2 py-2 text-center">
+                        <PunchCell
+                          pos={d.positions[c.key]}
+                          unverified={c.key === 'clock_out' && d.clock_out_unverified}
+                          tz={tz}
+                        />
+                        {paidFrom && (
+                          <div
+                            className="mt-0.5 text-[11px] leading-tight text-gray-500 whitespace-nowrap"
+                            title="Your clock-in is recorded as shown. Paid time began at your scheduled shift start."
+                          >
+                            Paid from {formatClock(paidFrom, tz)}
+                          </div>
+                        )}
+                      </td>
+                    );
+                  })}
                   <td className="px-3 py-2 text-right font-mono font-semibold text-blue-700 whitespace-nowrap">
                     {d.pending ? (
                       <span className="font-sans text-amber-600 font-medium">Pending</span>

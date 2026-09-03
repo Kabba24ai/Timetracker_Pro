@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
 // A mutable fake of the kabba2 TimeTracker V2 API. It models the authoritative
 // state machine on the "server" so these tests prove the WIRING: the client
@@ -14,6 +14,8 @@ const server = vi.hoisted(() => ({
   shiftStartAt: null as string | null,
   restrict: true,
   minLunch: 30,
+  // Canonical paid start of the OPEN shift (ClockStatePresenter shift.paid_start_at).
+  paidStartAt: null as string | null,
   breaks: [] as Array<{ id: number; type: 'lunch' | 'other'; start_at: string | null; end_at: string | null; duration_seconds: number }>,
 }));
 
@@ -79,6 +81,7 @@ vi.mock('../lib/api', () => {
           id: 1,
           status: 'open',
           clock_in_at: '2026-09-14T09:00:00-05:00',
+          paid_start_at: server.paidStartAt,
           clock_out_at: null,
           worked_seconds: 0,
           breaks: server.breaks,
@@ -154,7 +157,7 @@ vi.mock('../lib/api', () => {
 import { MemoryRouter } from 'react-router-dom';
 import { AuthProvider, useAuth } from '../contexts/AuthContext';
 import { TimeClockProvider } from '../contexts/TimeClockContext';
-import TimeClockCard from '../components/TimeClockCard';
+import TimeClockCard, { EARLY_CLOCK_IN_POLICY_NOTICE, earlyClockInNotice } from '../components/TimeClockCard';
 
 function Harness() {
   return (
@@ -184,6 +187,7 @@ beforeEach(() => {
   server.shiftStartAt = null;
   server.restrict = true;
   server.minLunch = 30;
+  server.paidStartAt = null;
   server.breaks = [];
   localStorage.clear();
 });
@@ -338,8 +342,10 @@ describe('TimeClock — employee notice area', () => {
     seedLoggedIn('on_clock');
     render(<Harness />);
 
-    const expected = `Your shift starts at ${chicagoClockOf(server.shiftStartAt)}. Please do not begin working until that time.`;
+    const t = chicagoClockOf(server.shiftStartAt);
+    const expected = `Your shift starts at ${t}. Your clock-in was recorded, but paid time begins at ${t}. Please do not begin working until then.`;
     expect(await screen.findByText(expected)).toBeInTheDocument();
+    expect(expected).toBe(earlyClockInNotice(t));
   });
 
   it('the pre-shift notice disappears once the scheduled start has arrived', async () => {
@@ -386,6 +392,108 @@ describe('TimeClock — employee notice area', () => {
     render(<Harness />);
     expect(await screen.findByText(/Standard minimum lunch/)).toBeInTheDocument();
     expect(screen.queryByText(/Your shift starts at/)).not.toBeInTheDocument();
+  });
+});
+
+// ── Restrict Paid Time to Shift Start — employee policy + "Paid from" ─────────
+
+const localClockOf = (iso: string) =>
+  new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+
+describe('TimeClock — early clock-in policy (Restrict Paid Time to Shift Start)', () => {
+  it('OFF the clock with a schedule ahead and the setting ON: the standing policy notice is visible', async () => {
+    server.shiftStartAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    seedLoggedIn('off');
+    render(<Harness />);
+
+    await screen.findByRole('button', { name: /clock in/i });
+    expect(screen.getByText(EARLY_CLOCK_IN_POLICY_NOTICE)).toBeInTheDocument();
+    // It is a notice, not a modal.
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    // The specific clocked-in variant is not shown before clocking in.
+    expect(screen.queryByText(/Your clock-in was recorded/)).not.toBeInTheDocument();
+  });
+
+  it('clocking in early swaps the standing policy for the specific scheduled-start instruction', async () => {
+    server.shiftStartAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    seedLoggedIn('off');
+    render(<Harness />);
+    expect(await screen.findByText(EARLY_CLOCK_IN_POLICY_NOTICE)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /clock in/i }));
+
+    expect(await screen.findByText(earlyClockInNotice(chicagoClockOf(server.shiftStartAt)))).toBeInTheDocument();
+    expect(screen.queryByText(EARLY_CLOCK_IN_POLICY_NOTICE)).not.toBeInTheDocument();
+  });
+
+  it('the early-clock-in notice disappears on its own when the scheduled start arrives', async () => {
+    server.shiftStartAt = new Date(Date.now() + 1500).toISOString(); // starts in 1.5s
+    seedLoggedIn('on_clock');
+    render(<Harness />);
+
+    expect(await screen.findByText(/Your shift starts at/)).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText(/Your shift starts at/)).not.toBeInTheDocument(), { timeout: 5000 });
+  });
+
+  it('OFF the clock after the scheduled start: no early-clock-in copy (nothing early can happen)', async () => {
+    server.shiftStartAt = new Date(Date.now() - 60 * 1000).toISOString();
+    seedLoggedIn('off');
+    render(<Harness />);
+    await screen.findByRole('button', { name: /clock in/i });
+    expect(screen.queryByText(EARLY_CLOCK_IN_POLICY_NOTICE)).not.toBeInTheDocument();
+  });
+
+  it('setting OFF: no unpaid-early-clock-in claim, off or on the clock', async () => {
+    server.restrict = false;
+    server.shiftStartAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    seedLoggedIn('off');
+    render(<Harness />);
+    await screen.findByRole('button', { name: /clock in/i });
+    expect(screen.queryByText(EARLY_CLOCK_IN_POLICY_NOTICE)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /clock in/i }));
+    await screen.findByRole('button', { name: /clock out/i });
+    expect(screen.queryByText(/Your shift starts at/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/paid time/i)).not.toBeInTheDocument();
+  });
+
+  it('no scheduled shift: the UI never claims payment is delayed', async () => {
+    server.shiftStartAt = null;
+    seedLoggedIn('off');
+    render(<Harness />);
+    await screen.findByRole('button', { name: /clock in/i });
+    expect(screen.queryByText(EARLY_CLOCK_IN_POLICY_NOTICE)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /clock in/i }));
+    await screen.findByRole('button', { name: /clock out/i });
+    expect(screen.queryByText(/Your shift starts at/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Paid from/)).not.toBeInTheDocument();
+  });
+
+  it('an early open shift shows the real punch as Clock In and the canonical paid start as "Paid from"', async () => {
+    server.paidStartAt = '2026-09-14T09:30:00-05:00'; // server clamped paid time to the 9:30 AM scheduled start
+    seedLoggedIn('on_clock');
+    render(<Harness />);
+    await screen.findByRole('button', { name: /clock out/i });
+
+    // The punch (9:00 AM Chicago) is still what "On the clock since" shows.
+    expect(screen.getByText(localClockOf('2026-09-14T09:00:00-05:00'))).toBeInTheDocument();
+    const paidFrom = screen.getByText(/Paid from/);
+    expect(paidFrom.textContent).toContain(chicagoClockOf(server.paidStartAt));
+  });
+
+  it('no "Paid from" when paid time begins at the actual punch', async () => {
+    server.paidStartAt = null;
+    seedLoggedIn('on_clock');
+    render(<Harness />);
+    await screen.findByRole('button', { name: /clock out/i });
+    expect(screen.queryByText(/Paid from/)).not.toBeInTheDocument();
+
+    // Equal to the punch (on-time) is not "later" either.
+    server.paidStartAt = '2026-09-14T09:00:00-05:00';
+    fireEvent.click(screen.getByRole('button', { name: /start lunch/i }));
+    await screen.findByRole('button', { name: /end lunch/i });
+    expect(screen.queryByText(/Paid from/)).not.toBeInTheDocument();
   });
 });
 
