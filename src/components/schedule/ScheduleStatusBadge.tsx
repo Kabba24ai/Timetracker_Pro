@@ -1,13 +1,17 @@
 import React from 'react';
-import { Palmtree, CalendarOff, CircleSlash } from 'lucide-react';
-import { TimeOffStatus } from '../../lib/schedule';
+import { Palmtree, CalendarOff, CircleSlash, Stethoscope, Scale, HeartCrack, PartyPopper, CalendarCheck } from 'lucide-react';
+import { DayStatusCode, TimeOffStatus } from '../../lib/schedule';
 
 // A shared, read-only status pill for the Work Schedule surfaces (employee page
 // AND the admin grid overlay). Approved Vacation / Unpaid Time Off / generic Time
-// Off, plus an explicit Day Off. No hours, balances, or private detail — purely
-// the operational availability state.
+// Off, an explicit Day Off, and the schedule-owned DISPLAY statuses a manager
+// sets on the grid. No hours, balances, or private detail — purely the
+// operational availability state.
+//
+// Colors are drawn from the palette already in use across the admin UI
+// (indigo/amber/slate/green/blue/rose/violet), not from a mockup.
 
-export type ScheduleStatus = TimeOffStatus | 'day_off';
+export type ScheduleStatus = TimeOffStatus | DayStatusCode | 'day_off';
 
 const STYLES: Record<ScheduleStatus, { label: string; cls: string; icon: React.ReactNode }> = {
   vacation: {
@@ -29,6 +33,33 @@ const STYLES: Record<ScheduleStatus, { label: string; cls: string; icon: React.R
     label: 'Day Off',
     cls: 'bg-gray-50 text-gray-400 border-gray-200',
     icon: <CalendarOff className="h-3 w-3" />,
+  },
+  // Schedule display statuses (vacation / unpaid_time_off reuse the entries
+  // above, so the same absence never changes color between the two sources).
+  sick: {
+    label: 'Sick',
+    cls: 'bg-rose-100 text-rose-700 border-rose-200',
+    icon: <Stethoscope className="h-3 w-3" />,
+  },
+  paid_time_off: {
+    label: 'Paid Time Off',
+    cls: 'bg-green-100 text-green-700 border-green-200',
+    icon: <CalendarCheck className="h-3 w-3" />,
+  },
+  jury_duty: {
+    label: 'Jury Duty',
+    cls: 'bg-blue-100 text-blue-700 border-blue-200',
+    icon: <Scale className="h-3 w-3" />,
+  },
+  bereavement: {
+    label: 'Bereavement',
+    cls: 'bg-violet-100 text-violet-700 border-violet-200',
+    icon: <HeartCrack className="h-3 w-3" />,
+  },
+  holiday: {
+    label: 'Holiday',
+    cls: 'bg-amber-100 text-amber-800 border-amber-200',
+    icon: <PartyPopper className="h-3 w-3" />,
   },
 };
 

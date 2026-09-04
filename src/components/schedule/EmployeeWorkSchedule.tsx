@@ -3,7 +3,9 @@ import { AlertCircle, RefreshCw } from 'lucide-react';
 import { ApiError } from '../../lib/api';
 import {
   Cells,
+  DayStatusCell,
   EmployeeView,
+  HolidayMarker,
   ScheduleDate,
   ScheduleSegmentCell,
   ScheduleView,
@@ -35,18 +37,54 @@ const chip = (hex: string): React.CSSProperties => ({ backgroundColor: `${hex}1f
 const tint = (hex: string) => `${hex}14`;
 
 /** Read-only cell content: absence badge (full-day) replaces the shift; a partial
- *  absence keeps the shift plus a partial tag; day-off and blank are distinct. */
+ *  absence keeps the shift plus a partial tag; day-off and blank are distinct.
+ *
+ *  A global Holiday is CONTEXT and always sits above whatever else the cell
+ *  shows — everyone looking at the schedule should see that the date is a
+ *  holiday, whether they work it, are away, or have nothing scheduled. An
+ *  explicit schedule status takes the employee-status slot ahead of the approved
+ *  time-off overlay, so one absence is never badged twice. */
 const CellContent: React.FC<{
   segs: ScheduleSegmentCell[];
   color: string;
   timeOff?: TimeOffCell;
   dayOff?: boolean;
-}> = ({ segs, color, timeOff, dayOff }) => {
+  dayStatus?: DayStatusCell;
+  holidays?: HolidayMarker[];
+}> = ({ segs, color, timeOff, dayOff, dayStatus, holidays }) => {
+  const context = (holidays ?? []).map((h) => (
+    <ScheduleStatusBadge key={h.id} status="holiday" label={h.name} className="mb-1 w-full justify-center" />
+  ));
+  const withContext = (body: React.ReactNode) =>
+    context.length > 0 ? (
+      <div>
+        {context}
+        {body}
+      </div>
+    ) : (
+      <>{body}</>
+    );
+
+  if (dayStatus) {
+    return withContext(
+      dayStatus.is_full_day || segs.length === 0 ? (
+        <ScheduleStatusBadge status={dayStatus.status} label={dayStatus.label} />
+      ) : (
+        <div className="space-y-1">
+          {segs.map((seg, i) => (
+            <span key={seg.segment_id ?? `p${i}`} style={chip(color)} className="block px-2 py-1 rounded border text-xs font-medium whitespace-nowrap">
+              {formatRange(seg)}
+            </span>
+          ))}
+        </div>
+      ),
+    );
+  }
   if (timeOff && timeOff.is_full_day) {
-    return <ScheduleStatusBadge status={timeOff.status} label={timeOff.label} />;
+    return withContext(<ScheduleStatusBadge status={timeOff.status} label={timeOff.label} />);
   }
   if (segs.length > 0) {
-    return (
+    return withContext(
       <div className="space-y-1">
         {segs.map((seg, i) => (
           <span
@@ -60,13 +98,13 @@ const CellContent: React.FC<{
         {timeOff && !timeOff.is_full_day && (
           <ScheduleStatusBadge status={timeOff.status} label={timeOff.label} partial className="mt-0.5" />
         )}
-      </div>
+      </div>,
     );
   }
   if (dayOff) {
-    return <ScheduleStatusBadge status="day_off" />;
+    return withContext(<ScheduleStatusBadge status="day_off" />);
   }
-  return <span className="text-gray-300 text-xs">—</span>;
+  return withContext(<span className="text-gray-300 text-xs">—</span>);
 };
 
 const HeaderCells: React.FC<{ dates: ScheduleDate[]; firstLabel: string }> = ({ dates, firstLabel }) => (
@@ -122,7 +160,7 @@ const EmployeeWorkSchedule: React.FC = () => {
   // ── Employee Only: one row per store, whole-day states shown across rows ──
   const empRows = useMemo(() => {
     if (!emp) return [] as { store: StoreMeta | null; cells: Cells }[];
-    const rows = emp.employee_view.map((r) => ({ store: storeById.get(r.store_id) ?? null, cells: r.cells }));
+    const rows = emp.employee_view.map((r) => ({ store: storeById.get(r.store_id) ?? null, cells: r.cells, holidays: r.holidays }));
     // If there are no scheduled segments but there ARE whole-day states (day off /
     // approved time off), still show a single row so they are visible.
     if (rows.length === 0 && (emp.day_offs.length > 0 || Object.keys(emp.time_off ?? {}).length > 0)) {
@@ -211,6 +249,8 @@ const EmployeeWorkSchedule: React.FC = () => {
                               color={color}
                               timeOff={empTimeOff[d.date]}
                               dayOff={empDayOffs.has(d.date)}
+                              dayStatus={emp.day_status?.[d.date]}
+                              holidays={row.holidays?.[d.date]}
                             />
                           </td>
                         ))}
@@ -252,7 +292,7 @@ const EmployeeWorkSchedule: React.FC = () => {
                             </td>
                             {dates.map((d) => (
                               <td key={d.date} className="px-1 py-1 align-top border-l border-gray-100 min-w-[7.5rem]">
-                                <CellContent segs={r.cells[d.date] ?? []} color={s.color} timeOff={r.time_off?.[d.date]} />
+                                <CellContent segs={r.cells[d.date] ?? []} color={s.color} timeOff={r.time_off?.[d.date]} dayStatus={r.day_status?.[d.date]} holidays={section?.holidays?.[d.date]} />
                               </td>
                             ))}
                           </tr>

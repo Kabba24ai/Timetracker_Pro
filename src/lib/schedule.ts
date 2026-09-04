@@ -62,9 +62,78 @@ export interface TimeOffCell {
 
 export type TimeOffOverlay = Record<string, TimeOffCell>; // date → overlay
 
+// ── Work Schedule DISPLAY layer (schedule-owned; never payroll) ─────────────
+// A day status is the scheduling manager's EXPECTATION for one employee on one
+// date. It creates no time-off request, no ledger movement, no balance usage,
+// no punch and no shift — the paid side of leave is a separate workflow.
+// 'working' is not stored: it means "no status row", i.e. the normal segments.
+
+export type DayStatusCode =
+  | 'vacation'
+  | 'sick'
+  | 'paid_time_off'
+  | 'jury_duty'
+  | 'bereavement'
+  | 'unpaid_time_off'
+  | 'holiday';
+
+export type DayStatusSelection = DayStatusCode | 'working';
+
+export interface DayStatusCell {
+  // Admin surfaces receive the detailed code. The employee read-only surface
+  // receives the server's PRIVACY-SAFE projection, where every sensitive reason
+  // (sick, paid_time_off, jury_duty, bereavement) has already been collapsed to
+  // 'time_off' server-side — the detail never reaches this client at all.
+  status: DayStatusCode | 'time_off';
+  label: string;
+  // Holiday is contextual and coexists with work; every other status owns the day.
+  is_full_day: boolean;
+}
+
+export type DayStatusOverlay = Record<string, DayStatusCell>; // date → status
+
+/** The modal's Day Status choices, in the approved order. */
+export const DAY_STATUS_OPTIONS: { value: DayStatusSelection; label: string }[] = [
+  { value: 'working', label: 'Working' },
+  { value: 'vacation', label: 'Vacation' },
+  { value: 'sick', label: 'Sick' },
+  { value: 'paid_time_off', label: 'Paid Time Off' },
+  { value: 'jury_duty', label: 'Jury Duty' },
+  { value: 'bereavement', label: 'Bereavement' },
+  { value: 'unpaid_time_off', label: 'Unpaid Time Off' },
+  { value: 'holiday', label: 'Holiday' },
+];
+
+/** Holiday keeps the time controls (people do work holidays); the rest are full-day. */
+export function isFullDayStatus(value: DayStatusSelection): boolean {
+  return value !== 'working' && value !== 'holiday';
+}
+
+export function dayStatusLabel(value: DayStatusSelection): string {
+  return DAY_STATUS_OPTIONS.find((o) => o.value === value)?.label ?? 'Working';
+}
+
+/** A global store-scoped holiday as projected onto one date. */
+export interface HolidayMarker {
+  id: number;
+  name: string;
+}
+
+export type HolidayOverlay = Record<string, HolidayMarker[]>; // date → holidays
+
+export interface Holiday {
+  id: number;
+  name: string;
+  start_date: string; // YYYY-MM-DD
+  end_date: string; // inclusive
+  store_ids: number[];
+}
+
 export interface StoreViewSection {
   store_id: number;
-  rows: { employee: { id: number; full_name: string }; cells: Cells; time_off?: TimeOffOverlay }[];
+  rows: { employee: { id: number; full_name: string }; cells: Cells; time_off?: TimeOffOverlay; day_status?: DayStatusOverlay }[];
+  // Store-scoped holidays for this section, projected server-side.
+  holidays?: HolidayOverlay;
 }
 
 export interface StoreView {
@@ -80,9 +149,10 @@ export interface EmployeeView {
   employee: { id: number; full_name: string };
   dates: ScheduleDate[];
   stores: StoreMeta[];
-  employee_view: { store_id: number; cells: Cells }[];
+  employee_view: { store_id: number; cells: Cells; holidays?: HolidayOverlay }[];
   day_offs: string[];
   time_off?: TimeOffOverlay;
+  day_status?: DayStatusOverlay;
 }
 
 interface ViewParams {
@@ -126,6 +196,7 @@ export async function fetchEmployeeView(userId: number, params: ViewParams): Pro
     employee_view: res.employee_view ?? [],
     day_offs: res.day_offs ?? [],
     time_off: res.time_off ?? {},
+    day_status: res.day_status ?? {},
   };
 }
 
@@ -146,6 +217,7 @@ export async function fetchMyEmployeeSchedule(params: ViewParams): Promise<Emplo
     employee_view: res.employee_view ?? [],
     day_offs: res.day_offs ?? [],
     time_off: res.time_off ?? {},
+    day_status: res.day_status ?? {},
   };
 }
 
@@ -254,6 +326,47 @@ export async function deleteGroup(id: number): Promise<void> {
 export async function applyGroup(id: number, input: { store_id: number } & RangeBody): Promise<AssignmentResult> {
   const res = (await api.post(`/admin/schedule/groups/${id}/apply`, input)) as ApiEnvelope & { result: AssignmentResult };
   return res.result;
+}
+
+// ── Day status + holiday writes (schedule display only) ────────────────────
+
+/**
+ * Set (or replace) the display status for one employee/date. The SERVER owns the
+ * Working → absence transition: saving a full-day status atomically removes that
+ * employee's work segments for the date. The client never deletes-then-creates.
+ */
+export async function setDayStatus(input: { user_id: number; date: string; status: DayStatusCode }): Promise<void> {
+  await api.post('/admin/schedule/day-status', input);
+}
+
+/** Clear the status — the date returns to the normal blank/unscheduled state. */
+export async function clearDayStatus(input: { user_id: number; date: string }): Promise<void> {
+  await api.del('/admin/schedule/day-status', input);
+}
+
+export async function fetchHolidays(params: { from: string; to: string }): Promise<Holiday[]> {
+  const res = (await api.get(`/admin/schedule/holidays?from=${params.from}&to=${params.to}`)) as ApiEnvelope & { holidays?: Holiday[] };
+  return res.holidays ?? [];
+}
+
+export interface HolidayInput {
+  name: string;
+  start_date: string;
+  end_date: string;
+  store_ids: number[];
+}
+
+export async function createHoliday(input: HolidayInput): Promise<void> {
+  await api.post('/admin/schedule/holidays', input);
+}
+
+export async function updateHoliday(id: number, input: HolidayInput): Promise<void> {
+  await api.put(`/admin/schedule/holidays/${id}`, input);
+}
+
+/** Removes ONLY the display marker — work schedules are never touched. */
+export async function deleteHoliday(id: number): Promise<void> {
+  await api.del(`/admin/schedule/holidays/${id}`);
 }
 
 /** Format 'HH:MM' (24h) as a 12-hour label, e.g. '7:00 AM'. */

@@ -1,11 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertCircle, Plus, RefreshCw, Trash2, Users } from 'lucide-react';
+import { AlertCircle, CalendarPlus, Plus, RefreshCw, Trash2, Users } from 'lucide-react';
 import { ApiError } from '../../lib/api';
 import { AdminEmployee, fetchEmployees } from '../../lib/admin';
 import {
   AssignmentResult,
   Cells,
+  DayStatusCell,
   EmployeeView,
+  Holiday,
+  HolidayMarker,
   ScheduleGroup,
   ScheduleSegmentCell,
   ScheduleView,
@@ -16,11 +19,13 @@ import {
   assignEmployee,
   fetchEmployeeView,
   fetchGroups,
+  fetchHolidays,
   fetchStoreView,
   formatRange,
   removeFromStore,
 } from '../../lib/schedule';
 import ScheduleCellModal, { CellDraft } from './ScheduleCellModal';
+import ScheduleHolidayModal from './ScheduleHolidayModal';
 import ScheduleGroupsModal from './ScheduleGroupsModal';
 import ScheduleStatusBadge from '../schedule/ScheduleStatusBadge';
 
@@ -53,7 +58,10 @@ const WorkScheduleV2: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [action, setAction] = useState<ActionResult | null>(null);
   const [draft, setDraft] = useState<CellDraft | null>(null);
+  const [cellStatus, setCellStatus] = useState<DayStatusCell | null>(null);
   const [manageGroups, setManageGroups] = useState(false);
+  // The global-holiday editor. `null` = closed; `{existing: null}` = add.
+  const [holidayDraft, setHolidayDraft] = useState<{ existing: Holiday | null } | null>(null);
   const [removeTarget, setRemoveTarget] = useState<{ storeId: number; userId: number; employeeName: string; storeName: string } | null>(null);
 
   useEffect(() => {
@@ -138,8 +146,9 @@ const WorkScheduleV2: React.FC = () => {
     return h && !h.closed && h.start && h.end ? [h.start, h.end] : ['09:00', '17:00'];
   };
 
-  const openCell = (s: StoreMeta, uid: number, name: string, date: string, dow: number, seg?: ScheduleSegmentCell) => {
+  const openCell = (s: StoreMeta, uid: number, name: string, date: string, dow: number, seg?: ScheduleSegmentCell, dayStatus?: DayStatusCell) => {
     const [ds, de] = defaultTimes(s, dow);
+    setCellStatus(dayStatus ?? null);
     setDraft({
       userId: uid,
       employeeName: name,
@@ -155,18 +164,80 @@ const WorkScheduleV2: React.FC = () => {
 
   const onSaved = () => {
     setDraft(null);
+    setCellStatus(null);
     load();
+  };
+
+  const onHolidaySaved = () => {
+    setHolidayDraft(null);
+    load();
+  };
+
+  // Editing a projected holiday badge: fetch the canonical row (name + full
+  // range + store scope) so the editor never guesses from one projected date.
+  const openHoliday = async (id: number) => {
+    const from = store?.range.from ?? emp?.range.from;
+    const to = store?.range.to ?? emp?.range.to;
+    if (!from || !to) return;
+    try {
+      const found = (await fetchHolidays({ from, to })).find((h) => h.id === id) ?? null;
+      setHolidayDraft({ existing: found });
+    } catch {
+      setHolidayDraft({ existing: null });
+    }
   };
 
   // Admin cells stay editable; an approved absence is shown as a small display-
   // only tag so a scheduling manager sees it without losing the edit affordance.
   // (Vacation Management remains the only place to change time off.)
-  const Cell: React.FC<{ s: StoreMeta; uid: number; name: string; date: string; dow: number; segs: ScheduleSegmentCell[]; timeOff?: TimeOffCell }> = ({ s, uid, name, date, dow, segs, timeOff }) => (
+  //
+  // Three display layers stack ABOVE the schedule chip, never replacing it:
+  //   holidays  — global/store context; coexists with everything, click to edit
+  //   dayStatus — the manager's explicit expectation; when present it OWNS the
+  //               employee-status slot, so the approved-time-off tag steps aside
+  //               and the same absence is never badged twice
+  //   timeOff   — the pre-existing approved-time-off overlay
+  const Cell: React.FC<{
+    s: StoreMeta;
+    uid: number;
+    name: string;
+    date: string;
+    dow: number;
+    segs: ScheduleSegmentCell[];
+    timeOff?: TimeOffCell;
+    dayStatus?: DayStatusCell;
+    holidays?: HolidayMarker[];
+  }> = ({ s, uid, name, date, dow, segs, timeOff, dayStatus, holidays }) => (
     <td className="px-1 py-1 align-top border-l border-gray-100 min-w-[7.5rem]">
-      {timeOff && (
-        <div className="mb-1">
-          <ScheduleStatusBadge status={timeOff.status} label={timeOff.label} partial={!timeOff.is_full_day} />
+      {(holidays ?? []).map((h) => (
+        <div key={h.id} className="mb-1">
+          <button
+            type="button"
+            onClick={() => openHoliday(h.id)}
+            className="w-full text-left"
+            title="Holiday — click to edit or remove"
+          >
+            <ScheduleStatusBadge status="holiday" label={h.name} className="w-full justify-center" />
+          </button>
         </div>
+      ))}
+      {dayStatus ? (
+        <div className="mb-1">
+          <button
+            type="button"
+            onClick={() => openCell(s, uid, name, date, dow, undefined, dayStatus)}
+            className="w-full text-left"
+            title="Schedule status — click to change or remove"
+          >
+            <ScheduleStatusBadge status={dayStatus.status} label={dayStatus.label} className="w-full justify-center" />
+          </button>
+        </div>
+      ) : (
+        timeOff && (
+          <div className="mb-1">
+            <ScheduleStatusBadge status={timeOff.status} label={timeOff.label} partial={!timeOff.is_full_day} />
+          </div>
+        )
       )}
       {segs.length === 0 ? (
         <button
@@ -246,6 +317,17 @@ const WorkScheduleV2: React.FC = () => {
           <button onClick={() => setManageGroups(true)} className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50 transition-colors">
             <Users className="h-4 w-4" />
             <span>Manage Groups</span>
+          </button>
+        )}
+
+        {mode === 'store' && (
+          <button
+            onClick={() => setHolidayDraft({ existing: null })}
+            className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50 transition-colors"
+            title="Mark a store-wide holiday (display only — it never changes anyone's hours)"
+          >
+            <CalendarPlus className="h-4 w-4" />
+            <span>+ Holiday</span>
           </button>
         )}
 
@@ -369,7 +451,7 @@ const WorkScheduleV2: React.FC = () => {
                             </div>
                           </td>
                           {dates.map((d) => (
-                            <Cell key={d.date} s={s} uid={r.employee.id} name={r.employee.full_name} date={d.date} dow={d.day_of_week} segs={r.cells[d.date] ?? []} timeOff={r.time_off?.[d.date]} />
+                            <Cell key={d.date} s={s} uid={r.employee.id} name={r.employee.full_name} date={d.date} dow={d.day_of_week} segs={r.cells[d.date] ?? []} timeOff={r.time_off?.[d.date]} dayStatus={r.day_status?.[d.date]} holidays={section?.holidays?.[d.date]} />
                           ))}
                         </tr>
                       ))}
@@ -416,7 +498,7 @@ const WorkScheduleV2: React.FC = () => {
                           {s.name}
                         </td>
                         {dates.map((d) => (
-                          <Cell key={d.date} s={s} uid={emp.employee.id} name={emp.employee.full_name} date={d.date} dow={d.day_of_week} segs={row?.cells[d.date] ?? []} timeOff={emp.time_off?.[d.date]} />
+                          <Cell key={d.date} s={s} uid={emp.employee.id} name={emp.employee.full_name} date={d.date} dow={d.day_of_week} segs={row?.cells[d.date] ?? []} timeOff={emp.time_off?.[d.date]} dayStatus={emp.day_status?.[d.date]} holidays={row?.holidays?.[d.date]} />
                         ))}
                       </tr>
                     );
@@ -432,8 +514,18 @@ const WorkScheduleV2: React.FC = () => {
         <ScheduleCellModal
           draft={draft}
           stores={(mode === 'store' ? store?.stores : emp?.stores) ?? []}
+          dayStatus={cellStatus}
           onClose={() => setDraft(null)}
           onSaved={onSaved}
+        />
+      )}
+      {holidayDraft && (
+        <ScheduleHolidayModal
+          stores={(mode === 'store' ? store?.stores : emp?.stores) ?? []}
+          date={dates[0]?.date ?? (store?.range.from ?? emp?.range.from ?? '')}
+          existing={holidayDraft.existing}
+          onClose={() => setHolidayDraft(null)}
+          onSaved={onHolidaySaved}
         />
       )}
       {manageGroups && <ScheduleGroupsModal employees={store?.employees ?? employees.map((e) => ({ id: e.id, full_name: e.full_name }))} onClose={() => setManageGroups(false)} onChanged={loadGroups} />}
