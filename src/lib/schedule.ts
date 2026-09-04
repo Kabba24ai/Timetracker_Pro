@@ -131,9 +131,16 @@ export interface Holiday {
 
 export interface StoreViewSection {
   store_id: number;
-  rows: { employee: { id: number; full_name: string }; cells: Cells; time_off?: TimeOffOverlay; day_status?: DayStatusOverlay }[];
-  // Store-scoped holidays for this section, projected server-side.
-  holidays?: HolidayOverlay;
+  // Holidays ride each ROW, not the section: one employee can be excluded from a
+  // holiday the rest of the store still observes, and the server has already
+  // applied those exclusions.
+  rows: {
+    employee: { id: number; full_name: string };
+    cells: Cells;
+    time_off?: TimeOffOverlay;
+    day_status?: DayStatusOverlay;
+    holidays?: HolidayOverlay;
+  }[];
 }
 
 export interface StoreView {
@@ -362,6 +369,19 @@ export async function createHoliday(input: HolidayInput): Promise<void> {
 
 export async function updateHoliday(id: number, input: HolidayInput): Promise<void> {
   await api.put(`/admin/schedule/holidays/${id}`, input);
+}
+
+/**
+ * Hide ONE holiday for ONE employee on ONE date. The holiday, its store scope,
+ * everyone else's schedule and this employee's work hours are all untouched.
+ */
+export async function excludeFromHoliday(holidayId: number, input: { user_id: number; date: string }): Promise<void> {
+  await api.post(`/admin/schedule/holidays/${holidayId}/exclusions`, input);
+}
+
+/** Undo an exclusion — the holiday reappears for that employee/date. */
+export async function includeInHoliday(holidayId: number, input: { user_id: number; date: string }): Promise<void> {
+  await api.del(`/admin/schedule/holidays/${holidayId}/exclusions`, input);
 }
 
 /** Removes ONLY the display marker — work schedules are never touched. */

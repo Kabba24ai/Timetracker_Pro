@@ -31,6 +31,9 @@ const seg = (id: number, storeId: number, s: string, e: string) => ({ segment_id
 
 type Row = Record<string, unknown>;
 
+// The server now emits holidays PER ROW (one employee can be excluded from a
+// holiday the rest of the store still observes), so the fixture attaches them to
+// each row rather than to the section.
 function storeView(rows: Row[], holidays: Record<string, { id: number; name: string }[]> = {}) {
   return {
     success: true,
@@ -39,8 +42,8 @@ function storeView(rows: Row[], holidays: Record<string, { id: number; name: str
     stores: [WAVERLY, BON_AQUA],
     employees: EMPLOYEES,
     store_view: [
-      { store_id: 10, rows, holidays },
-      { store_id: 11, rows: [], holidays: {} },
+      { store_id: 10, rows: rows.map((r) => ({ holidays, ...r })) },
+      { store_id: 11, rows: [] },
     ],
   };
 }
@@ -460,9 +463,9 @@ describe('ScheduleHolidayModal', () => {
     expect(screen.getByRole('checkbox', { name: 'Waverly' })).toBeChecked();
     expect(screen.getByRole('checkbox', { name: 'Bon Aqua' })).not.toBeChecked();
 
-    await user.click(screen.getByRole('button', { name: /Delete Holiday/i }));
+    await user.click(screen.getByRole('button', { name: /Remove Holiday/i }));
     expect(server.calls).toHaveLength(0);
-    await user.click(screen.getByRole('button', { name: 'Confirm Delete' }));
+    await user.click(screen.getByRole('button', { name: /Delete .* for Everyone/ }));
 
     expect(server.calls[0]).toEqual({ method: 'DELETE', path: '/admin/schedule/holidays/77', body: undefined });
   });
@@ -616,5 +619,111 @@ describe('EmployeeWorkSchedule — privacy-safe statuses', () => {
     render(<EmployeeWorkSchedule />);
 
     expect(await screen.findByText('Holiday')).toBeInTheDocument();
+  });
+});
+
+// ── Holiday: per-employee removal vs global delete ──────────────────────────
+//
+// Production bugs: (1) a Holiday must never create an employee/store row, and
+// (2) deleting from an employee cell removed the Holiday for EVERYONE. The badge
+// now carries employee/date context so the admin gets an explicit choice.
+
+describe('Holiday removal — per employee vs everyone', () => {
+  const withHoliday = (extra: Row = {}) =>
+    storeView(
+      [{ employee: { id: 1, full_name: 'Gary Jezorski' }, cells: {}, ...extra }],
+      { '2026-09-14': [{ id: 77, name: 'Labor Day' }] },
+    );
+
+  beforeEach(() => {
+    server.holidays = [{ id: 77, name: 'Labor Day', start_date: '2026-09-14', end_date: '2026-09-14', store_ids: [10, 11] }];
+  });
+
+  it('renders the row-specific Holiday collection', async () => {
+    server.storeView = withHoliday();
+    await grid();
+
+    expect(await screen.findByText('Labor Day')).toBeInTheDocument();
+  });
+
+  it('does not render a badge for an employee excluded from the Holiday', async () => {
+    // The SERVER already removed it from this row's collection.
+    server.storeView = storeView([
+      { employee: { id: 1, full_name: 'Gary Jezorski' }, cells: {}, holidays: {} },
+      { employee: { id: 2, full_name: 'Bo Vance' }, cells: {}, holidays: { '2026-09-14': [{ id: 77, name: 'Labor Day' }] } },
+    ]);
+    await grid();
+
+    const rowFor = (name: string) =>
+      screen.getAllByText(name).map((el) => el.closest('tr')).find(Boolean) as HTMLElement;
+    const excluded = rowFor('Gary Jezorski');
+    const kept = rowFor('Bo Vance');
+    expect(within(excluded).queryByText('Labor Day')).not.toBeInTheDocument();
+    expect(within(kept).getByText('Labor Day')).toBeInTheDocument();
+  });
+
+  it('offers BOTH removal choices when the editor is opened from an employee cell', async () => {
+    const user = userEvent.setup();
+    server.storeView = withHoliday();
+    await grid();
+
+    await user.click(await screen.findByRole('button', { name: /Labor Day/ }));
+    await user.click(await screen.findByRole('button', { name: /Remove Holiday/i }));
+
+    expect(screen.getByRole('button', { name: 'Remove for Gary Jezorski Only' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Delete Labor Day for Everyone' })).toBeInTheDocument();
+    // Each destructive choice carries its own consequence, and BOTH promise the
+    // employee's scheduled work is untouched.
+    expect(screen.getByText(/Remove Labor Day for Gary Jezorski on/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Labor Day will remain on everyone else's schedule\. Gary Jezorski's scheduled work hours are not affected\./i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Deleting for everyone removes the holiday from every employee and store in its scope\./i),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText(/scheduled work hours are not affected/i)).toHaveLength(2);
+  });
+
+  it('Remove for this employee calls the exclusion API and never deletes the Holiday', async () => {
+    const user = userEvent.setup();
+    server.storeView = withHoliday();
+    await grid();
+    const before = server.calls.filter((c) => c.path.startsWith('/admin/schedule/store-view')).length;
+
+    await user.click(await screen.findByRole('button', { name: /Labor Day/ }));
+    await user.click(await screen.findByRole('button', { name: /Remove Holiday/i }));
+    await user.click(screen.getByRole('button', { name: 'Remove for Gary Jezorski Only' }));
+
+    const mutations = server.calls.filter((c) => c.method !== 'GET');
+    expect(mutations).toEqual([
+      { method: 'POST', path: '/admin/schedule/holidays/77/exclusions', body: { user_id: 1, date: '2026-09-14' } },
+    ]);
+    await vi.waitFor(() => {
+      expect(server.calls.filter((c) => c.path.startsWith('/admin/schedule/store-view')).length).toBeGreaterThan(before);
+    });
+  });
+
+  it('Delete for everyone calls the global delete and never the exclusion API', async () => {
+    const user = userEvent.setup();
+    server.storeView = withHoliday();
+    await grid();
+
+    await user.click(await screen.findByRole('button', { name: /Labor Day/ }));
+    await user.click(await screen.findByRole('button', { name: /Remove Holiday/i }));
+    await user.click(screen.getByRole('button', { name: 'Delete Labor Day for Everyone' }));
+
+    const mutations = server.calls.filter((c) => c.method !== 'GET');
+    expect(mutations).toEqual([{ method: 'DELETE', path: '/admin/schedule/holidays/77', body: undefined }]);
+  });
+
+  it('offers only the global delete when opened from the toolbar (no employee context)', async () => {
+    const user = userEvent.setup();
+    await grid();
+    await user.click(screen.getByRole('button', { name: /\+ Holiday/ }));
+    await user.type(await screen.findByLabelText('Holiday Name'), 'Labor Day');
+    await user.click(screen.getByRole('button', { name: 'Save Holiday' }));
+
+    // A brand-new holiday has no employee context, so no per-employee option.
+    expect(screen.queryByRole('button', { name: /Only/ })).not.toBeInTheDocument();
   });
 });

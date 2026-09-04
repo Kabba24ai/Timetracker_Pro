@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { AlertCircle, Trash2, X } from 'lucide-react';
 import { ApiError } from '../../lib/api';
-import { Holiday, StoreMeta, createHoliday, deleteHoliday, updateHoliday } from '../../lib/schedule';
+import { formatShortCalendarDate } from '../../lib/tz';
+import { Holiday, StoreMeta, createHoliday, deleteHoliday, excludeFromHoliday, updateHoliday } from '../../lib/schedule';
 
 // A global, store-scoped HOLIDAY over an inclusive date range.
 //
@@ -17,11 +18,17 @@ interface Props {
   date: string;
   /** Editing an existing holiday: fields are preloaded and Delete is offered. */
   existing?: Holiday | null;
+  /**
+   * Set when the editor was opened from an EMPLOYEE CELL. Removal then offers a
+   * real choice — hide the holiday for just this person on this date, or delete
+   * it for everyone — instead of one ambiguous "Confirm Delete".
+   */
+  employee?: { id: number; name: string } | null;
   onClose: () => void;
   onSaved: () => void;
 }
 
-const ScheduleHolidayModal: React.FC<Props> = ({ stores, date, existing, onClose, onSaved }) => {
+const ScheduleHolidayModal: React.FC<Props> = ({ stores, date, existing, employee, onClose, onSaved }) => {
   const [name, setName] = useState(existing?.name ?? '');
   const [startDate, setStartDate] = useState(existing?.start_date ?? date);
   const [endDate, setEndDate] = useState(existing?.end_date ?? date);
@@ -67,21 +74,39 @@ const ScheduleHolidayModal: React.FC<Props> = ({ stores, date, existing, onClose
     }
   };
 
-  const remove = async () => {
-    if (!existing) return;
+  const run = async (fn: () => Promise<void>, failure: string) => {
     setRemoving(true);
     setError(null);
     try {
-      await deleteHoliday(existing.id);
+      await fn();
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.firstError() : 'The holiday could not be deleted.');
+      setError(err instanceof ApiError ? err.firstError() : failure);
       setRemoving(false);
     }
   };
 
+  /** Hide this holiday for THIS employee on THIS date only. */
+  const removeForEmployee = () => {
+    if (!existing || !employee) return;
+    run(
+      () => excludeFromHoliday(existing.id, { user_id: employee.id, date: clickedDate }),
+      'The holiday could not be removed for this employee.',
+    );
+  };
+
+  /** Delete the holiday everywhere it is projected. */
+  const remove = () => {
+    if (!existing) return;
+    run(() => deleteHoliday(existing.id), 'The holiday could not be deleted.');
+  };
+
   const busy = saving || removing;
   const title = existing ? 'Edit Holiday' : 'Add Holiday';
+  // An exclusion is per DATE — always the cell the admin clicked, never the whole
+  // range of a multi-day holiday.
+  const clickedDate = date;
+  const prettyDate = formatShortCalendarDate(clickedDate);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
@@ -174,29 +199,75 @@ const ScheduleHolidayModal: React.FC<Props> = ({ stores, date, existing, onClose
 
         {validation && <p className="mb-3 text-sm text-red-600">{validation}</p>}
 
-        {confirmingDelete && (
-          <div className="mb-4 flex items-start gap-2 text-red-700 bg-red-50 border border-red-200 p-3 rounded-lg">
-            <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
-            <span className="text-sm">
-              Delete this holiday? It disappears from every schedule that shows it. Scheduled work hours are not affected.
-            </span>
-          </div>
-        )}
-
+        {/* Two DIFFERENT destructive meanings, never one ambiguous button. */}
         {confirmingDelete ? (
-          <div className="flex justify-end gap-2">
-            <button type="button" onClick={() => setConfirmingDelete(false)} disabled={busy} className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50">
-              Keep
-            </button>
-            <button
-              type="button"
-              onClick={remove}
-              disabled={busy}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-white bg-red-600 hover:bg-red-700 transition-colors disabled:opacity-50"
-            >
-              <Trash2 className="h-4 w-4" />
-              {removing ? 'Deleting…' : 'Confirm Delete'}
-            </button>
+          <div>
+            {employee ? (
+              <>
+                <div className="mb-4 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                  <p className="text-sm font-medium text-gray-900">
+                    {`Remove ${name || 'this holiday'} for ${employee.name} on ${prettyDate}?`}
+                  </p>
+                  <p className="mt-1 text-sm text-gray-600">
+                    {`${name || 'The holiday'} will remain on everyone else's schedule. ${employee.name}'s scheduled work hours are not affected.`}
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <button
+                    type="button"
+                    onClick={removeForEmployee}
+                    disabled={busy}
+                    className="w-full px-4 py-2 rounded-lg text-white bg-amber-600 hover:bg-amber-700 transition-colors disabled:opacity-50"
+                  >
+                    {`Remove for ${employee.name} Only`}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={remove}
+                    disabled={busy}
+                    className="inline-flex items-center justify-center gap-1.5 w-full px-4 py-2 rounded-lg text-white bg-red-600 hover:bg-red-700 transition-colors disabled:opacity-50"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    {`Delete ${name || 'Holiday'} for Everyone`}
+                  </button>
+                  <p className="text-xs text-gray-500">
+                    Deleting for everyone removes the holiday from every employee and store in its scope. Scheduled work
+                    hours are not affected.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmingDelete(false)}
+                    disabled={busy}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+                  >
+                    Keep
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="mb-4 flex items-start gap-2 text-red-700 bg-red-50 border border-red-200 p-3 rounded-lg">
+                  <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
+                  <span className="text-sm">
+                    This removes the Holiday from every employee/store in its scope. Scheduled work hours are not affected.
+                  </span>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <button type="button" onClick={() => setConfirmingDelete(false)} disabled={busy} className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50">
+                    Keep
+                  </button>
+                  <button
+                    type="button"
+                    onClick={remove}
+                    disabled={busy}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-white bg-red-600 hover:bg-red-700 transition-colors disabled:opacity-50"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    {removing ? 'Deleting…' : `Delete ${name || 'Holiday'} for Everyone`}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         ) : (
           <div className="flex items-center justify-between gap-2">
@@ -208,7 +279,7 @@ const ScheduleHolidayModal: React.FC<Props> = ({ stores, date, existing, onClose
                   disabled={busy}
                   className="flex items-center gap-1 text-sm text-red-600 hover:underline disabled:opacity-50"
                 >
-                  <Trash2 className="h-4 w-4" /> Delete Holiday
+                  <Trash2 className="h-4 w-4" /> Remove Holiday
                 </button>
               )}
             </div>

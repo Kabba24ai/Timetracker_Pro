@@ -61,7 +61,13 @@ const WorkScheduleV2: React.FC = () => {
   const [cellStatus, setCellStatus] = useState<DayStatusCell | null>(null);
   const [manageGroups, setManageGroups] = useState(false);
   // The global-holiday editor. `null` = closed; `{existing: null}` = add.
-  const [holidayDraft, setHolidayDraft] = useState<{ existing: Holiday | null } | null>(null);
+  // `employee`/`date` are set when it was opened from an employee CELL, so the
+  // removal step can offer "just this person" as well as "everyone".
+  const [holidayDraft, setHolidayDraft] = useState<{
+    existing: Holiday | null;
+    employee?: { id: number; name: string } | null;
+    date?: string;
+  } | null>(null);
   const [removeTarget, setRemoveTarget] = useState<{ storeId: number; userId: number; employeeName: string; storeName: string } | null>(null);
 
   useEffect(() => {
@@ -175,15 +181,15 @@ const WorkScheduleV2: React.FC = () => {
 
   // Editing a projected holiday badge: fetch the canonical row (name + full
   // range + store scope) so the editor never guesses from one projected date.
-  const openHoliday = async (id: number) => {
+  const openHoliday = async (id: number, employee?: { id: number; name: string }, date?: string) => {
     const from = store?.range.from ?? emp?.range.from;
     const to = store?.range.to ?? emp?.range.to;
     if (!from || !to) return;
     try {
       const found = (await fetchHolidays({ from, to })).find((h) => h.id === id) ?? null;
-      setHolidayDraft({ existing: found });
+      setHolidayDraft({ existing: found, employee: employee ?? null, date });
     } catch {
-      setHolidayDraft({ existing: null });
+      setHolidayDraft({ existing: null, employee: employee ?? null, date });
     }
   };
 
@@ -213,7 +219,7 @@ const WorkScheduleV2: React.FC = () => {
         <div key={h.id} className="mb-1">
           <button
             type="button"
-            onClick={() => openHoliday(h.id)}
+            onClick={() => void openHoliday(h.id, { id: uid, name }, date)}
             className="w-full text-left"
             title="Holiday — click to edit or remove"
           >
@@ -451,7 +457,7 @@ const WorkScheduleV2: React.FC = () => {
                             </div>
                           </td>
                           {dates.map((d) => (
-                            <Cell key={d.date} s={s} uid={r.employee.id} name={r.employee.full_name} date={d.date} dow={d.day_of_week} segs={r.cells[d.date] ?? []} timeOff={r.time_off?.[d.date]} dayStatus={r.day_status?.[d.date]} holidays={section?.holidays?.[d.date]} />
+                            <Cell key={d.date} s={s} uid={r.employee.id} name={r.employee.full_name} date={d.date} dow={d.day_of_week} segs={r.cells[d.date] ?? []} timeOff={r.time_off?.[d.date]} dayStatus={r.day_status?.[d.date]} holidays={r.holidays?.[d.date]} />
                           ))}
                         </tr>
                       ))}
@@ -522,8 +528,9 @@ const WorkScheduleV2: React.FC = () => {
       {holidayDraft && (
         <ScheduleHolidayModal
           stores={(mode === 'store' ? store?.stores : emp?.stores) ?? []}
-          date={dates[0]?.date ?? (store?.range.from ?? emp?.range.from ?? '')}
+          date={holidayDraft.date ?? dates[0]?.date ?? (store?.range.from ?? emp?.range.from ?? '')}
           existing={holidayDraft.existing}
+          employee={holidayDraft.employee}
           onClose={() => setHolidayDraft(null)}
           onSaved={onHolidaySaved}
         />
