@@ -19,10 +19,10 @@ export interface TimeTrackerSettings {
   pay_period_type: 'weekly' | 'biweekly';
   pay_period_start_date: string;
   // Overtime is classified per FIXED seven-day workweek (statutory 40h), not per
-  // pay period. This is the weekday that workweek starts (0=Sun … 6=Sat), and an
-  // optional more-generous company policy letting paid leave count toward the 40h.
+  // pay period. This is the weekday that workweek starts (0=Sun … 6=Sat).
+  // Vacation and Holiday hours NEVER count toward the threshold (the former
+  // paid_leave_counts_toward_overtime toggle is retired).
   overtime_workweek_starts_on: number;
-  paid_leave_counts_toward_overtime: boolean;
 
   // Lunch (no auto lunch — a missing required lunch becomes Pending)
   minimum_lunch_duration_minutes: number;

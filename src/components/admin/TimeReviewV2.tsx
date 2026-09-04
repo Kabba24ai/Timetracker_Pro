@@ -7,23 +7,37 @@ import {
   CorrectableKind,
   CorrectionPayload,
   DayPosition,
+  LeaveEntry,
+  LeaveType,
   POSITION_COLUMNS,
   PositionKey,
   TimeReview,
   TimeReviewDay,
   applyCorrection,
   applyLunchOverride,
+  createLeaveEntry,
+  deleteLeaveEntry,
   downloadCsv,
+  fetchEmployeeVacationBalance,
   fetchEmployees,
   fetchTimeReview,
   formatDuration,
   paidFromAt,
   removeLunchOverride,
   timeReviewToCsv,
+  updateLeaveEntry,
 } from '../../lib/admin';
 import { formatClock, formatInstant, toTenantDatetimeLocal } from '../../lib/tz';
 import CorrectionModal, { CorrectionDraft } from './CorrectionModal';
+import LeaveHoursModal from './LeaveHoursModal';
 import { LunchOverrideDetailsModal, ResolveMissingLunchModal } from './LunchOverrideModal';
+
+// Paid-leave badge colors (distinct from worked-time and Pending styling).
+const LEAVE_BADGE: Record<string, string> = {
+  vacation: 'text-green-700 bg-green-50 hover:bg-green-100',
+  holiday: 'text-indigo-700 bg-indigo-50 hover:bg-indigo-100',
+};
+const LEAVE_BADGE_DEFAULT = 'text-gray-700 bg-gray-100 hover:bg-gray-200';
 
 type Mode = 'current' | 'previous' | 'custom';
 
@@ -92,6 +106,10 @@ const TimeReviewV2: React.FC<TimeReviewProps> = ({ initialUserId, initialFrom, i
   // Lunch Override badge → details + reversal.
   const [lunchResolve, setLunchResolve] = useState<TimeReviewDay | null>(null);
   const [lunchOverrideView, setLunchOverrideView] = useState<TimeReviewDay | null>(null);
+  // Manual paid leave (Holiday / Vacation) editor for ONE employee/day — opened
+  // from the Clock In correction context or by clicking an existing leave badge.
+  const [leave, setLeave] = useState<{ type: LeaveType; day: TimeReviewDay; existing: LeaveEntry | null } | null>(null);
+  const [leaveBalance, setLeaveBalance] = useState<number | null>(null);
 
   useEffect(() => {
     fetchEmployees()
@@ -287,6 +305,45 @@ const TimeReviewV2: React.FC<TimeReviewProps> = ({ initialUserId, initialFrom, i
     await load();
   };
 
+  // Open the leave-hours editor for a day. If a LIVE manual entry of that type
+  // already exists, edit it (never a second competing entry). Vacation loads the
+  // canonical available balance from the API — the server still enforces it.
+  const openLeave = async (type: LeaveType, day: TimeReviewDay, existing: LeaveEntry | null) => {
+    setCorrection(null);
+    setLeave({ type, day, existing });
+    setLeaveBalance(null);
+    if (type === 'vacation' && userId) {
+      try {
+        setLeaveBalance(await fetchEmployeeVacationBalance(userId));
+      } catch {
+        setLeaveBalance(null);
+      }
+    }
+  };
+  const openLeaveFromCorrection = (type: LeaveType) => {
+    if (!correction || !review) return;
+    const d = review.days.find((x) => x.date === correction.date);
+    if (!d) return;
+    const existing = d.leave_entries?.find((e) => e.type === type && e.editable) ?? null;
+    void openLeave(type, d, existing);
+  };
+  const submitLeave = async (hours: number) => {
+    if (!leave || !userId) return;
+    if (leave.existing) {
+      await updateLeaveEntry(leave.existing.id, hours);
+    } else {
+      await createLeaveEntry({ user_id: userId, type: leave.type, date: leave.day.date, hours });
+    }
+    setLeave(null);
+    await load();
+  };
+  const removeLeave = async () => {
+    if (!leave?.existing) return;
+    await deleteLeaveEntry(leave.existing.id);
+    setLeave(null);
+    await load();
+  };
+
   // The Lunch area renders ONE spanning indicator when there is no lunch
   // interval and the day is either Missing Lunch / Pending or Lunch-Overridden.
   const lunchIndicator = (day: TimeReviewDay): 'missing' | 'override' | null => {
@@ -393,6 +450,16 @@ const TimeReviewV2: React.FC<TimeReviewProps> = ({ initialUserId, initialFrom, i
               <Card label="Shifts" value={String(totals.shift_count)} sub={totals.open_shift_count ? `${totals.open_shift_count} open` : undefined} />
               <Card label="Lunch" value={formatDuration(totals.lunch_seconds)} />
               <Card label="Other Breaks" value={formatDuration(totals.other_break_seconds)} />
+            </div>
+          )}
+          {/* Paid LEAVE buckets — separate from worked time and from each other (Other Paid Leave =
+              sick / personal / bereavement / jury duty). Total Paid = Paid + Vacation + Holiday + Other. */}
+          {totals && totals.total_paid_seconds !== undefined && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
+              <Card label="Vacation" value={formatDuration(totals.vacation_seconds ?? 0)} accent="text-green-700" />
+              <Card label="Holiday" value={formatDuration(totals.holiday_seconds ?? 0)} accent="text-indigo-700" />
+              <Card label="Other Paid Leave" value={formatDuration(totals.other_paid_leave_seconds ?? 0)} accent="text-gray-700" sub="Sick, personal, bereavement, jury duty" />
+              <Card label="Total Paid" value={formatDuration(totals.total_paid_seconds)} accent="text-gray-900" sub="Paid worked + Vacation + Holiday + Other paid leave" />
             </div>
           )}
 
@@ -518,6 +585,42 @@ const TimeReviewV2: React.FC<TimeReviewProps> = ({ initialUserId, initialFrom, i
                             )}
                           </td>
                         </tr>
+                        {/* Paid leave for the day — compact sub-row of badges (NOT punches,
+                            never merged into the punch cells). A live manual entry is
+                            clickable → edit / delete; an employee's approved request is
+                            shown read-only (managed in Vacation Management). */}
+                        {(d.leave_entries?.length ?? 0) > 0 && (
+                          <tr className="bg-white">
+                            <td colSpan={13} className="px-3 pb-2 pt-0">
+                              <div className="flex flex-wrap items-center gap-2 pl-6">
+                                <span className="text-[10px] uppercase tracking-wide text-gray-400">Paid leave</span>
+                                {d.leave_entries!.map((e) => {
+                                  const text = `${e.label} ${formatDuration(e.seconds)}`;
+                                  const cls = LEAVE_BADGE[e.type] ?? LEAVE_BADGE_DEFAULT;
+                                  return e.editable ? (
+                                    <button
+                                      key={e.id}
+                                      type="button"
+                                      onClick={() => void openLeave(e.type as LeaveType, d, e)}
+                                      className={`px-2 py-1 rounded text-xs font-semibold transition-colors ${cls}`}
+                                      title="Paid leave (not worked time) — click to change the hours or delete"
+                                    >
+                                      {text}
+                                    </button>
+                                  ) : (
+                                    <span
+                                      key={e.id}
+                                      className={`px-2 py-1 rounded text-xs font-semibold ${cls}`}
+                                      title="Approved time-off request — managed in Vacation Management"
+                                    >
+                                      {text}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
                         {expanded[d.date] && (
                           <tr className="bg-gray-50/60">
                             <td colSpan={13} className="px-4 py-3">
@@ -556,7 +659,21 @@ const TimeReviewV2: React.FC<TimeReviewProps> = ({ initialUserId, initialFrom, i
         </>
       )}
 
-      {correction && <CorrectionModal draft={correction} tz={tz} onClose={() => setCorrection(null)} onSubmit={submitCorrection} />}
+      {correction && (
+        <CorrectionModal draft={correction} tz={tz} onClose={() => setCorrection(null)} onSubmit={submitCorrection} onLeave={openLeaveFromCorrection} />
+      )}
+      {leave && userId && (
+        <LeaveHoursModal
+          type={leave.type}
+          employeeName={review?.employee.full_name ?? ''}
+          date={leave.day.date}
+          existing={leave.existing ? { id: leave.existing.id, hours: leave.existing.hours } : null}
+          availableBalance={leave.type === 'vacation' ? leaveBalance : undefined}
+          onClose={() => setLeave(null)}
+          onSubmit={submitLeave}
+          onDelete={leave.existing ? removeLeave : undefined}
+        />
+      )}
       {lunchResolve && (
         <ResolveMissingLunchModal
           day={lunchResolve}

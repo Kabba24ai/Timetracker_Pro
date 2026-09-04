@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { AlertCircle, Trash2, X } from 'lucide-react';
 import { ApiError } from '../../lib/api';
-import { BreakKind, CorrectableKind, CORRECTION_REASONS, CorrectionPayload } from '../../lib/admin';
+import { BreakKind, CorrectableKind, CORRECTION_REASONS, CorrectionPayload, LeaveType } from '../../lib/admin';
 import { formatCalendarDate, tenantWallClockToUtcIso } from '../../lib/tz';
 import TimeField, { Clock, parse24, to24 } from './TimeField';
 
@@ -50,9 +50,16 @@ interface Props {
   tz: string;
   onClose: () => void;
   onSubmit: (payload: CorrectionPayload) => Promise<void>;
+  /**
+   * Manual paid-leave shortcuts ("+ Holiday" / "+ Vacation") for THIS employee
+   * and day. Offered only in the Clock In context — adding a missing Clock In
+   * or adjusting an existing one (a partly-worked day may need Vacation added).
+   * Leave is NOT a punch: the host opens the leave-hours editor instead.
+   */
+  onLeave?: (type: LeaveType) => void;
 }
 
-const CorrectionModal: React.FC<Props> = ({ draft, tz, onClose, onSubmit }) => {
+const CorrectionModal: React.FC<Props> = ({ draft, tz, onClose, onSubmit, onLeave }) => {
   const [time, setTime] = useState<Clock>(() =>
     draft.mode === 'adjust' || draft.mode === 'insert' || draft.mode === 'resolve_pending' ? parse24(draft.time24) : { h: 12, m: 0, ampm: 'PM' },
   );
@@ -79,6 +86,11 @@ const CorrectionModal: React.FC<Props> = ({ draft, tz, onClose, onSubmit }) => {
       : draft.mode === 'edit_break'
         ? deleteScopeFor(draft.breakType === 'lunch' ? 'lunch_start' : 'other_start')
         : null;
+
+  // Holiday / Vacation shortcuts belong to the Clock In context only (never
+  // Clock Out, Lunch, Break, Missing-Clock-Out resolution, or a delete confirm).
+  const clockInContext = (draft.mode === 'insert' || draft.mode === 'adjust') && draft.kind === 'clock_in';
+  const showLeaveShortcuts = !!onLeave && clockInContext && !confirmingDelete;
 
   const isOther = reasonCode === 'other';
   // Reason is OPTIONAL (the established TimeTracker rule) — the only block is
@@ -294,6 +306,31 @@ const CorrectionModal: React.FC<Props> = ({ draft, tz, onClose, onSubmit }) => {
             {saving ? 'Applying…' : draft.mode === 'void' ? 'Void event' : draft.mode === 'resolve_pending' ? 'Resolve' : 'Apply'}
           </button>
         </div>
+        )}
+
+        {/* Paid leave shortcuts — Clock In context only. Not punches: they open the
+            leave-hours editor for this employee/day (Holiday, or Vacation drawn
+            from the canonical balance) instead of adding time. */}
+        {showLeaveShortcuts && (
+          <div className="mt-5 pt-4 border-t border-gray-100">
+            <p className="text-xs text-gray-500 mb-2">Add paid leave for this day instead (not a punch):</p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => onLeave?.('holiday')}
+                className="px-3 py-1.5 rounded-lg text-sm font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 transition-colors"
+              >
+                + Holiday
+              </button>
+              <button
+                type="button"
+                onClick={() => onLeave?.('vacation')}
+                className="px-3 py-1.5 rounded-lg text-sm font-medium text-green-700 bg-green-50 hover:bg-green-100 transition-colors"
+              >
+                + Vacation
+              </button>
+            </div>
+          </div>
         )}
       </form>
     </div>

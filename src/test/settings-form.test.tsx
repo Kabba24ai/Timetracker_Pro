@@ -14,7 +14,6 @@ const SETTINGS = {
   pay_period_type: 'biweekly',
   pay_period_start_date: '2026-01-01',
   overtime_workweek_starts_on: 0,
-  paid_leave_counts_toward_overtime: false,
   minimum_lunch_duration_minutes: 45,
   missed_lunch_reminder_minutes: 60,
   missed_lunch_reminder_message: 'lunch msg',
@@ -384,12 +383,6 @@ describe('Settings form — Lunch requirement eligibility', () => {
 });
 
 describe('Settings form — Overtime workweek', () => {
-  const otToggle = () =>
-    screen
-      .getByText('Paid Leave Counts Toward Company Overtime Threshold')
-      .closest('label')!
-      .querySelector('input[type="checkbox"]') as HTMLInputElement;
-
   it('renders Workweek Starts On as a dropdown defaulting to Sunday', async () => {
     await renderSettings();
     const select = screen.getByLabelText('Workweek Starts On') as HTMLSelectElement;
@@ -406,9 +399,10 @@ describe('Settings form — Overtime workweek', () => {
     expect(select.value).toBe('0'); // Kabba default: Sunday
   });
 
-  it('renders the paid-leave company-overtime toggle defaulting OFF', async () => {
+  it('the retired paid-leave company-overtime toggle is gone; copy states leave never counts toward overtime', async () => {
     await renderSettings();
-    expect(otToggle().checked).toBe(false);
+    expect(screen.queryByText('Paid Leave Counts Toward Company Overtime Threshold')).toBeNull();
+    expect(document.body.textContent).toMatch(/Vacation and Holiday (hours )?never count toward overtime/i);
   });
 
   it('never describes overtime as "over 80 hours per pay period"', async () => {
@@ -417,22 +411,20 @@ describe('Settings form — Overtime workweek', () => {
     expect(document.body.textContent).toMatch(/40 hours/); // the weekly threshold
   });
 
-  it('Save persists the workweek start day and the paid-leave toggle', async () => {
+  it('Save persists the workweek start day and never sends the retired key', async () => {
     const user = userEvent.setup();
     await renderSettings();
 
     await user.selectOptions(screen.getByLabelText('Workweek Starts On'), '1'); // Monday
-    await user.click(otToggle());
     await user.click(screen.getByRole('button', { name: /Save Settings/ }));
 
     await vi.waitFor(() => expect(server.calls).toContain('PUT /admin/settings'));
-    const body = server.lastBody as typeof SETTINGS;
+    const body = server.lastBody as Record<string, unknown>;
     expect(body.overtime_workweek_starts_on).toBe(1);
-    expect(body.paid_leave_counts_toward_overtime).toBe(true);
+    expect(body).not.toHaveProperty('paid_leave_counts_toward_overtime');
 
-    // Echoed back → controls reflect the saved values.
+    // Echoed back → control reflects the saved value.
     expect((screen.getByLabelText('Workweek Starts On') as HTMLSelectElement).value).toBe('1');
-    expect(otToggle().checked).toBe(true);
   });
 });
 

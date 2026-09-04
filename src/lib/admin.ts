@@ -157,6 +157,73 @@ export interface PayrollFields {
   // Pending shifts (unresolved) contribute zero to the payroll figures above.
   pending_shift_count?: number;
   has_pending_shift?: boolean;
+  // Paid LEAVE buckets — paid at regular rate, NOT worked time: never inside
+  // paid/unpaid/gross and never part of the 40h overtime threshold. Vacation,
+  // Holiday and Other Paid Leave (sick, personal, bereavement, jury duty) are
+  // three separate buckets; total_paid = paid (worked) + vacation + holiday +
+  // other_paid_leave.
+  vacation_seconds?: number;
+  vacation_hours?: number;
+  holiday_seconds?: number;
+  holiday_hours?: number;
+  other_paid_leave_seconds?: number;
+  other_paid_leave_hours?: number;
+  total_paid_seconds?: number;
+  total_paid_hours?: number;
+}
+
+// ── Manual paid leave (Holiday / Vacation) entered from Time Review ─────────
+
+export type LeaveType = 'holiday' | 'vacation';
+
+// One approved leave entry on a Time Review day (server-derived from the
+// canonical time-off domain). `editable` = a live administrator-entered
+// single-date entry; an employee's approved request is displayed but managed
+// in Vacation Management.
+export interface LeaveEntry {
+  id: number;
+  type: string;
+  label: string;
+  hours: number;
+  seconds: number;
+  scheduled_hours: number;
+  is_paid: boolean;
+  manual: boolean;
+  editable: boolean;
+  source: string;
+  notes: string | null;
+}
+
+export interface LeaveEntryPayload {
+  user_id: number;
+  type: LeaveType;
+  date: string; // YYYY-MM-DD (tenant calendar date)
+  hours: number; // 0 < hours ≤ 8 (server-enforced; vacation also ≤ available balance)
+  notes?: string;
+}
+
+/** Add a manual Holiday / Vacation entry. Never a punch; Time Review refetches afterward. */
+export async function createLeaveEntry(payload: LeaveEntryPayload): Promise<void> {
+  await api.post('/admin/leave-entries', payload);
+}
+
+/** Change a manual entry's hours (server reverses + re-applies the ledger effect). */
+export async function updateLeaveEntry(id: number, hours: number): Promise<void> {
+  await api.patch(`/admin/leave-entries/${id}`, { hours });
+}
+
+/** Delete a manual entry (server cancels it and restores any consumed balance). */
+export async function deleteLeaveEntry(id: number, reason?: string): Promise<void> {
+  await api.del(`/admin/leave-entries/${id}`, reason ? { reason } : undefined);
+}
+
+/** The employee's canonical AVAILABLE vacation balance (hours) from the ledger. */
+export async function fetchEmployeeVacationBalance(userId: number): Promise<number> {
+  const res = (await api.get(`/admin/time-off/balances?employee_id=${userId}`)) as ApiEnvelope & {
+    data?: Array<{ balances?: Array<{ bucket: string; available: number | string }> }>;
+  };
+  const vacation = res.data?.[0]?.balances?.find((b) => b.bucket === 'vacation');
+  return Number(vacation?.available ?? 0);
 }
 
 // The active case-by-case Lunch Override for one employee logical shift (who /
@@ -221,6 +288,10 @@ export interface TimeReviewDay extends PayrollFields {
   // Active per-shift/date Lunch Override (explains a qualifying no-lunch day
   // that is not Pending), or null.
   lunch_override?: LunchOverrideInfo | null;
+  // Approved paid leave on this date (Vacation / Holiday / other approved types),
+  // each entry independent. Rendered as a compact sub-row of badges, never in
+  // the punch cells.
+  leave_entries?: LeaveEntry[];
   flags: string[];
   events: ClockEventRow[];
 }

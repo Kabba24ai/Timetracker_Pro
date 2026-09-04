@@ -114,6 +114,10 @@ class ApiClient {
     return this.request<T>(path, { method: 'PUT', body: body != null ? JSON.stringify(body) : undefined });
   }
 
+  patch<T>(path: string, body?: unknown): Promise<ApiEnvelope<T>> {
+    return this.request<T>(path, { method: 'PATCH', body: body != null ? JSON.stringify(body) : undefined });
+  }
+
   del<T>(path: string, body?: unknown): Promise<ApiEnvelope<T>> {
     return this.request<T>(path, { method: 'DELETE', body: body != null ? JSON.stringify(body) : undefined });
   }

@@ -36,7 +36,6 @@ type MessageKey =
 
 type BoolKey =
   | 'vacation_accrual_enabled'
-  | 'paid_leave_counts_toward_overtime'
   | 'restrict_paid_time_to_shift_start'
   | 'pending_reminder_1_enabled'
   | 'pending_reminder_2_enabled'
@@ -458,14 +457,11 @@ const SystemSettings: React.FC = () => {
               </p>
             </div>
           </div>
-          <div className="mt-6">
-            <ToggleField
-              label="Paid Leave Counts Toward Company Overtime Threshold"
-              value={settings.paid_leave_counts_toward_overtime}
-              onChange={flag('paid_leave_counts_toward_overtime')}
-              hint="Off (default): only actual worked hours over 40/week are overtime, and paid leave (Vacation) never counts toward the threshold. On: a more-generous company policy that lets paid leave help reach 40 — it can only ever increase overtime, never reduce it, and Vacation is never relabeled Overtime."
-            />
-          </div>
+          <p className="mt-6 text-sm text-gray-600">
+            Overtime is only actual worked hours over 40 hours in each fixed seven-day workweek.
+            Vacation and Holiday hours never count toward overtime; they are paid separately at the
+            regular rate.
+          </p>
         </Section>
 
         <Section title="Lunch">
