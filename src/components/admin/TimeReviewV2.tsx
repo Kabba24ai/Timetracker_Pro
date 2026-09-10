@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { AlertCircle, ChevronDown, ChevronRight, Download, Plus, RefreshCw } from 'lucide-react';
+import { AlertCircle, ChevronDown, ChevronLeft, ChevronRight, Download, Plus, RefreshCw } from 'lucide-react';
 import { ApiError } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 import {
@@ -75,9 +75,11 @@ interface TimeReviewProps {
   initialUserId?: number | null;
   initialFrom?: string;
   initialTo?: string;
+  /** Present when this workspace was opened by drilling into a pay-period row. */
+  onBack?: () => void;
 }
 
-const TimeReviewV2: React.FC<TimeReviewProps> = ({ initialUserId, initialFrom, initialTo }) => {
+const TimeReviewV2: React.FC<TimeReviewProps> = ({ initialUserId, initialFrom, initialTo, onBack }) => {
   const { timezone } = useAuth();
   const tz = timezone ?? 'UTC';
 
@@ -357,6 +359,19 @@ const TimeReviewV2: React.FC<TimeReviewProps> = ({ initialUserId, initialFrom, i
 
   return (
     <div className="p-6">
+      {/* Opened by drilling into a pay-period row: one click back to the SAME pay
+          period the administrator was reviewing, which refetches so corrections
+          made here show up in the summary immediately. */}
+      {onBack && (
+        <button
+          onClick={onBack}
+          className="mb-4 flex items-center gap-1 text-sm font-medium text-blue-600 hover:text-blue-800 transition-colors"
+        >
+          <ChevronLeft className="h-4 w-4" />
+          <span>Back to Pay Period Summary</span>
+        </button>
+      )}
+
       {/* Toolbar */}
       <div className="flex flex-wrap items-end gap-3 mb-5">
         <div>
@@ -441,25 +456,36 @@ const TimeReviewV2: React.FC<TimeReviewProps> = ({ initialUserId, initialFrom, i
         <p className="text-gray-500 text-center py-12">Select an employee to review their time.</p>
       ) : (
         <>
-          {/* Summary cards — Paid → Unpaid → Total Worked, then Shifts / Lunch / Other. */}
-          {totals && (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mb-4">
-              <Card label="Paid" value={formatDuration(totals.paid_seconds)} accent="text-blue-700" emphasize />
-              <Card label="Unpaid" value={formatDuration(totals.unpaid_seconds)} accent="text-orange-600" />
-              <Card label="Total Worked" value={formatDuration(totals.gross_seconds)} accent="text-gray-900" />
-              <Card label="Shifts" value={String(totals.shift_count)} sub={totals.open_shift_count ? `${totals.open_shift_count} open` : undefined} />
-              <Card label="Lunch" value={formatDuration(totals.lunch_seconds)} />
-              <Card label="Other Breaks" value={formatDuration(totals.other_break_seconds)} />
+          {/* PAYROLL classification for the period — the SAME canonical numbers the
+              Pay Period Summary row shows for this employee and this exact range.
+              Total Worked = Regular + Overtime (paid worked time); "Gross" below
+              is the elapsed span and is NOT Total Worked. */}
+          {totals && totals.total_worked_seconds !== undefined && (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-4">
+              <Card label="Regular" value={formatDuration(totals.regular_worked_seconds ?? 0)} accent="text-gray-900" />
+              <Card label="Overtime" value={formatDuration(totals.overtime_worked_seconds ?? 0)} accent="text-orange-600" sub="Over 40h in a workweek" />
+              <Card label="Total Worked" value={formatDuration(totals.total_worked_seconds)} accent="text-gray-900" sub="Regular + Overtime" />
             </div>
           )}
           {/* Paid LEAVE buckets — separate from worked time and from each other (Other Paid Leave =
-              sick / personal / bereavement / jury duty). Total Paid = Paid + Vacation + Holiday + Other. */}
+              sick / personal / bereavement / jury duty). Total Paid = Total Worked + Vacation + Holiday + Other. */}
           {totals && totals.total_paid_seconds !== undefined && (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
               <Card label="Vacation" value={formatDuration(totals.vacation_seconds ?? 0)} accent="text-green-700" />
               <Card label="Holiday" value={formatDuration(totals.holiday_seconds ?? 0)} accent="text-indigo-700" />
               <Card label="Other Paid Leave" value={formatDuration(totals.other_paid_leave_seconds ?? 0)} accent="text-gray-700" sub="Sick, personal, bereavement, jury duty" />
-              <Card label="Total Paid" value={formatDuration(totals.total_paid_seconds)} accent="text-gray-900" sub="Paid worked + Vacation + Holiday + Other paid leave" />
+              <Card label="Total Paid" value={formatDuration(totals.total_paid_seconds)} accent="text-blue-700" emphasize sub="Total Worked + Vacation + Holiday + Other paid leave" />
+            </div>
+          )}
+          {/* Operational detail for troubleshooting a day — never the accountant figures. */}
+          {totals && (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mb-4">
+              <Card label="Paid" value={formatDuration(totals.paid_seconds)} accent="text-blue-700" />
+              <Card label="Unpaid" value={formatDuration(totals.unpaid_seconds)} accent="text-orange-600" />
+              <Card label="Gross (elapsed)" value={formatDuration(totals.gross_seconds)} accent="text-gray-500" />
+              <Card label="Shifts" value={String(totals.shift_count)} sub={totals.open_shift_count ? `${totals.open_shift_count} open` : undefined} />
+              <Card label="Lunch" value={formatDuration(totals.lunch_seconds)} />
+              <Card label="Other Breaks" value={formatDuration(totals.other_break_seconds)} />
             </div>
           )}
 
@@ -484,7 +510,10 @@ const TimeReviewV2: React.FC<TimeReviewProps> = ({ initialUserId, initialFrom, i
                   ))}
                   <th className="text-right px-3 py-2 font-medium text-blue-700">Paid</th>
                   <th className="text-right px-3 py-2 font-medium text-orange-600">Unpaid</th>
-                  <th className="text-right px-3 py-2 font-medium">Total Worked</th>
+                  {/* Elapsed span for the day (paid + unpaid breaks) — an
+                      operational figure. The accountant's Total Worked is
+                      Regular + Overtime, shown in the period cards above. */}
+                  <th className="text-right px-3 py-2 font-medium">Gross</th>
                   <th className="text-right px-3 py-2 font-medium">Actions</th>
                 </tr>
               </thead>

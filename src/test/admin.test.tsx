@@ -104,13 +104,15 @@ async function openAdjustClockIn() {
 }
 
 describe('timeReviewToCsv()', () => {
-  it('orders columns Date…punches…Paid, Unpaid, Total Worked', () => {
+  it('orders columns Date…punches…Paid, Unpaid, Gross', () => {
     const header = timeReviewToCsv(REVIEW as unknown as TimeReview, 'UTC').split('\n')[0].split(',');
     expect(header.slice(0, 3)).toEqual(['Date', 'Day', 'Day Type']);
     expect(header.slice(3, 9)).toEqual(['Clock In', 'Lunch Out', 'Lunch In', 'Break Out', 'Break In', 'Clock Out']);
-    expect(header.slice(9)).toEqual(['Paid', 'Unpaid', 'Total Worked']);
+    // "Gross" is the elapsed span; the accountant's Total Worked (Regular +
+    // Overtime) lives on the pay-period export, never on this per-day one.
+    expect(header.slice(9)).toEqual(['Paid', 'Unpaid', 'Gross']);
     expect(header.indexOf('Paid')).toBeLessThan(header.indexOf('Unpaid'));
-    expect(header.indexOf('Unpaid')).toBeLessThan(header.indexOf('Total Worked'));
+    expect(header.indexOf('Unpaid')).toBeLessThan(header.indexOf('Gross'));
   });
 
   it('emits authoritative Paid/Unpaid/Worked per day', () => {

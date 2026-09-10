@@ -141,7 +141,8 @@ export interface DayPosition {
 }
 
 // Payroll fields mirror PayrollBreakdown: paid (net, the number to pay),
-// unpaid (lunch+other), gross (paid+unpaid = "Total Worked").
+// unpaid (lunch+other), gross (paid+unpaid = the elapsed span, NOT "Total
+// Worked" — see the accountant classification below).
 export interface PayrollFields {
   paid_seconds: number;
   paid_hours: number;
@@ -157,6 +158,16 @@ export interface PayrollFields {
   // Pending shifts (unresolved) contribute zero to the payroll figures above.
   pending_shift_count?: number;
   has_pending_shift?: boolean;
+  // The ACCOUNTANT classification of PAID worked time, from the ONE canonical
+  // OvertimeClassifier (fixed seven-day workweek, 40h statutory). Present on
+  // PERIOD totals — overtime is weekly, so it never appears on a single day.
+  //   total_worked = regular + overtime  (never gross_seconds, never unpaid time)
+  regular_worked_seconds?: number;
+  regular_worked_hours?: number;
+  overtime_worked_seconds?: number;
+  overtime_worked_hours?: number;
+  total_worked_seconds?: number;
+  total_worked_hours?: number;
   // Paid LEAVE buckets — paid at regular rate, NOT worked time: never inside
   // paid/unpaid/gross and never part of the 40h overtime threshold. Vacation,
   // Holiday and Other Paid Leave (sick, personal, bereavement, jury duty) are
@@ -358,7 +369,7 @@ function csvCell(value: string | number): string {
 
 /**
  * Per-day CSV for the pay period, in the same payroll ordering as the grid:
- * Date | Day | Day Type | (punches) | Paid | Unpaid | Total Worked. Times render
+ * Date | Day | Day Type | (punches) | Paid | Unpaid | Gross. Times render
  * in the tenant timezone; values come straight from the authoritative day rows.
  */
 export function timeReviewToCsv(review: TimeReview, tz: string): string {
@@ -374,7 +385,9 @@ export function timeReviewToCsv(review: TimeReview, tz: string): string {
     'Clock Out',
     'Paid',
     'Unpaid',
-    'Total Worked',
+    // The elapsed span (paid + unpaid breaks). NOT the accountant's "Total
+    // Worked", which is Regular + Overtime — see payPeriodToCsv.
+    'Gross',
   ];
   const at = (d: TimeReviewDay, k: PositionKey) => (d.positions[k]?.at ? formatClock(d.positions[k]!.at, tz) : '');
   const rows = review.days.map((d) => [
@@ -409,12 +422,39 @@ export function downloadCsv(filename: string, csv: string): void {
 
 // ── Cross-employee pay-period summary (Phase 3B) ──────────────────────────
 
-// Payroll-explicit fields (mirrors PayPeriodSummaryService):
-//   paid   = the number to PAY (canonical net-of-breaks projection value)
+/**
+ * The ACCOUNTANT buckets every pay-period row and total carries (mirrors
+ * PayPeriodSummaryService). All classification is SERVER-owned — the client only
+ * displays and serializes these numbers, it never re-derives payroll:
+ *   total_worked = regular + overtime                       (PAID worked time)
+ *   total_paid   = total_worked + vacation + holiday + other paid leave
+ * Total Worked is deliberately NOT `gross_seconds` (the elapsed span) and never
+ * includes unpaid lunch/break time.
+ */
+export interface AccountantHours {
+  regular_worked_seconds: number;
+  regular_worked_hours: number;
+  overtime_worked_seconds: number;
+  overtime_worked_hours: number;
+  vacation_seconds: number;
+  vacation_hours: number;
+  holiday_seconds: number;
+  holiday_hours: number;
+  other_paid_leave_seconds: number;
+  other_paid_leave_hours: number;
+  total_worked_seconds: number;
+  total_worked_hours: number;
+  total_paid_seconds: number;
+  total_paid_hours: number;
+}
+
+// Operational fields (mirrors PayrollBreakdown), kept for troubleshooting and
+// existing consumers — NOT the accountant columns:
+//   paid   = worked net of breaks (never "Total Paid")
 //   unpaid = lunch + other break time
-//   gross  = paid + unpaid = elapsed work-period span ("Worked")
+//   gross  = paid + unpaid = elapsed work-period span (never "Total Worked")
 // The identity paid = gross − unpaid holds by construction — no double subtraction.
-export interface PayPeriodRow {
+export interface PayPeriodRow extends AccountantHours {
   employee: { id: number; full_name: string };
   paid_seconds: number;
   paid_hours: number;
@@ -434,9 +474,10 @@ export interface PayPeriodRow {
   flags: string[];
 }
 
-export interface PayPeriodTotals {
+export interface PayPeriodTotals extends AccountantHours {
   employees: number;
   employees_with_activity: number;
+  pending_shift_count?: number;
   paid_seconds: number;
   paid_hours: number;
   unpaid_seconds: number;
@@ -496,42 +537,61 @@ export function flagLabel(flag: string): string {
   return FLAG_LABEL[flag] ?? flag;
 }
 
+/** The V1 accountant CSV columns, in their exact logical order. */
+export const PAY_PERIOD_CSV_COLUMNS = [
+  'Employee',
+  'Pay Period Start',
+  'Pay Period End',
+  'Regular Hours',
+  'Overtime Hours',
+  'Vacation Hours',
+  'Holiday Hours',
+  'Other Paid Leave Hours',
+  'Total Worked Hours',
+  'Total Paid Hours',
+  'Pending',
+] as const;
+
 /**
- * CSV of the same authoritative rows shown in the grid, in the same payroll
- * column order: Paid first, then Unpaid, then Worked. Operational/audit columns
- * follow the primary payroll set. Values come straight from the authoritative
- * fields — no separate calculation path.
+ * The V1 accountant export: ONE row per employee, HOURS ONLY, from the SAME
+ * authoritative summary fields the screen renders. There is no second payroll
+ * math path here — Regular/Overtime classification and the leave buckets are
+ * server-owned; this only serializes canonical seconds/hours to accountant
+ * decimal hours (two places).
+ *
+ * Deliberately absent: pay rates, wages, gross pay, taxes, deductions, lunch and
+ * break time, correction/system-event counts and internal ids. Pending is the
+ * canonical review exception, carried as the final column so the accountant can
+ * see which rows were still under review; it never blocks the export.
  */
 export function payPeriodToCsv(summary: PayPeriodSummary): string {
-  const header = [
-    'Employee',
-    'Paid Hours',
-    'Unpaid Hours',
-    'Worked (h)',
-    'Lunch (h)',
-    'Other (h)',
-    'Shifts',
-    'Flags',
-    // Operational / audit columns follow the primary payroll set.
-    'Open shifts',
-    'Corrections',
-    'System events',
-  ];
-  const hours = (seconds: number) => (seconds / 3600).toFixed(2);
+  const hours = (value: number) => value.toFixed(2);
   const rows = summary.data.map((r) => [
     r.employee.full_name,
-    r.paid_hours.toFixed(2),
-    r.unpaid_hours.toFixed(2),
-    r.gross_hours.toFixed(2),
-    hours(r.lunch_seconds),
-    hours(r.other_break_seconds),
-    r.shift_count,
-    r.flags.map(flagLabel).join('; '),
-    r.open_shift_count,
-    r.correction_count,
-    r.system_event_count,
+    summary.period.from,
+    summary.period.to,
+    hours(r.regular_worked_hours),
+    hours(r.overtime_worked_hours),
+    hours(r.vacation_hours),
+    hours(r.holiday_hours),
+    hours(r.other_paid_leave_hours),
+    hours(r.total_worked_hours),
+    hours(r.total_paid_hours),
+    isPending(r) ? 'Yes' : 'No',
   ]);
-  return [header, ...rows].map((r) => r.map(csvCell).join(',')).join('\n');
+  return [PAY_PERIOD_CSV_COLUMNS as unknown as string[], ...rows]
+    .map((r) => r.map(csvCell).join(','))
+    .join('\n');
+}
+
+/** The canonical filename for a pay-period export. */
+export function payPeriodCsvFilename(period: { from: string; to: string }): string {
+  return `pay-period_${period.from}_${period.to}.csv`;
+}
+
+/** The canonical review exception: an unresolved Pending record. */
+export function isPending(row: { flags: string[] }): boolean {
+  return row.flags.includes('pending');
 }
 
 // Re-export the (tz-agnostic) duration formatter; wall-clock formatting comes

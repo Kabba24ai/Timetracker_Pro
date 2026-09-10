@@ -301,20 +301,21 @@ describe('Time Review — leave badges and sub-row', () => {
     expect(screen.getByRole('button', { name: 'Holiday 8:00' })).toBeInTheDocument();
   });
 
-  it('totals cards show Vacation, Holiday, Other Paid Leave and Total Paid separately from Paid worked', async () => {
-    // Total Paid = Paid worked + Vacation + Holiday + Other Paid Leave (5:30 + 4:00 + 8:00 + 1:00).
+  it('totals cards show Vacation, Holiday, Other Paid Leave and Total Paid separately from worked time', async () => {
+    // Total Paid = Total Worked + Vacation + Holiday + Other Paid Leave (5:30 + 4:00 + 8:00 + 1:00).
     await setup([workedDay()], {
       paid_seconds: 19800, gross_seconds: 21600, vacation_seconds: 14400, holiday_seconds: 28800,
       other_paid_leave_seconds: 3600, total_paid_seconds: 19800 + 14400 + 28800 + 3600,
+      regular_worked_seconds: 19800, overtime_worked_seconds: 0, total_worked_seconds: 19800,
     });
     const card = (label: string) => screen.getByText(label).parentElement as HTMLElement;
     expect(within(card('Vacation')).getByText('4:00')).toBeInTheDocument();
     expect(within(card('Holiday')).getByText('8:00')).toBeInTheDocument();
     expect(within(card('Other Paid Leave')).getByText('1:00')).toBeInTheDocument();
     expect(within(card('Total Paid')).getByText('18:30')).toBeInTheDocument();
-    expect(screen.getByText('Paid worked + Vacation + Holiday + Other paid leave')).toBeInTheDocument();
-    // Paid (worked) stays 5:30 in its own card — leave never inflates it.
-    expect(screen.getAllByText('5:30').length).toBeGreaterThan(0);
+    expect(screen.getByText('Total Worked + Vacation + Holiday + Other paid leave')).toBeInTheDocument();
+    // Total Worked (paid worked time) stays 5:30 — leave never inflates it.
+    expect(within(card('Total Worked')).getByText('5:30')).toBeInTheDocument();
   });
 
   it('clicking the badge opens the editor for that entry; Apply updates and refetches', async () => {

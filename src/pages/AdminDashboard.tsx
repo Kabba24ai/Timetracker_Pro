@@ -2,12 +2,16 @@ import React, { useState } from 'react';
 import { Users, Settings, Calendar, Clock, CalendarDays, Award, BarChart3 } from 'lucide-react';
 import Header from '../components/Header';
 import EmployeeManagement from '../components/admin/EmployeeManagement';
-import PayPeriodSummaryGrid from '../components/admin/PayPeriodSummary';
+import PayPeriodSummaryGrid, {
+  defaultPayPeriodView,
+  type PayPeriodView,
+} from '../components/admin/PayPeriodSummary';
 import TimeReviewV2 from '../components/admin/TimeReviewV2';
 import VacationManagement from '../components/admin/VacationManagement';
 import SystemSettings from '../components/admin/SystemSettings';
 import WorkScheduleV2 from '../components/admin/WorkScheduleV2';
 import AttendanceV2 from '../components/admin/AttendanceV2';
+import { useAuth } from '../contexts/AuthContext';
 
 interface DrillDown {
   userId: number;
@@ -17,8 +21,17 @@ interface DrillDown {
 }
 
 const AdminDashboard: React.FC = () => {
+  const { timezone } = useAuth();
   const [activeTab, setActiveTab] = useState('pay-periods');
   const [drillDown, setDrillDown] = useState<DrillDown | null>(null);
+  // The Pay Period selection lives HERE, not inside the grid, so drilling into an
+  // employee's Time Review and coming back returns the administrator to the same
+  // period, sort and Exceptions-only state instead of a default Current Period.
+  // The grid remounts on return and refetches, so corrections just made inside
+  // Time Review are reflected immediately.
+  const [payPeriodView, setPayPeriodView] = useState<PayPeriodView>(() =>
+    defaultPayPeriodView(timezone ?? 'UTC'),
+  );
 
   const tabs = [
     { id: 'pay-periods', name: 'Pay Periods', icon: BarChart3 },
@@ -37,10 +50,24 @@ const AdminDashboard: React.FC = () => {
     setActiveTab('time-review');
   };
 
+  // Return from a drill-down to the pay period the administrator came from.
+  const backToSummary = () => {
+    setDrillDown(null);
+    setActiveTab('pay-periods');
+  };
+
+  const summaryGrid = (
+    <PayPeriodSummaryGrid
+      onDrillDown={openDrillDown}
+      view={payPeriodView}
+      onViewChange={setPayPeriodView}
+    />
+  );
+
   const renderContent = () => {
     switch (activeTab) {
       case 'pay-periods':
-        return <PayPeriodSummaryGrid onDrillDown={openDrillDown} />;
+        return summaryGrid;
       case 'time-review':
         return (
           <TimeReviewV2
@@ -48,6 +75,7 @@ const AdminDashboard: React.FC = () => {
             initialUserId={drillDown?.userId}
             initialFrom={drillDown?.from}
             initialTo={drillDown?.to}
+            onBack={drillDown ? backToSummary : undefined}
           />
         );
       case 'employees':
@@ -61,7 +89,7 @@ const AdminDashboard: React.FC = () => {
       case 'settings':
         return <SystemSettings />;
       default:
-        return <PayPeriodSummaryGrid onDrillDown={openDrillDown} />;
+        return summaryGrid;
     }
   };
 
