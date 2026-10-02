@@ -10,6 +10,7 @@ import {
   LeaveEntry,
   LeaveType,
   POSITION_COLUMNS,
+  PayPeriodOption,
   PositionKey,
   TimeReview,
   TimeReviewDay,
@@ -20,6 +21,7 @@ import {
   downloadCsv,
   fetchEmployeeVacationBalance,
   fetchEmployees,
+  fetchPayPeriods,
   fetchTimeReview,
   formatDuration,
   paidFromAt,
@@ -40,6 +42,10 @@ const LEAVE_BADGE: Record<string, string> = {
 const LEAVE_BADGE_DEFAULT = 'text-gray-700 bg-gray-100 hover:bg-gray-200';
 
 type Mode = 'current' | 'previous' | 'custom';
+
+// Custom resolves to one of two things: an established pay period picked from the
+// canonical list, or the manual From/To range. This sentinel is the second.
+const MANUAL_RANGE = 'manual';
 
 const DAY_TYPE_STYLE: Record<string, string> = {
   'Working Day': 'bg-blue-50 text-blue-700',
@@ -89,6 +95,11 @@ const TimeReviewV2: React.FC<TimeReviewProps> = ({ initialUserId, initialFrom, i
   const [mode, setMode] = useState<Mode>(initialFrom ? 'custom' : 'current');
   const [from, setFrom] = useState<string>(initialFrom ?? '');
   const [to, setTo] = useState<string>(initialTo ?? '');
+  // The canonical established pay periods (server-resolved) a Custom selection
+  // navigates by, plus the one currently picked — keyed by its start date, or
+  // MANUAL_RANGE for the manual From/To escape hatch.
+  const [periods, setPeriods] = useState<PayPeriodOption[]>([]);
+  const [periodChoice, setPeriodChoice] = useState<string>(MANUAL_RANGE);
 
   useEffect(() => {
     if (initialUserId != null) setUserId(initialUserId);
@@ -119,16 +130,62 @@ const TimeReviewV2: React.FC<TimeReviewProps> = ({ initialUserId, initialFrom, i
       .catch((err) => setError(err instanceof ApiError ? err.message : 'Could not load employees.'));
   }, []);
 
-  const load = useCallback(async () => {
+  // The established pay periods, straight from the canonical server resolver.
+  // A failure here only costs the convenience picker — the manual From/To range
+  // still works — so it never surfaces as a Time Review error.
+  useEffect(() => {
+    fetchPayPeriods()
+      .then((list) => {
+        setPeriods(list);
+        // Arriving after a drill-down: show which established period those exact
+        // dates are, without changing them or reloading.
+        setPeriodChoice((choice) =>
+          choice === MANUAL_RANGE && list.some((p) => p.from === from && p.to === to)
+            ? (list.find((p) => p.from === from && p.to === to) as PayPeriodOption).from
+            : choice,
+        );
+      })
+      .catch(() => setPeriods([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Switching to Custom shows the period the current dates belong to, so the
+  // picker opens on something meaningful rather than a blank manual range.
+  const selectMode = (m: Mode) => {
+    if (m === 'custom') {
+      const match = periods.find((p) => p.from === from && p.to === to);
+      setPeriodChoice(match ? match.from : MANUAL_RANGE);
+    }
+    setMode(m);
+  };
+
+  // Picking an established period feeds its exact boundaries to the SAME Time
+  // Review request path a manual range uses — no parallel calculation.
+  const selectPeriod = (value: string) => {
+    setPeriodChoice(value);
+    if (value === MANUAL_RANGE) return; // reveal From/To; leave the dates alone
+    const period = periods.find((p) => p.from === value);
+    if (!period) return;
+    setFrom(period.from);
+    setTo(period.to);
+    load({ from: period.from, to: period.to });
+  };
+
+  // `range` loads an explicit period NOW, without waiting for from/to state to
+  // settle (picking a pay period sets both and loads in the same tick). Without
+  // it the request path is unchanged: explicit dates for Custom, the canonical
+  // selector for Current/Previous.
+  const load = useCallback(async (range?: { from: string; to: string }) => {
     if (!userId) return;
     setLoading(true);
     setError(null);
     try {
-      const params = mode === 'custom' && from && to ? { from, to } : { period: mode === 'previous' ? 'previous' : 'current' };
+      const effective = range ?? (mode === 'custom' && from && to ? { from, to } : null);
+      const params = effective ?? { period: mode === 'previous' ? 'previous' : 'current' };
       const data = await fetchTimeReview(userId, params as { period?: 'current' | 'previous'; from?: string; to?: string });
       setReview(data);
       // Keep custom inputs in sync with the resolved period (for current/previous).
-      if (mode !== 'custom') {
+      if (mode !== 'custom' && !range) {
         setFrom(data.period.from);
         setTo(data.period.to);
       }
@@ -375,8 +432,11 @@ const TimeReviewV2: React.FC<TimeReviewProps> = ({ initialUserId, initialFrom, i
       {/* Toolbar */}
       <div className="flex flex-wrap items-end gap-3 mb-5">
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Employee</label>
+          <label htmlFor="tr-employee" className="block text-xs font-medium text-gray-600 mb-1">
+            Employee
+          </label>
           <select
+            id="tr-employee"
             value={userId ?? ''}
             onChange={(e) => setUserId(e.target.value ? Number(e.target.value) : null)}
             className="px-3 py-2 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[14rem]"
@@ -394,7 +454,7 @@ const TimeReviewV2: React.FC<TimeReviewProps> = ({ initialUserId, initialFrom, i
           {(['current', 'previous', 'custom'] as Mode[]).map((m) => (
             <button
               key={m}
-              onClick={() => setMode(m)}
+              onClick={() => selectMode(m)}
               className={`px-4 py-2 text-sm font-medium capitalize transition-colors ${
                 mode === m ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
               }`}
@@ -406,19 +466,51 @@ const TimeReviewV2: React.FC<TimeReviewProps> = ({ initialUserId, initialFrom, i
 
         {mode === 'custom' && (
           <>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">From</label>
-              <input type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">To</label>
-              <input type="date" value={to} min={from} onChange={(e) => setTo(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            </div>
+            {periods.length > 0 && (
+              <div>
+                <label htmlFor="tr-pay-period" className="block text-xs font-medium text-gray-600 mb-1">
+                  Pay Period
+                </label>
+                <select
+                  id="tr-pay-period"
+                  value={periodChoice}
+                  onChange={(e) => selectPeriod(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[15rem]"
+                >
+                  {periods.map((p) => (
+                    <option key={p.from} value={p.from}>
+                      {p.label}
+                      {p.is_current ? ' — Current' : p.is_previous ? ' — Previous' : ''}
+                    </option>
+                  ))}
+                  <option value={MANUAL_RANGE}>Custom Date Range…</option>
+                </select>
+              </div>
+            )}
+
+            {/* The manual range stays available for the rare genuinely arbitrary
+                window; it is the only mode that shows the date inputs. */}
+            {(periodChoice === MANUAL_RANGE || periods.length === 0) && (
+              <>
+                <div>
+                  <label htmlFor="tr-from" className="block text-xs font-medium text-gray-600 mb-1">
+                    From
+                  </label>
+                  <input id="tr-from" type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <div>
+                  <label htmlFor="tr-to" className="block text-xs font-medium text-gray-600 mb-1">
+                    To
+                  </label>
+                  <input id="tr-to" type="date" value={to} min={from} onChange={(e) => setTo(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+              </>
+            )}
           </>
         )}
 
         <button
-          onClick={load}
+          onClick={() => load()}
           disabled={!userId || loading || (mode === 'custom' && (!from || !to))}
           className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
         >

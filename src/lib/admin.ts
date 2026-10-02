@@ -498,6 +498,31 @@ export interface PayPeriodSummary {
   data: PayPeriodRow[];
 }
 
+/**
+ * One established pay period, exactly as the server's canonical resolver defines
+ * it (same anchor + length that decide Current and Previous). The client never
+ * derives payroll boundaries itself — it renders these.
+ */
+export interface PayPeriodOption {
+  from: string;
+  to: string;
+  label: string;
+  is_current: boolean;
+  is_previous: boolean;
+}
+
+/**
+ * The most recent established pay periods, newest first — the Time Review period
+ * picker's options. Roughly a year of biweekly history by default.
+ */
+export async function fetchPayPeriods(count = 26): Promise<PayPeriodOption[]> {
+  const res = (await api.get<PayPeriodOption[]>(`/admin/pay-periods?count=${count}`)) as ApiEnvelope<
+    PayPeriodOption[]
+  > & { timezone: string };
+
+  return res.data ?? [];
+}
+
 export interface PayPeriodParams {
   period?: 'current' | 'previous';
   from?: string;
