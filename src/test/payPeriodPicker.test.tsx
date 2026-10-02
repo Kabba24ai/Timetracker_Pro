@@ -294,6 +294,57 @@ describe('Custom Date Range… preserves the manual behaviour', () => {
   });
 });
 
+// ── Layout: the manual dates are one inseparable group on their own row ────
+
+describe('manual range layout', () => {
+  it('keeps From and To in one group, on a row of their own', async () => {
+    const select = await openCustom();
+    fireEvent.change(select as HTMLElement, { target: { value: 'manual' } });
+
+    const row = await screen.findByTestId('manual-range-row');
+    const fromInput = screen.getByLabelText('From');
+    const toInput = screen.getByLabelText('To');
+
+    // Both dates live inside the dedicated row…
+    expect(row).toContainElement(fromInput);
+    expect(row).toContainElement(toInput);
+    // …and share one immediate parent, so neither can wrap away from the other.
+    expect(fromInput.closest('div')?.parentElement).toBe(toInput.closest('div')?.parentElement);
+    // That shared group does NOT wrap.
+    const group = fromInput.closest('div')?.parentElement as HTMLElement;
+    expect(group.className).toContain('flex');
+    expect(group.className).not.toContain('flex-wrap');
+
+    // The row itself is a full-width flex line, so it starts below the controls above.
+    expect(row.className).toContain('basis-full');
+
+    // Refresh travels with the dates; the period controls stay on the row above.
+    expect(row).toContainElement(screen.getByRole('button', { name: /Refresh/i }));
+    expect(row).not.toContainElement(screen.getByLabelText('Employee'));
+    expect(row).not.toContainElement(screen.getByRole('button', { name: /Export CSV/i }));
+  });
+
+  it('renders no manual row — and keeps Refresh on the main row — for an established period', async () => {
+    const select = await openCustom();
+    expect(select).toHaveValue('2026-09-13');
+
+    expect(screen.queryByTestId('manual-range-row')).not.toBeInTheDocument();
+    // Exactly one Refresh button, and it is not inside a manual row.
+    expect(screen.getAllByRole('button', { name: /Refresh/i })).toHaveLength(1);
+  });
+
+  it('shows the manual row when the period list is unavailable', async () => {
+    server.periods = 'fail';
+    render(<TimeReviewV2 initialUserId={1} />);
+    await screen.findByText('Custom');
+    fireEvent.click(screen.getByText('Custom'));
+
+    const row = await screen.findByTestId('manual-range-row');
+    expect(row).toContainElement(screen.getByLabelText('From'));
+    expect(row).toContainElement(screen.getByLabelText('To'));
+  });
+});
+
 // ── Degradation + drill-down ───────────────────────────────────────────────
 
 describe('robustness', () => {

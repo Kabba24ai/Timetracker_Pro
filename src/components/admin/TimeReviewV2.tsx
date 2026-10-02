@@ -414,6 +414,23 @@ const TimeReviewV2: React.FC<TimeReviewProps> = ({ initialUserId, initialFrom, i
 
   const totals = review?.totals;
 
+  // The manual From/To range is showing — either explicitly chosen, or because the
+  // canonical period list is unavailable.
+  const manualRange = mode === 'custom' && (periodChoice === MANUAL_RANGE || periods.length === 0);
+
+  // Defined once and rendered in exactly one place: beside the period controls on
+  // the main row, or with the manual dates on their own row.
+  const refreshControl = (
+    <button
+      onClick={() => load()}
+      disabled={!userId || loading || (mode === 'custom' && (!from || !to))}
+      className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
+    >
+      <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+      <span>Refresh</span>
+    </button>
+  );
+
   return (
     <div className="p-6">
       {/* Opened by drilling into a pay-period row: one click back to the SAME pay
@@ -464,59 +481,29 @@ const TimeReviewV2: React.FC<TimeReviewProps> = ({ initialUserId, initialFrom, i
           ))}
         </div>
 
-        {mode === 'custom' && (
-          <>
-            {periods.length > 0 && (
-              <div>
-                <label htmlFor="tr-pay-period" className="block text-xs font-medium text-gray-600 mb-1">
-                  Pay Period
-                </label>
-                <select
-                  id="tr-pay-period"
-                  value={periodChoice}
-                  onChange={(e) => selectPeriod(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[15rem]"
-                >
-                  {periods.map((p) => (
-                    <option key={p.from} value={p.from}>
-                      {p.label}
-                      {p.is_current ? ' — Current' : p.is_previous ? ' — Previous' : ''}
-                    </option>
-                  ))}
-                  <option value={MANUAL_RANGE}>Custom Date Range…</option>
-                </select>
-              </div>
-            )}
-
-            {/* The manual range stays available for the rare genuinely arbitrary
-                window; it is the only mode that shows the date inputs. */}
-            {(periodChoice === MANUAL_RANGE || periods.length === 0) && (
-              <>
-                <div>
-                  <label htmlFor="tr-from" className="block text-xs font-medium text-gray-600 mb-1">
-                    From
-                  </label>
-                  <input id="tr-from" type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-                <div>
-                  <label htmlFor="tr-to" className="block text-xs font-medium text-gray-600 mb-1">
-                    To
-                  </label>
-                  <input id="tr-to" type="date" value={to} min={from} onChange={(e) => setTo(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-              </>
-            )}
-          </>
+        {mode === 'custom' && periods.length > 0 && (
+          <div>
+            <label htmlFor="tr-pay-period" className="block text-xs font-medium text-gray-600 mb-1">
+              Pay Period
+            </label>
+            <select
+              id="tr-pay-period"
+              value={periodChoice}
+              onChange={(e) => selectPeriod(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[15rem]"
+            >
+              {periods.map((p) => (
+                <option key={p.from} value={p.from}>
+                  {p.label}
+                  {p.is_current ? ' — Current' : p.is_previous ? ' — Previous' : ''}
+                </option>
+              ))}
+              <option value={MANUAL_RANGE}>Custom Date Range…</option>
+            </select>
+          </div>
         )}
 
-        <button
-          onClick={() => load()}
-          disabled={!userId || loading || (mode === 'custom' && (!from || !to))}
-          className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
-        >
-          <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-          <span>Refresh</span>
-        </button>
+        {!manualRange && refreshControl}
 
         <div className="ml-auto flex gap-2">
           <button
@@ -528,6 +515,31 @@ const TimeReviewV2: React.FC<TimeReviewProps> = ({ initialUserId, initialFrom, i
             <span>Export CSV</span>
           </button>
         </div>
+
+        {/* The manual range — kept for the rare genuinely arbitrary window — gets
+            its own row: `basis-full` makes this group a full-width flex line, so
+            it can never be split across the period controls above. From and To
+            then sit in a non-wrapping sub-group, so one can never wrap away from
+            the other. */}
+        {manualRange && (
+          <div data-testid="manual-range-row" className="basis-full flex flex-wrap items-end gap-3">
+            <div className="flex items-end gap-3">
+              <div>
+                <label htmlFor="tr-from" className="block text-xs font-medium text-gray-600 mb-1">
+                  From
+                </label>
+                <input id="tr-from" type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <div>
+                <label htmlFor="tr-to" className="block text-xs font-medium text-gray-600 mb-1">
+                  To
+                </label>
+                <input id="tr-to" type="date" value={to} min={from} onChange={(e) => setTo(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+            </div>
+            {refreshControl}
+          </div>
+        )}
       </div>
 
       {review && (
