@@ -512,7 +512,7 @@ export interface PayPeriodOption {
 }
 
 /**
- * The most recent established pay periods, newest first — the Time Review period
+ * The most recent established pay periods, newest first — the shared pay-period
  * picker's options. Roughly a year of biweekly history by default.
  */
 export async function fetchPayPeriods(count = 26): Promise<PayPeriodOption[]> {
@@ -521,6 +521,57 @@ export async function fetchPayPeriods(count = 26): Promise<PayPeriodOption[]> {
   > & { timezone: string };
 
   return res.data ?? [];
+}
+
+export type PeriodMode = 'current' | 'previous' | 'custom';
+
+/**
+ * Which pay period an admin screen shows. Current and Previous are canonical
+ * selectors the server resolves; Custom is ONE established period picked from
+ * the server's list. There is no arbitrary date range.
+ */
+export interface PeriodSelection {
+  mode: PeriodMode;
+  /** The established period picked under Custom; empty for Current/Previous. */
+  from: string;
+  to: string;
+}
+
+/**
+ * The request parameters for a selection, or null when Custom has no period
+ * picked yet. Null means DO NOT QUERY: without dates the server falls back to the
+ * current period, which would silently show a period nobody selected.
+ */
+export function periodRequest(
+  selection: PeriodSelection,
+): { period: 'current' | 'previous' } | { from: string; to: string } | null {
+  if (selection.mode !== 'custom') return { period: selection.mode };
+  return selection.from && selection.to ? { from: selection.from, to: selection.to } : null;
+}
+
+/** The identity of the selected period. Data loaded under another key is never shown. */
+export function periodKey(selection: PeriodSelection): string {
+  return selection.mode === 'custom' ? `custom:${selection.from}:${selection.to}` : selection.mode;
+}
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/**
+ * A pay period for display: "Sep 27 – Oct 10, 2026", naming both years when the
+ * period crosses New Year — "Dec 28, 2025 – Jan 10, 2026". Pure calendar-date
+ * formatting of the server's YYYY-MM-DD values: no Date, no timezone conversion.
+ */
+export function formatPeriodRange(from: string, to: string): string {
+  const parse = (iso: string) => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+    return m ? { year: Number(m[1]), month: MONTHS[Number(m[2]) - 1], day: Number(m[3]) } : null;
+  };
+  const start = parse(from);
+  const end = parse(to);
+  if (!start?.month || !end?.month) return `${from} – ${to}`;
+
+  const startLabel = `${start.month} ${start.day}${start.year !== end.year ? `, ${start.year}` : ''}`;
+  return `${startLabel} – ${end.month} ${end.day}, ${end.year}`;
 }
 
 export interface PayPeriodParams {

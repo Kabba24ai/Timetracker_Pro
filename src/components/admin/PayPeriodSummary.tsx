@@ -1,30 +1,29 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, ChevronRight, Download, RefreshCw } from 'lucide-react';
 import { ApiError } from '../../lib/api';
-import { useAuth } from '../../contexts/AuthContext';
 import {
   PayPeriodSummary as Summary,
+  PeriodSelection,
   downloadCsv,
   fetchPayPeriodSummary,
   flagLabel,
   formatDuration,
+  formatPeriodRange,
   isPending,
   payPeriodCsvFilename,
   payPeriodToCsv,
+  periodKey,
+  periodRequest,
 } from '../../lib/admin';
-import { tenantToday } from '../../lib/tz';
-
-type Mode = 'current' | 'previous' | 'custom';
+import PayPeriodSelector from './PayPeriodSelector';
 
 /**
  * Everything that decides WHICH pay period the administrator is looking at, plus
- * the two review controls. Held by the parent so drilling into an employee's
- * Time Review and coming back lands on the SAME period, sort and filter.
+ * the two review controls. The dashboard holds it, and shares the period with
+ * Time Review, so drilling into an employee, switching tabs and coming back all
+ * land on the SAME period, sort and filter.
  */
-export interface PayPeriodView {
-  mode: Mode;
-  from: string;
-  to: string;
+export interface PayPeriodView extends PeriodSelection {
   sort: 'name' | 'paid_desc';
   flagged: boolean;
 }
@@ -35,34 +34,27 @@ const FLAG_STYLE: Record<string, string> = {
   pending: 'bg-amber-50 text-amber-700',
 };
 
-const MODE_LABEL: Record<Mode, string> = {
-  current: 'Current Period',
-  previous: 'Previous Period',
-  custom: 'Custom',
-};
-
 interface Props {
-  onDrillDown: (userId: number, from: string, to: string) => void;
-  /** Controlled period/sort/filter selection (preserved across a drill-down). */
+  onDrillDown: (userId: number) => void;
+  /** Controlled period/sort/filter selection (shared and preserved by the dashboard). */
   view?: PayPeriodView;
   onViewChange?: (view: PayPeriodView) => void;
 }
 
-export const defaultPayPeriodView = (tz: string): PayPeriodView => ({
+// Opens on the Current Period. No dates are derived here: the server resolves
+// Current/Previous, and Custom is always an established period from its list.
+export const defaultPayPeriodView = (): PayPeriodView => ({
   mode: 'current',
-  from: tenantToday(tz, 13),
-  to: tenantToday(tz, 0),
+  from: '',
+  to: '',
   sort: 'name',
   flagged: false,
 });
 
 const PayPeriodSummaryGrid: React.FC<Props> = ({ onDrillDown, view, onViewChange }) => {
-  const { timezone } = useAuth();
-  const tz = timezone ?? 'UTC';
-
   // Controlled when the parent supplies a view (so it survives the drill-down);
   // otherwise the component owns its own selection.
-  const [ownView, setOwnView] = useState<PayPeriodView>(() => view ?? defaultPayPeriodView(tz));
+  const [ownView, setOwnView] = useState<PayPeriodView>(() => view ?? defaultPayPeriodView());
   const current = view ?? ownView;
   const { mode, from, to, sort, flagged } = current;
 
@@ -72,29 +64,41 @@ const PayPeriodSummaryGrid: React.FC<Props> = ({ onDrillDown, view, onViewChange
     onViewChange?.(next);
   };
 
-  const [summary, setSummary] = useState<Summary | null>(null);
+  // The one place the selection becomes request parameters — null while Custom
+  // has no period picked, in which case nothing is queried. `flagged` is a
+  // REVIEW filter only — the export deliberately omits it (see exportCsv).
+  const request = useMemo(() => periodRequest({ mode, from, to }), [mode, from, to]);
+  const key = periodKey({ mode, from, to });
+
+  // Only the newest request may write, and a summary is shown only while its
+  // period is still the one selected — so a slow response for an earlier pick
+  // can never be displayed (or exported) under a later one.
+  const latest = useRef(0);
+  const [loaded, setLoaded] = useState<{ key: string; summary: Summary } | null>(null);
+  const summary = loaded?.key === key ? loaded.summary : null;
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // The one place the selection becomes request parameters. `flagged` is a
-  // REVIEW filter only — the export deliberately omits it (see exportCsv).
-  const periodParams = useCallback(
-    () => (mode === 'custom' ? { from, to } : { period: mode as 'current' | 'previous' }),
-    [mode, from, to],
-  );
-
   const load = useCallback(async () => {
-    setLoading(true);
+    const seq = ++latest.current;
     setError(null);
-    try {
-      setSummary(await fetchPayPeriodSummary({ ...periodParams(), sort, flagged }));
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not load the pay-period summary.');
-    } finally {
+    if (!request) {
       setLoading(false);
+      return;
     }
-  }, [periodParams, sort, flagged]);
+    setLoading(true);
+    try {
+      const data = await fetchPayPeriodSummary({ ...request, sort, flagged });
+      if (seq === latest.current) setLoaded({ key, summary: data });
+    } catch (err) {
+      if (seq === latest.current) {
+        setError(err instanceof ApiError ? err.message : 'Could not load the pay-period summary.');
+      }
+    } finally {
+      if (seq === latest.current) setLoading(false);
+    }
+  }, [request, key, sort, flagged]);
 
   useEffect(() => {
     load();
@@ -108,10 +112,11 @@ const PayPeriodSummaryGrid: React.FC<Props> = ({ onDrillDown, view, onViewChange
    * canonical fields the grid renders.
    */
   const exportCsv = async () => {
+    if (!request) return;
     setExporting(true);
     setError(null);
     try {
-      const full = await fetchPayPeriodSummary({ ...periodParams(), sort });
+      const full = await fetchPayPeriodSummary({ ...request, sort });
       downloadCsv(payPeriodCsvFilename(full.period), payPeriodToCsv(full));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not export the pay period.');
@@ -125,47 +130,9 @@ const PayPeriodSummaryGrid: React.FC<Props> = ({ onDrillDown, view, onViewChange
 
   return (
     <div className="p-6">
-      {/* Period selector */}
-      <div className="flex flex-wrap items-end gap-3 mb-5">
-        <div className="inline-flex rounded-lg border border-gray-300 overflow-hidden">
-          {(['current', 'previous', 'custom'] as Mode[]).map((m) => (
-            <button
-              key={m}
-              onClick={() => setView({ mode: m })}
-              className={`px-4 py-2 text-sm font-medium transition-colors ${
-                mode === m ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
-              }`}
-            >
-              {MODE_LABEL[m]}
-            </button>
-          ))}
-        </div>
-
-        {mode === 'custom' && (
-          <>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">From</label>
-              <input
-                type="date"
-                value={from}
-                max={to}
-                onChange={(e) => setView({ from: e.target.value })}
-                className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">To</label>
-              <input
-                type="date"
-                value={to}
-                min={from}
-                onChange={(e) => setView({ to: e.target.value })}
-                className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-          </>
-        )}
-
+      {/* Period selector — the SAME component Time Review uses, with this tab's
+          review and export controls trailing. */}
+      <PayPeriodSelector idPrefix="pp" value={{ mode, from, to }} onChange={(selection) => setView(selection)}>
         <div className="ml-auto flex items-center gap-3">
           <label className="flex items-center gap-2 text-sm text-gray-600">
             <input
@@ -183,7 +150,10 @@ const PayPeriodSummaryGrid: React.FC<Props> = ({ onDrillDown, view, onViewChange
           </button>
           <button
             onClick={load}
-            className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50 transition-colors"
+            disabled={!request}
+            aria-label="Refresh"
+            title="Refresh"
+            className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50 transition-colors"
           >
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
           </button>
@@ -197,11 +167,11 @@ const PayPeriodSummaryGrid: React.FC<Props> = ({ onDrillDown, view, onViewChange
             <span>{exporting ? 'Exporting…' : 'Export Full Pay Period'}</span>
           </button>
         </div>
-      </div>
+      </PayPeriodSelector>
 
       {summary && (
-        <p className="text-sm text-gray-500 mb-4">
-          {summary.period.label ?? `${summary.period.from} – ${summary.period.to}`}
+        <p data-testid="period-heading" className="text-sm text-gray-500 mb-4">
+          {formatPeriodRange(summary.period.from, summary.period.to)}
           <span className="text-gray-400"> · times in {summary.period.timezone}</span>
           {totals && (
             <span className="text-gray-400">
@@ -268,7 +238,13 @@ const PayPeriodSummaryGrid: React.FC<Props> = ({ onDrillDown, view, onViewChange
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {loading && !summary ? (
+            {!request ? (
+              <tr>
+                <td colSpan={10} className="px-4 py-8 text-center text-gray-400">
+                  Select a pay period to view the summary.
+                </td>
+              </tr>
+            ) : loading && !summary ? (
               <tr>
                 <td colSpan={10} className="px-4 py-8 text-center text-gray-400">
                   Loading…
@@ -284,7 +260,7 @@ const PayPeriodSummaryGrid: React.FC<Props> = ({ onDrillDown, view, onViewChange
               summary?.data.map((r) => (
                 <tr
                   key={r.employee.id}
-                  onClick={() => onDrillDown(r.employee.id, summary.period.from, summary.period.to)}
+                  onClick={() => onDrillDown(r.employee.id)}
                   className="hover:bg-blue-50/50 cursor-pointer"
                   title="Open this employee's Time Review for this exact pay period"
                 >

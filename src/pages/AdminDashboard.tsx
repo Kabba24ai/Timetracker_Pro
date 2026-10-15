@@ -11,27 +11,24 @@ import VacationManagement from '../components/admin/VacationManagement';
 import SystemSettings from '../components/admin/SystemSettings';
 import WorkScheduleV2 from '../components/admin/WorkScheduleV2';
 import AttendanceV2 from '../components/admin/AttendanceV2';
-import { useAuth } from '../contexts/AuthContext';
+import type { PeriodSelection } from '../lib/admin';
 
 interface DrillDown {
   userId: number;
-  from: string;
-  to: string;
-  nonce: number; // forces a re-target even if the same employee/range is reused
+  nonce: number; // forces a re-target even if the same employee is reused
 }
 
 const AdminDashboard: React.FC = () => {
-  const { timezone } = useAuth();
   const [activeTab, setActiveTab] = useState('pay-periods');
   const [drillDown, setDrillDown] = useState<DrillDown | null>(null);
-  // The Pay Period selection lives HERE, not inside the grid, so drilling into an
-  // employee's Time Review and coming back returns the administrator to the same
-  // period, sort and Exceptions-only state instead of a default Current Period.
-  // The grid remounts on return and refetches, so corrections just made inside
+  // The ONE pay-period selection for the dashboard lives HERE, not inside either
+  // tab: Pay Periods and Time Review both show — and change — this period. So a
+  // drill-down opens the employee on the period the summary showed, and switching
+  // tabs or coming back never resets it. Sort and Exceptions-only ride along for
+  // the summary. Each tab remounts and refetches, so corrections just made inside
   // Time Review are reflected immediately.
-  const [payPeriodView, setPayPeriodView] = useState<PayPeriodView>(() =>
-    defaultPayPeriodView(timezone ?? 'UTC'),
-  );
+  const [payPeriodView, setPayPeriodView] = useState<PayPeriodView>(defaultPayPeriodView);
+  const changeSelection = (selection: PeriodSelection) => setPayPeriodView((view) => ({ ...view, ...selection }));
 
   const tabs = [
     { id: 'pay-periods', name: 'Pay Periods', icon: BarChart3 },
@@ -43,10 +40,10 @@ const AdminDashboard: React.FC = () => {
     { id: 'settings', name: 'Settings', icon: Settings },
   ];
 
-  // Clicking an employee row in the pay-period grid opens their Time Review
-  // scoped to the same period.
-  const openDrillDown = (userId: number, from: string, to: string) => {
-    setDrillDown({ userId, from, to, nonce: Date.now() });
+  // Clicking an employee row in the pay-period grid opens their Time Review on
+  // the same (shared) period.
+  const openDrillDown = (userId: number) => {
+    setDrillDown({ userId, nonce: Date.now() });
     setActiveTab('time-review');
   };
 
@@ -73,8 +70,8 @@ const AdminDashboard: React.FC = () => {
           <TimeReviewV2
             key={drillDown?.nonce ?? 'default'}
             initialUserId={drillDown?.userId}
-            initialFrom={drillDown?.from}
-            initialTo={drillDown?.to}
+            selection={payPeriodView}
+            onSelectionChange={changeSelection}
             onBack={drillDown ? backToSummary : undefined}
           />
         );

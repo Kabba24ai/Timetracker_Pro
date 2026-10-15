@@ -445,43 +445,38 @@ describe('PayPeriodSummaryGrid — accountant columns', () => {
   });
 });
 
-// ── Drill-down — the EXACT resolved period ─────────────────────────────────
+// ── Drill-down — the employee; the period is the shared selection ─────────
 
 describe('PayPeriodSummaryGrid — drill-down', () => {
-  it('passes the employee id and the EXACT resolved period on row click', async () => {
+  it('passes the employee id on row click (the period travels as the shared selection)', async () => {
     const onDrillDown = vi.fn();
     render(<PayPeriodSummaryGrid onDrillDown={onDrillDown} />);
     fireEvent.click(await screen.findByText('Ada Clockwell'));
-    expect(onDrillDown).toHaveBeenCalledWith(1, '2026-09-01', '2026-09-14');
+    expect(onDrillDown).toHaveBeenCalledWith(1);
   });
 
-  it('uses the resolved dates for a PREVIOUS period, never a recomputed one', async () => {
-    const onDrillDown = vi.fn();
+  it('asks for a PREVIOUS period by its canonical selector, never by lingering dates', async () => {
     render(
       <PayPeriodSummaryGrid
-        onDrillDown={onDrillDown}
+        onDrillDown={() => {}}
         view={{ mode: 'previous', from: '1999-01-01', to: '1999-01-14', sort: 'name', flagged: false }}
       />,
     );
     await screen.findByText('Ada Clockwell');
     expect(summaryCalls()[0]).toContain('period=previous');
-    fireEvent.click(screen.getByText('Ada Clockwell'));
-    // The server's resolved period wins over the component's local date inputs.
-    expect(onDrillDown).toHaveBeenCalledWith(1, '2026-09-01', '2026-09-14');
+    expect(summaryCalls()[0]).not.toContain('1999');
   });
 
-  it('uses the resolved dates for a CUSTOM period', async () => {
-    const onDrillDown = vi.fn();
+  it('asks for a CUSTOM period by its exact established dates', async () => {
     render(
       <PayPeriodSummaryGrid
-        onDrillDown={onDrillDown}
+        onDrillDown={() => {}}
         view={{ mode: 'custom', from: '2026-09-01', to: '2026-09-14', sort: 'name', flagged: false }}
       />,
     );
     await screen.findByText('Ada Clockwell');
     expect(summaryCalls()[0]).toContain('from=2026-09-01');
-    fireEvent.click(screen.getByText('Ada Clockwell'));
-    expect(onDrillDown).toHaveBeenCalledWith(1, '2026-09-01', '2026-09-14');
+    expect(summaryCalls()[0]).toContain('to=2026-09-14');
   });
 });
 

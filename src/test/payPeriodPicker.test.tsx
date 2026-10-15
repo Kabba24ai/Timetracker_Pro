@@ -96,14 +96,17 @@ const refreshButton = () => screen.getByRole('button', { name: /Refresh/i });
 /** Refresh is disabled while a load is in flight; wait for the response to land. */
 const settled = () => vi.waitFor(() => expect(refreshButton()).not.toBeDisabled());
 
-/** Mount with an employee already selected, then switch to Custom. */
+/** Mount with an employee already selected, let Current land, then switch to Custom. */
 const openCustom = async () => {
   render(<TimeReviewV2 initialUserId={1} />);
   await vi.waitFor(() => expect(server.calls.some((c) => c.startsWith('GET /admin/pay-periods'))).toBe(true));
-  await screen.findByText('Custom');
+  await vi.waitFor(() => expect(reviewCalls().length).toBeGreaterThan(0));
+  await settled();
   fireEvent.click(screen.getByText('Custom'));
   return screen.findByLabelText('Pay Period');
 };
+
+const dateInputs = () => document.querySelectorAll('input[type="date"]');
 
 // ── The API client ─────────────────────────────────────────────────────────
 
@@ -132,8 +135,8 @@ describe('Current and Previous period behaviour is unchanged', () => {
 
   it('loads Previous with the canonical selector, not dates', async () => {
     render(<TimeReviewV2 initialUserId={1} />);
-    await screen.findByText('previous period');
-    fireEvent.click(screen.getByText('previous period'));
+    await screen.findByText('Previous Period');
+    fireEvent.click(screen.getByText('Previous Period'));
     await vi.waitFor(() => expect(lastReview()).toContain('period=previous'));
     expect(lastReview()).not.toContain('from=');
   });
@@ -148,16 +151,17 @@ describe('Current and Previous period behaviour is unchanged', () => {
 // ── Custom exposes the canonical history ───────────────────────────────────
 
 describe('Custom exposes historical pay periods', () => {
-  it('lists every canonical period, newest first, with Current/Previous marked', async () => {
+  it('lists every canonical period, newest first, with Current/Previous marked — and nothing else', async () => {
     const select = await openCustom();
     const options = within(select as HTMLElement).getAllByRole('option');
 
-    expect(options[0]).toHaveTextContent('Sep 13 – Sep 26, 2026 — Current');
-    expect(options[1]).toHaveTextContent('Aug 30 – Sep 12, 2026 — Previous');
-    expect(options[2]).toHaveTextContent('Aug 16 – Aug 29, 2026');
-    // The manual escape hatch is last.
-    expect(options[options.length - 1]).toHaveTextContent('Custom Date Range…');
-    expect(options).toHaveLength(PERIODS.length + 1);
+    expect(options.map((o) => o.textContent)).toEqual([
+      'Sep 13 – Sep 26, 2026 — Current',
+      'Aug 30 – Sep 12, 2026 — Previous',
+      'Aug 16 – Aug 29, 2026',
+      'Aug 2 – Aug 15, 2026',
+      'Dec 28, 2025 – Jan 10, 2026',
+    ]);
   });
 
   it('labels a December→January period with both years', async () => {
@@ -165,19 +169,39 @@ describe('Custom exposes historical pay periods', () => {
     expect(within(select as HTMLElement).getByText(/Dec 28, 2025 – Jan 10, 2026/)).toBeInTheDocument();
   });
 
-  it('opens on the period the current dates belong to, not a blank range', async () => {
+  it('opens on the period that was just showing', async () => {
     const select = await openCustom();
     // Current period was loaded first, so Custom opens on that same period.
     expect(select).toHaveValue('2026-09-13');
-    // …and the manual date inputs stay hidden until explicitly requested.
-    expect(screen.queryByLabelText('From')).not.toBeInTheDocument();
   });
+});
 
-  it('hides the date inputs while an established period is selected', async () => {
+// ── No manual dates, anywhere ──────────────────────────────────────────────
+
+describe('there is no manual date entry', () => {
+  it('has no Custom Date Range option and no date inputs in any mode', async () => {
     const select = await openCustom();
-    fireEvent.change(select as HTMLElement, { target: { value: '2026-08-02' } });
+    expect(within(select as HTMLElement).queryByText(/Custom Date Range/)).not.toBeInTheDocument();
+    expect(dateInputs()).toHaveLength(0);
     expect(screen.queryByLabelText('From')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('To')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Previous Period'));
+    expect(dateInputs()).toHaveLength(0);
+    fireEvent.click(screen.getByText('Current Period'));
+    expect(dateInputs()).toHaveLength(0);
+  });
+
+  it('ignores a value that is not an established period', async () => {
+    const select = await openCustom();
+    await vi.waitFor(() => expect(lastReview()).toContain('from=2026-09-13'));
+    await settled();
+    server.calls = [];
+
+    fireEvent.change(select as HTMLElement, { target: { value: '2026-07-07' } });
+
+    expect(reviewCalls()).toHaveLength(0);
+    expect(select).toHaveValue('2026-09-13');
   });
 });
 
@@ -186,6 +210,7 @@ describe('Custom exposes historical pay periods', () => {
 describe('selecting a historical period', () => {
   it('sends that period’s exact boundaries to the existing Time Review query', async () => {
     const select = await openCustom();
+    await settled();
     server.calls = [];
 
     fireEvent.change(select as HTMLElement, { target: { value: '2026-08-02' } });
@@ -198,6 +223,7 @@ describe('selecting a historical period', () => {
 
   it('works for a period crossing a year boundary', async () => {
     const select = await openCustom();
+    await settled();
     server.calls = [];
 
     fireEvent.change(select as HTMLElement, { target: { value: '2025-12-28' } });
@@ -205,6 +231,7 @@ describe('selecting a historical period', () => {
     await vi.waitFor(() => expect(reviewCalls().length).toBe(1));
     expect(lastReview()).toContain('from=2025-12-28');
     expect(lastReview()).toContain('to=2026-01-10');
+    expect(await screen.findByTestId('period-heading')).toHaveTextContent(/^Dec 28, 2025 – Jan 10, 2026/);
   });
 
   it('Refresh reloads the selected historical period, not the current one', async () => {
@@ -220,6 +247,7 @@ describe('selecting a historical period', () => {
     expect(lastReview()).toContain('from=2026-08-16');
     expect(lastReview()).toContain('to=2026-08-29');
     expect(lastReview()).not.toContain('period=current');
+    expect(select).toHaveValue('2026-08-16');
   });
 
   it('keeps the selected period when the employee changes', async () => {
@@ -263,119 +291,77 @@ describe('selecting a historical period', () => {
   });
 });
 
-// ── The manual range is preserved ──────────────────────────────────────────
+// ── Degradation: an error with Retry, never a manual fallback ──────────────
 
-describe('Custom Date Range… preserves the manual behaviour', () => {
-  it('reveals the From/To inputs without changing the loaded period', async () => {
-    const select = await openCustom();
-    server.calls = [];
-
-    fireEvent.change(select as HTMLElement, { target: { value: 'manual' } });
-
-    expect(await screen.findByLabelText('From')).toBeInTheDocument();
-    expect(screen.getByLabelText('To')).toBeInTheDocument();
-    // Choosing the manual option is not itself a query.
-    expect(reviewCalls()).toHaveLength(0);
-  });
-
-  it('loads an arbitrary hand-entered range on Refresh', async () => {
-    const select = await openCustom();
-    fireEvent.change(select as HTMLElement, { target: { value: 'manual' } });
-
-    fireEvent.change(await screen.findByLabelText('From'), { target: { value: '2026-07-07' } });
-    fireEvent.change(screen.getByLabelText('To'), { target: { value: '2026-07-09' } });
-
-    server.calls = [];
-    fireEvent.click(refreshButton());
-
-    await vi.waitFor(() => expect(reviewCalls().length).toBe(1));
-    expect(lastReview()).toContain('from=2026-07-07');
-    expect(lastReview()).toContain('to=2026-07-09');
-  });
-});
-
-// ── Layout: the manual dates are one inseparable group on their own row ────
-
-describe('manual range layout', () => {
-  it('keeps From and To in one group, on a row of their own', async () => {
-    const select = await openCustom();
-    fireEvent.change(select as HTMLElement, { target: { value: 'manual' } });
-
-    const row = await screen.findByTestId('manual-range-row');
-    const fromInput = screen.getByLabelText('From');
-    const toInput = screen.getByLabelText('To');
-
-    // Both dates live inside the dedicated row…
-    expect(row).toContainElement(fromInput);
-    expect(row).toContainElement(toInput);
-    // …and share one immediate parent, so neither can wrap away from the other.
-    expect(fromInput.closest('div')?.parentElement).toBe(toInput.closest('div')?.parentElement);
-    // That shared group does NOT wrap.
-    const group = fromInput.closest('div')?.parentElement as HTMLElement;
-    expect(group.className).toContain('flex');
-    expect(group.className).not.toContain('flex-wrap');
-
-    // The row itself is a full-width flex line, so it starts below the controls above.
-    expect(row.className).toContain('basis-full');
-
-    // Refresh travels with the dates; the period controls stay on the row above.
-    expect(row).toContainElement(screen.getByRole('button', { name: /Refresh/i }));
-    expect(row).not.toContainElement(screen.getByLabelText('Employee'));
-    expect(row).not.toContainElement(screen.getByRole('button', { name: /Export CSV/i }));
-  });
-
-  it('renders no manual row — and keeps Refresh on the main row — for an established period', async () => {
-    const select = await openCustom();
-    expect(select).toHaveValue('2026-09-13');
-
-    expect(screen.queryByTestId('manual-range-row')).not.toBeInTheDocument();
-    // Exactly one Refresh button, and it is not inside a manual row.
-    expect(screen.getAllByRole('button', { name: /Refresh/i })).toHaveLength(1);
-  });
-
-  it('shows the manual row when the period list is unavailable', async () => {
+describe('when the period list is unavailable', () => {
+  const openCustomWithoutList = async () => {
     server.periods = 'fail';
     render(<TimeReviewV2 initialUserId={1} />);
-    await screen.findByText('Custom');
+    await vi.waitFor(() => expect(reviewCalls().length).toBeGreaterThan(0));
+    await settled();
+    server.calls = [];
     fireEvent.click(screen.getByText('Custom'));
+  };
 
-    const row = await screen.findByTestId('manual-range-row');
-    expect(row).toContainElement(screen.getByLabelText('From'));
-    expect(row).toContainElement(screen.getByLabelText('To'));
-  });
-});
+  it('shows an error with Retry — no date inputs, and no Time Review failure', async () => {
+    await openCustomWithoutList();
 
-// ── Degradation + drill-down ───────────────────────────────────────────────
-
-describe('robustness', () => {
-  it('falls back to the manual range when the period list is unavailable', async () => {
-    server.periods = 'fail';
-    render(<TimeReviewV2 initialUserId={1} />);
-    await screen.findByText('Custom');
-    fireEvent.click(screen.getByText('Custom'));
-
-    expect(await screen.findByLabelText('From')).toBeInTheDocument();
+    expect(await screen.findByRole('alert')).toHaveTextContent('Pay periods could not be loaded.');
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
     expect(screen.queryByLabelText('Pay Period')).not.toBeInTheDocument();
-    // A missing convenience list is never reported as a Time Review failure.
-    expect(screen.queryByText(/Could not load/i)).not.toBeInTheDocument();
+    expect(dateInputs()).toHaveLength(0);
+    expect(screen.queryByText(/Could not load the time review/i)).not.toBeInTheDocument();
   });
 
-  it('a Pay Period Summary drill-down keeps its exact dates and names the period', async () => {
-    render(<TimeReviewV2 initialUserId={1} initialFrom="2026-08-16" initialTo="2026-08-29" />);
+  it('never substitutes another period: nothing is queried and nothing is shown until one is picked', async () => {
+    await openCustomWithoutList();
+    await screen.findByRole('alert');
+
+    expect(reviewCalls()).toHaveLength(0);
+    expect(screen.queryByTestId('period-heading')).not.toBeInTheDocument();
+    expect(screen.getByText(/Select a pay period to review/i)).toBeInTheDocument();
+  });
+
+  it('Retry loads the established periods and a pick loads that period', async () => {
+    await openCustomWithoutList();
+    await screen.findByRole('alert');
+
+    server.periods = null;
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+
+    const select = (await screen.findByLabelText('Pay Period')) as HTMLSelectElement;
+    expect(select).toHaveValue('');
+    expect(select.options[select.selectedIndex].textContent).toBe('Select a pay period…');
+
+    fireEvent.change(select, { target: { value: '2026-08-16' } });
+    await vi.waitFor(() => expect(lastReview()).toContain('from=2026-08-16'));
+  });
+});
+
+// ── Controlled by the dashboard's shared selection ─────────────────────────
+
+describe('a controlled selection (the dashboard shares one with Pay Periods)', () => {
+  it('loads exactly the supplied established period and names it in the picker', async () => {
+    render(<TimeReviewV2 initialUserId={1} selection={{ mode: 'custom', from: '2026-08-16', to: '2026-08-29' }} />);
 
     await vi.waitFor(() => expect(reviewCalls().length).toBeGreaterThan(0));
-    // The drill-down range is used verbatim…
     expect(reviewCalls()[0]).toContain('from=2026-08-16');
     expect(reviewCalls()[0]).toContain('to=2026-08-29');
-    // …and once the list arrives the picker names that established period.
     expect(await screen.findByLabelText('Pay Period')).toHaveValue('2026-08-16');
   });
 
-  it('a drill-down on a non-period range shows the manual inputs', async () => {
-    render(<TimeReviewV2 initialUserId={1} initialFrom="2026-08-20" initialTo="2026-08-22" />);
+  it('reports every change instead of keeping it to itself', async () => {
+    const onSelectionChange = vi.fn();
+    render(
+      <TimeReviewV2
+        initialUserId={1}
+        selection={{ mode: 'current', from: '', to: '' }}
+        onSelectionChange={onSelectionChange}
+      />,
+    );
     await vi.waitFor(() => expect(reviewCalls().length).toBeGreaterThan(0));
 
-    expect(await screen.findByLabelText('From')).toHaveValue('2026-08-20');
-    expect(screen.getByLabelText('To')).toHaveValue('2026-08-22');
+    fireEvent.click(screen.getByText('Previous Period'));
+    expect(onSelectionChange).toHaveBeenCalledWith({ mode: 'previous', from: '', to: '' });
   });
 });
