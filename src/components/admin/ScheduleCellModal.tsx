@@ -11,6 +11,7 @@ import {
   dayStatusLabel,
   deleteSegment,
   isFullDayStatus,
+  parseLunchMinutes,
   setDayStatus,
   updateSegment,
 } from '../../lib/schedule';
@@ -33,6 +34,7 @@ export interface CellDraft {
   segmentId: number | null; // existing dated segment → edit/remove; null → create
   start24: string; // seeded 'HH:MM'
   end24: string;
+  unpaidLunchMinutes?: number | null; // configured unpaid lunch; null/absent = none
 }
 
 interface Props {
@@ -52,6 +54,8 @@ const ScheduleCellModal: React.FC<Props> = ({ draft, stores, dayStatus, onClose,
   const [start, setStart] = useState<Clock>(() => parse24(draft.start24));
   const [end, setEnd] = useState<Clock>(() => parse24(draft.end24));
   const [storeId, setStoreId] = useState<number>(draft.storeId);
+  const [lunch, setLunch] = useState<string>(draft.unpaidLunchMinutes != null ? String(draft.unpaidLunchMinutes) : '');
+  const draftLunch = draft.unpaidLunchMinutes ?? null;
   // 'working' = no status row; the normal dated segment speaks for itself. Admin
   // payloads carry a real editable code; anything else (e.g. the employee-facing
   // privacy projection) is not an admin choice, so it falls back to Working.
@@ -72,7 +76,9 @@ const ScheduleCellModal: React.FC<Props> = ({ draft, stores, dayStatus, onClose,
   // Adding a Holiday marker on a blank cell: only send hours if the admin is
   // actually scheduling work alongside it (the segment already exists, or they
   // changed the seeded default). Keeps "just mark the holiday" a single write.
-  const hasHolidayHours = to24(start) !== draft.start24 || to24(end) !== draft.end24;
+  const lunchParsed = parseLunchMinutes(lunch);
+  const lunchChanged = 'value' in lunchParsed && lunchParsed.value !== draftLunch;
+  const hasHolidayHours = to24(start) !== draft.start24 || to24(end) !== draft.end24 || lunchChanged;
 
   const run = async (fn: () => Promise<void>, setBusy: (b: boolean) => void) => {
     setBusy(true);
@@ -90,10 +96,25 @@ const ScheduleCellModal: React.FC<Props> = ({ draft, stores, dayStatus, onClose,
     e?.preventDefault();
     const start_time = to24(start);
     const end_time = to24(end);
+    if ('error' in lunchParsed) {
+      setError(lunchParsed.error);
+      return;
+    }
+    const unpaid_lunch_minutes = lunchParsed.value;
+    // An update always carries the key (null clears a configured lunch); a
+    // create sends it only when one was entered, so the payload is unchanged
+    // for the common no-lunch case.
     const segment = () =>
       draft.segmentId
-        ? updateSegment(draft.segmentId, { start_time, end_time, store_id: storeId })
-        : createSegment({ user_id: draft.userId, store_id: storeId, date: draft.date, start_time, end_time });
+        ? updateSegment(draft.segmentId, { start_time, end_time, store_id: storeId, unpaid_lunch_minutes })
+        : createSegment({
+            user_id: draft.userId,
+            store_id: storeId,
+            date: draft.date,
+            start_time,
+            end_time,
+            ...(unpaid_lunch_minutes !== null ? { unpaid_lunch_minutes } : {}),
+          });
 
     run(async () => {
       if (status === 'working') {
@@ -208,16 +229,40 @@ const ScheduleCellModal: React.FC<Props> = ({ draft, stores, dayStatus, onClose,
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-4 mb-5">
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Start Time</label>
-              <TimeField value={start} onChange={setStart} label="Start" autoFocus />
+          <>
+            <div className="grid grid-cols-2 gap-4 mb-5">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Start Time</label>
+                <TimeField value={start} onChange={setStart} label="Start" autoFocus />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">End Time</label>
+                <TimeField value={end} onChange={setEnd} label="End" />
+              </div>
             </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">End Time</label>
-              <TimeField value={end} onChange={setEnd} label="End" />
+
+            {/* Unpaid lunch is EXPLICIT: blank means none is configured and payroll
+                projections deduct nothing. It never changes recorded time. */}
+            <div className="mb-5">
+              <label htmlFor="unpaid-lunch" className="block text-xs font-medium text-gray-600 mb-1">
+                Unpaid Lunch (minutes)
+              </label>
+              <input
+                id="unpaid-lunch"
+                type="number"
+                inputMode="numeric"
+                min={0}
+                value={lunch}
+                onChange={(e) => setLunch(e.target.value)}
+                placeholder="None"
+                aria-label="Unpaid Lunch (minutes)"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-sm font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <p className="mt-1 text-xs text-gray-500">
+                Optional. Only payroll projections use it, deducting it from the scheduled hours. Leave blank for no deduction.
+              </p>
             </div>
-          </div>
+          </>
         )}
 
         {/* A full-day status owns the date: the server clears the work hours. */}

@@ -44,6 +44,35 @@ export interface ScheduleSegmentCell {
   end: string;
   overnight: boolean;
   editable: boolean;
+  // Explicit unpaid lunch configured on this schedule entry, in minutes. Absent
+  // or null = none configured, and payroll PROJECTIONS deduct nothing — a lunch
+  // is never invented. (Actual paid time still comes from recorded breaks.)
+  unpaid_lunch_minutes?: number | null;
+}
+
+/** Minutes of unpaid lunch an entry may carry: whole minutes, none up to 8 hours (the server enforces the same). */
+export const MAX_LUNCH_MINUTES = 480;
+
+/**
+ * Parse the editor's lunch field: blank (or 0) = none configured (null);
+ * otherwise a whole number of minutes within range, or an error message.
+ */
+export function parseLunchMinutes(raw: string): { value: number | null } | { error: string } {
+  const text = raw.trim();
+  if (text === '') return { value: null };
+  if (!/^\d+$/.test(text)) return { error: 'Unpaid lunch must be a whole number of minutes.' };
+  const minutes = Number(text);
+  if (minutes > MAX_LUNCH_MINUTES) return { error: `Unpaid lunch cannot exceed ${MAX_LUNCH_MINUTES} minutes.` };
+  return { value: minutes === 0 ? null : minutes };
+}
+
+/** Compact label for a configured unpaid lunch, or null when none is configured. */
+export function formatUnpaidLunch(minutes: number | null | undefined): string | null {
+  if (minutes == null || minutes <= 0) return null;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (h === 0) return `${m} min lunch`;
+  return m === 0 ? `${h} hr lunch` : `${h} hr ${m} min lunch`;
 }
 
 export type Cells = Record<string, ScheduleSegmentCell[]>; // date → segments
@@ -246,13 +275,21 @@ export interface SegmentInput {
   date: string;
   start_time?: string; // 'HH:MM'; omitted → store hours default
   end_time?: string;
+  unpaid_lunch_minutes?: number | null; // null clears; omitted leaves the server default (none)
+}
+
+export interface SegmentTimes {
+  start_time: string;
+  end_time: string;
+  store_id?: number;
+  unpaid_lunch_minutes?: number | null; // null clears a configured lunch
 }
 
 export async function createSegment(input: SegmentInput): Promise<void> {
   await api.post('/admin/schedule/segments', input);
 }
 
-export async function updateSegment(id: number, times: { start_time: string; end_time: string; store_id?: number }): Promise<void> {
+export async function updateSegment(id: number, times: SegmentTimes): Promise<void> {
   await api.put(`/admin/schedule/segments/${id}`, times);
 }
 

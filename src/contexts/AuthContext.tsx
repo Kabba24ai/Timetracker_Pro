@@ -32,6 +32,15 @@ interface AuthContextType {
   employee: Employee | null;
   roles: string[];
   isAdmin: boolean;
+  /**
+   * Real permission grants the server reported at login / session restore
+   * (e.g. 'payroll_cost.view'). Display gating only — every protected endpoint
+   * re-checks the grant itself. A server that predates the list sends none, so
+   * only Master Admins see permission-gated controls until it is upgraded.
+   */
+  permissions: string[];
+  /** True for a Master Admin or a user holding the named permission. */
+  can: (permission: string) => boolean;
   loading: boolean;
   /** The authoritative clock state from the last login / session restore (seed for the clock UI). */
   initialClockState: ClockState | null;
@@ -45,6 +54,7 @@ interface AuthContextType {
 const USER_KEY = 'tt_user';
 const EMP_KEY = 'tt_employee';
 const ROLES_KEY = 'tt_roles';
+const PERMS_KEY = 'tt_permissions';
 const TZ_KEY = 'tt_timezone';
 const ADMIN_ROLE = 'master_admin';
 
@@ -71,6 +81,7 @@ interface LoginResponse {
   user: AuthUser & { token?: string };
   employee: Employee;
   roles?: string[];
+  permissions?: string[];
   clock_state?: ClockState;
   message?: string;
 }
@@ -78,8 +89,12 @@ interface LoginResponse {
 interface MeResponse {
   employee: Employee;
   roles?: string[];
+  permissions?: string[];
   clock_state?: ClockState;
 }
+
+/** Only string entries, so a malformed payload can never grant anything. */
+const stringList = (value: unknown): string[] => (Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : []);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Restore the session synchronously from localStorage so a reload keeps the
@@ -89,6 +104,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<AuthUser | null>(() => readJson<AuthUser>(USER_KEY));
   const [employee, setEmployee] = useState<Employee | null>(() => readJson<Employee>(EMP_KEY));
   const [roles, setRoles] = useState<string[]>(() => readJson<string[]>(ROLES_KEY) ?? []);
+  const [permissions, setPermissions] = useState<string[]>(() => stringList(readJson<unknown>(PERMS_KEY)));
   const [initialClockState, setInitialClockState] = useState<ClockState | null>(null);
   const [timezone, setTimezone] = useState<string | null>(() => localStorage.getItem(TZ_KEY));
   // Only block the UI on startup if there is a token to validate.
@@ -99,10 +115,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.removeItem(USER_KEY);
     localStorage.removeItem(EMP_KEY);
     localStorage.removeItem(ROLES_KEY);
+    localStorage.removeItem(PERMS_KEY);
     localStorage.removeItem(TZ_KEY);
     setUser(null);
     setEmployee(null);
     setRoles([]);
+    setPermissions([]);
     setInitialClockState(null);
     setTimezone(null);
   }, []);
@@ -136,6 +154,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const nextRoles = me.roles ?? me.employee?.roles ?? [];
           setRoles(nextRoles);
           localStorage.setItem(ROLES_KEY, JSON.stringify(nextRoles));
+          const nextPermissions = stringList(me.permissions);
+          setPermissions(nextPermissions);
+          localStorage.setItem(PERMS_KEY, JSON.stringify(nextPermissions));
           if (me.clock_state) setInitialClockState(me.clock_state);
           rememberTimezone(me.clock_state?.timezone);
         })
@@ -178,14 +199,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
     const nextEmployee = res.employee;
     const nextRoles = res.roles ?? nextEmployee?.roles ?? [];
+    const nextPermissions = stringList(res.permissions);
 
     localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
     localStorage.setItem(EMP_KEY, JSON.stringify(nextEmployee));
     localStorage.setItem(ROLES_KEY, JSON.stringify(nextRoles));
+    localStorage.setItem(PERMS_KEY, JSON.stringify(nextPermissions));
 
     setUser(nextUser);
     setEmployee(nextEmployee);
     setRoles(nextRoles);
+    setPermissions(nextPermissions);
     setInitialClockState(res.clock_state ?? null);
     rememberTimezone(res.clock_state?.timezone);
   }, [rememberTimezone]);
@@ -202,10 +226,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [clearSession]);
 
   const isAdmin = roles.includes(ADMIN_ROLE);
+  const can = useCallback((permission: string) => isAdmin || permissions.includes(permission), [isAdmin, permissions]);
 
   return (
     <AuthContext.Provider
-      value={{ user, employee, roles, isAdmin, loading, initialClockState, timezone, signIn, signOut }}
+      value={{ user, employee, roles, isAdmin, permissions, can, loading, initialClockState, timezone, signIn, signOut }}
     >
       {children}
     </AuthContext.Provider>

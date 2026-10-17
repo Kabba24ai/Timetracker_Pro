@@ -1,10 +1,11 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertCircle, CalendarPlus, Plus, RefreshCw, Trash2, Users } from 'lucide-react';
+import React, { useCallback, useEffect, useState } from 'react';
+import { AlertCircle, CalendarPlus, Calculator, Plus, RefreshCw, Trash2, Users } from 'lucide-react';
 import { ApiError } from '../../lib/api';
 import { AdminEmployee, fetchEmployees } from '../../lib/admin';
+import { useAuth } from '../../contexts/AuthContext';
+import { PAYROLL_COST_PERMISSION } from '../../lib/payrollProjection';
 import {
   AssignmentResult,
-  Cells,
   DayStatusCell,
   EmployeeView,
   Holiday,
@@ -22,11 +23,13 @@ import {
   fetchHolidays,
   fetchStoreView,
   formatRange,
+  formatUnpaidLunch,
   removeFromStore,
 } from '../../lib/schedule';
 import ScheduleCellModal, { CellDraft } from './ScheduleCellModal';
 import ScheduleHolidayModal from './ScheduleHolidayModal';
 import ScheduleGroupsModal from './ScheduleGroupsModal';
+import PayrollProjectionModal, { ProjectionScope } from './PayrollProjectionModal';
 import ScheduleStatusBadge from '../schedule/ScheduleStatusBadge';
 
 type Mode = 'store' | 'employee';
@@ -69,6 +72,13 @@ const WorkScheduleV2: React.FC = () => {
     date?: string;
   } | null>(null);
   const [removeTarget, setRemoveTarget] = useState<{ storeId: number; userId: number; employeeName: string; storeName: string } | null>(null);
+  // Calculate Payroll: the scope (saved range + optional employee) being projected; null = closed.
+  const [projection, setProjection] = useState<ProjectionScope | null>(null);
+
+  // Payroll figures are shown only to holders of the real grant (the server
+  // re-checks it); outside an AuthProvider (tests) the control simply stays hidden.
+  const auth = useAuth();
+  const canProjectPayroll = typeof auth.can === 'function' && auth.can(PAYROLL_COST_PERMISSION);
 
   useEffect(() => {
     fetchEmployees().then(setEmployees).catch(() => {});
@@ -145,7 +155,22 @@ const WorkScheduleV2: React.FC = () => {
   };
 
   const dates = (mode === 'store' ? store?.dates : emp?.dates) ?? [];
-  const empName = (id: number) => employees.find((e) => e.id === id)?.full_name ?? `#${id}`;
+
+  // The range the grid is showing right now — the projection prices exactly
+  // that (plus the hours just outside it that its workweeks need). Every edit
+  // on this screen is saved by its own modal, so there is no unsaved draft.
+  const currentRange = mode === 'store' ? store?.range : emp?.range;
+  const openProjection = () => {
+    if (!currentRange) return;
+    if (mode === 'employee' && (!userId || !emp)) return;
+    setProjection({
+      from: currentRange.from,
+      to: currentRange.to,
+      label: currentRange.label,
+      userId: mode === 'employee' ? userId : null,
+      employeeName: mode === 'employee' ? emp?.employee.full_name : undefined,
+    });
+  };
 
   const defaultTimes = (s: StoreMeta, dow: number): [string, string] => {
     const h = s.hours[dow];
@@ -165,6 +190,7 @@ const WorkScheduleV2: React.FC = () => {
       segmentId: seg?.segment_id ?? null,
       start24: seg?.start ?? ds,
       end24: seg?.end ?? de,
+      unpaidLunchMinutes: seg?.unpaid_lunch_minutes ?? null,
     });
   };
 
@@ -262,9 +288,12 @@ const WorkScheduleV2: React.FC = () => {
               onClick={() => openCell(s, uid, name, date, dow, seg)}
               style={chip(s.color)}
               className="w-full px-2 py-1 rounded border text-xs font-medium whitespace-nowrap hover:brightness-95 transition"
-              title="Edit schedule"
+              title={formatUnpaidLunch(seg.unpaid_lunch_minutes) ? `Edit schedule — ${formatUnpaidLunch(seg.unpaid_lunch_minutes)} unpaid` : 'Edit schedule'}
             >
               {formatRange(seg)}
+              {formatUnpaidLunch(seg.unpaid_lunch_minutes) && (
+                <span className="block text-[10px] font-normal opacity-80">{formatUnpaidLunch(seg.unpaid_lunch_minutes)}</span>
+              )}
             </button>
           ))}
         </div>
@@ -334,6 +363,19 @@ const WorkScheduleV2: React.FC = () => {
           >
             <CalendarPlus className="h-4 w-4" />
             <span>+ Holiday</span>
+          </button>
+        )}
+
+        {canProjectPayroll && (
+          <button
+            type="button"
+            onClick={openProjection}
+            disabled={!currentRange || (mode === 'employee' && !userId)}
+            className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50 transition-colors disabled:opacity-50"
+            title="Projected gross wages for the schedule shown — a forecast from the saved schedule, never wages earned"
+          >
+            <Calculator className="h-4 w-4" />
+            <span>Calculate Payroll</span>
           </button>
         )}
 
@@ -536,6 +578,7 @@ const WorkScheduleV2: React.FC = () => {
         />
       )}
       {manageGroups && <ScheduleGroupsModal employees={store?.employees ?? employees.map((e) => ({ id: e.id, full_name: e.full_name }))} onClose={() => setManageGroups(false)} onChanged={loadGroups} />}
+      {projection && <PayrollProjectionModal scope={projection} onClose={() => setProjection(null)} />}
 
       {/* Remove-from-schedule confirmation. */}
       {removeTarget && (
