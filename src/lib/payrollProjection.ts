@@ -9,14 +9,17 @@
 import { api, ApiEnvelope } from './api';
 
 /** Why a figure is, or is not, a number (mirrors the server's CalculationStatus). */
-export type ProjectionStatus = 'calculated' | 'not_set' | 'not_classified' | 'salary' | 'incomplete';
+export type ProjectionStatus = 'calculated' | 'not_set' | 'not_classified' | 'salary' | 'lunch_timing_needed' | 'incomplete';
 
 export interface ProjectionFigures {
   scheduled_seconds: number; // elapsed scheduled time, before unpaid lunch
   unpaid_lunch_seconds: number; // configured unpaid lunch removed from it
-  paid_seconds: number; // = regular + overtime
+  paid_seconds: number; // = regular + overtime (priced scheduled time)
   regular_seconds: number;
   overtime_seconds: number;
+  // Scheduled time in workweeks whose wages are withheld until a shift's
+  // lunch start is stated (see unresolved_shifts).
+  unresolved_seconds: number;
   regular_cents: number;
   overtime_cents: number;
   total_cents: number;
@@ -34,7 +37,20 @@ export interface ProjectionCoverage {
   not_set: number;
   not_classified: number;
   salary: number;
+  lunch_timing_needed: number;
   incomplete: number;
+}
+
+/** A scheduled shift whose unpaid lunch placement changes the figures and is not stated. */
+export interface UnresolvedShift {
+  employee: string;
+  date: string; // YYYY-MM-DD
+  store_id: number | null;
+  store_name: string;
+  start: string; // 'HH:MM'
+  end: string;
+  lunch_minutes: number;
+  message: string;
 }
 
 export interface ProjectionStoreRow extends ProjectionFigures {
@@ -63,6 +79,7 @@ export interface PayrollProjection {
   summary: ProjectionFigures;
   coverage: ProjectionCoverage;
   notices: ProjectionNotice[];
+  unresolved_shifts: UnresolvedShift[];
   stores: ProjectionStoreRow[];
   employees: ProjectionEmployeeRow[];
 }
@@ -89,6 +106,7 @@ export async function fetchPayrollProjection(params: ProjectionParams): Promise<
     summary: res.summary,
     coverage: res.coverage,
     notices: res.notices ?? [],
+    unresolved_shifts: res.unresolved_shifts ?? [],
     stores: res.stores ?? [],
     employees: res.employees ?? [],
   };

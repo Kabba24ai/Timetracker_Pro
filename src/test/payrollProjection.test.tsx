@@ -10,6 +10,7 @@ const server = vi.hoisted(() => ({
   calls: [] as { method: string; path: string; body?: unknown }[],
   token: 'tok' as string | null,
   failNextGet: null as string | null,
+  unresolved: false,
 }));
 
 const auth = vi.hoisted(() => ({
@@ -26,7 +27,9 @@ const hours = Object.fromEntries([0, 1, 2, 3, 4, 5, 6].map((d) => [d, { start: '
 const WAVERLY = { id: 10, name: 'Waverly', color: '#2563EB', hours };
 const EMPLOYEES = [{ id: 1, full_name: 'Gary Jezorski' }, { id: 2, full_name: 'Bo Vance' }];
 
-const seg = (id: number, lunch: number | null = null) => ({ segment_id: id, store_id: 10, start: '07:00', end: '17:00', overnight: false, editable: true, unpaid_lunch_minutes: lunch });
+const seg = (id: number, lunch: number | null = null) => ({ segment_id: id, store_id: 10, start: '07:00', end: '17:00', overnight: false, editable: true, unpaid_lunch_minutes: lunch, unpaid_lunch_start: null });
+// Bo's Monday is projected from his recurring rule: no dated entry exists.
+const RECURRING_CELL = { segment_id: null, store_id: 10, start: '08:00', end: '16:00', overnight: false, editable: false, unpaid_lunch_minutes: null, unpaid_lunch_start: null };
 
 const STORE_VIEW = {
   success: true,
@@ -34,7 +37,25 @@ const STORE_VIEW = {
   dates: DATES,
   stores: [WAVERLY],
   employees: EMPLOYEES,
-  store_view: [{ store_id: 10, rows: [{ employee: { id: 1, full_name: 'Gary Jezorski' }, cells: { '2026-09-14': [seg(100, 30)] } }] }],
+  store_view: [
+    {
+      store_id: 10,
+      rows: [
+        { employee: { id: 1, full_name: 'Gary Jezorski' }, cells: { '2026-09-14': [seg(100, 30)] } },
+        { employee: { id: 2, full_name: 'Bo Vance' }, cells: { '2026-09-14': [RECURRING_CELL] } },
+      ],
+    },
+  ],
+};
+
+const BO_RULES = {
+  success: true,
+  employee: { id: 2, full_name: 'Bo Vance', store_id: 10 },
+  timezone: 'America/Chicago',
+  rules: [
+    { day_of_week: 1, is_working_day: true, start_time: '08:00', end_time: '16:00', crosses_midnight: false, unpaid_lunch_minutes: null, unpaid_lunch_start: null, store_id: 10 },
+    { day_of_week: 2, is_working_day: true, start_time: '08:00', end_time: '16:00', crosses_midnight: false, unpaid_lunch_minutes: 30, unpaid_lunch_start: null, store_id: 10 },
+  ],
 };
 
 const EMPLOYEE_VIEW = {
@@ -54,6 +75,7 @@ const fig = (over: Record<string, unknown> = {}) => ({
   paid_seconds: 48 * H,
   regular_seconds: 40 * H,
   overtime_seconds: 8 * H,
+  unresolved_seconds: 0,
   regular_cents: 80000,
   overtime_cents: 24000,
   total_cents: 104000,
@@ -72,8 +94,9 @@ const PROJECTION = {
   workweeks: [{ start: '2026-09-13', end: '2026-09-19' }, { start: '2026-09-20', end: '2026-09-26' }],
   overtime_multiplier: '1.50',
   summary: fig({ status: 'incomplete', status_label: 'Incomplete' }),
-  coverage: { employees: 2, calculated: 1, not_set: 1, not_classified: 0, salary: 0, incomplete: 0 },
+  coverage: { employees: 2, calculated: 1, not_set: 1, not_classified: 0, salary: 0, lunch_timing_needed: 0, incomplete: 0 },
   notices: [{ code: 'lunch_not_configured', message: '6 scheduled entries specify no unpaid lunch, so nothing was deducted for them. Set an unpaid lunch on a schedule entry to deduct it.' }],
+  unresolved_shifts: [] as { employee: string; date: string; store_id: number | null; store_name: string; start: string; end: string; lunch_minutes: number; message: string }[],
   stores: [{ store_id: 10, store_name: 'Waverly', employees: 2, ...fig({ status: 'incomplete', status_label: 'Incomplete' }) }],
   employees: [
     { employee_id: 1, employee: 'Gary Jezorski', store_id: 10, store_name: 'Waverly', ...fig() },
@@ -85,6 +108,21 @@ const PROJECTION = {
       ...fig({ regular_cents: 0, overtime_cents: 0, total_cents: 0, regular_display: '—', overtime_display: '—', total_display: '—', status: 'not_set', status_label: 'Not Set', notes: ['No compensation record applies to 2026-09-14.'] }),
     },
   ],
+};
+
+// A projection where one shift's lunch placement is material and unstated.
+const UNRESOLVED_SHIFT = {
+  employee: 'Gary Jezorski', date: '2026-09-19', store_id: 10, store_name: 'Waverly', start: '22:00', end: '06:00', lunch_minutes: 60,
+  message: 'Gary Jezorski — Sat Sep 19, 10:00 PM – 6:00 AM (60 min lunch): set when the lunch starts to price this shift; its workweek wages are withheld until then.',
+};
+const PROJECTION_UNRESOLVED = {
+  ...PROJECTION,
+  summary: fig({ status: 'lunch_timing_needed', status_label: 'Lunch Timing Needed', regular_seconds: 0, overtime_seconds: 0, unresolved_seconds: 48 * H, regular_cents: 0, overtime_cents: 0, total_cents: 0, regular_display: '—', overtime_display: '—', total_display: '—' }),
+  coverage: { employees: 1, calculated: 0, not_set: 0, not_classified: 0, salary: 0, lunch_timing_needed: 1, incomplete: 0 },
+  notices: [{ code: 'lunch_timing', message: UNRESOLVED_SHIFT.message }],
+  unresolved_shifts: [UNRESOLVED_SHIFT],
+  stores: [],
+  employees: [],
 };
 
 vi.mock('../lib/api', () => {
@@ -116,7 +154,8 @@ vi.mock('../lib/api', () => {
       if (path.startsWith('/admin/schedule/groups')) return { success: true, groups: [] };
       if (path.startsWith('/admin/schedule/store-view')) return STORE_VIEW;
       if (path.startsWith('/admin/schedule/employee-view/1')) return EMPLOYEE_VIEW;
-      if (path.startsWith('/admin/schedule/payroll-projection')) return PROJECTION;
+      if (path.startsWith('/admin/schedule/payroll-projection')) return server.unresolved ? PROJECTION_UNRESOLVED : PROJECTION;
+      if (path === '/admin/employees/2/schedule') return BO_RULES;
       return { success: true };
     },
     post: async (path: string, body: unknown) => mutate('POST', path, body),
@@ -150,6 +189,7 @@ beforeEach(() => {
   server.calls = [];
   server.token = 'tok';
   server.failNextGet = null;
+  server.unresolved = false;
   auth.permissions = [];
   auth.isAdmin = false;
 });
@@ -304,11 +344,111 @@ describe('Unpaid lunch on the schedule', () => {
   });
 });
 
+describe('Lunch placement and the recurring rule', () => {
+  it('lists the shifts whose lunch start is needed and withholds their wages visibly', async () => {
+    auth.permissions = ['payroll_cost.view'];
+    server.unresolved = true;
+    render(<WorkScheduleV2 />);
+    expect(await screen.findByText('Waverly')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Calculate Payroll'));
+
+    const summary = await screen.findByTestId('projection-summary');
+    expect(within(summary).getAllByText('—').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByTestId('projection-incomplete')).toHaveTextContent('Lunch Timing Needed');
+    expect(screen.getByTestId('projection-unresolved')).toHaveTextContent('48:00 scheduled hours await a lunch start time');
+    expect(screen.getByTestId('projection-problems')).toHaveTextContent('withheld, not guessed');
+    const shifts = screen.getByTestId('projection-unresolved-shifts');
+    expect(shifts).toHaveTextContent('Gary Jezorski');
+    expect(shifts).toHaveTextContent('Sat Sep 19, 10:00 PM – 6:00 AM (60 min lunch)');
+    // The shift notice is shown once, with the shifts, not again in the general list.
+    expect(screen.getByTestId('projection-problems')).not.toHaveTextContent('Sat Sep 19');
+  });
+
+  it('sends a stated lunch start with the dated entry, and an explicit zero as 0', async () => {
+    render(<WorkScheduleV2 />);
+    expect(await screen.findByText('Waverly')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('7:00 AM – 5:00 PM'));
+    await screen.findByLabelText('Unpaid Lunch (minutes)');
+    fireEvent.click(screen.getByText('Set when the lunch starts (optional)'));
+    expect(await screen.findByText('Lunch starts at')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Save'));
+    await vi.waitFor(() => expect(server.calls.some((c) => c.method === 'PUT' && c.path === '/admin/schedule/segments/100')).toBe(true));
+    const put = server.calls.find((c) => c.method === 'PUT') as { body: Record<string, unknown> };
+    expect(put.body.unpaid_lunch_minutes).toBe(30);
+    expect(put.body.unpaid_lunch_start).toBe('07:00'); // seeded from the entry's start until changed
+    await vi.waitFor(() => expect(screen.queryByText('Edit schedule')).not.toBeInTheDocument());
+
+    server.calls = [];
+    fireEvent.click(screen.getByText('7:00 AM – 5:00 PM'));
+    fireEvent.change(await screen.findByLabelText('Unpaid Lunch (minutes)'), { target: { value: '0' } });
+    expect(screen.queryByText('Set when the lunch starts (optional)')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText('Save'));
+    await vi.waitFor(() => expect(server.calls.some((c) => c.method === 'PUT')).toBe(true));
+    const zero = server.calls.find((c) => c.method === 'PUT') as { body: Record<string, unknown> };
+    expect(zero.body.unpaid_lunch_minutes).toBe(0);
+    expect(zero.body.unpaid_lunch_start).toBeNull();
+  });
+
+  it('updates the recurring rule’s lunch from a projected cell, touching nothing else on the rule', async () => {
+    render(<WorkScheduleV2 />);
+    expect(await screen.findByText('Waverly')).toBeInTheDocument();
+    expect(screen.queryByTestId('recurring-lunch')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('8:00 AM – 4:00 PM')); // Bo's recurring Monday
+    const section = await screen.findByTestId('recurring-lunch');
+    expect(section).toHaveTextContent('Recurring Monday rule');
+    expect(section).toHaveTextContent('update the rule to change the unpaid lunch for every Monday');
+    // The main editor still edits this date only (a dated entry would be created).
+    expect(screen.getByText('Add schedule')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Unpaid lunch on the recurring Monday rule (minutes)'), { target: { value: '45' } });
+    fireEvent.click(screen.getByText('Update rule'));
+    await vi.waitFor(() => expect(server.calls.some((c) => c.method === 'PUT' && c.path === '/admin/employees/2/schedule')).toBe(true));
+    expect(server.calls.some((c) => c.method === 'GET' && c.path === '/admin/employees/2/schedule')).toBe(true);
+    const put = server.calls.find((c) => c.method === 'PUT') as { body: { rules: Record<string, unknown>[] } };
+    expect(put.body.rules).toHaveLength(1);
+    expect(put.body.rules[0]).toEqual({
+      day_of_week: 1, is_working_day: true, start_time: '08:00', end_time: '16:00', crosses_midnight: false, unpaid_lunch_minutes: 45, unpaid_lunch_start: null, store_id: 10,
+    });
+    expect(server.calls.some((c) => c.path === '/admin/schedule/segments')).toBe(false); // no dated entry was created
+    await vi.waitFor(() => expect(screen.queryByTestId('recurring-lunch')).not.toBeInTheDocument());
+  });
+
+  it('accepts an explicit zero on the recurring rule', async () => {
+    render(<WorkScheduleV2 />);
+    expect(await screen.findByText('Waverly')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('8:00 AM – 4:00 PM'));
+    await screen.findByTestId('recurring-lunch');
+    fireEvent.change(screen.getByLabelText('Unpaid lunch on the recurring Monday rule (minutes)'), { target: { value: '0' } });
+    fireEvent.click(screen.getByText('Update rule'));
+    await vi.waitFor(() => expect(server.calls.some((c) => c.method === 'PUT')).toBe(true));
+    const put = server.calls.find((c) => c.method === 'PUT') as { body: { rules: Record<string, unknown>[] } };
+    expect(put.body.rules[0].unpaid_lunch_minutes).toBe(0);
+  });
+
+  it('reports a missing recurring rule instead of inventing one', async () => {
+    BO_RULES.rules = BO_RULES.rules.filter((r) => r.day_of_week !== 1);
+    try {
+      render(<WorkScheduleV2 />);
+      expect(await screen.findByText('Waverly')).toBeInTheDocument();
+      fireEvent.click(screen.getByText('8:00 AM – 4:00 PM'));
+      await screen.findByTestId('recurring-lunch');
+      fireEvent.change(screen.getByLabelText('Unpaid lunch on the recurring Monday rule (minutes)'), { target: { value: '30' } });
+      fireEvent.click(screen.getByText('Update rule'));
+      expect(await screen.findByText('Bo Vance has no recurring Monday rule to update.')).toBeInTheDocument();
+      expect(server.calls.some((c) => c.method === 'PUT')).toBe(false);
+    } finally {
+      BO_RULES.rules.unshift({ day_of_week: 1, is_working_day: true, start_time: '08:00', end_time: '16:00', crosses_midnight: false, unpaid_lunch_minutes: null, unpaid_lunch_start: null, store_id: 10 });
+    }
+  });
+});
+
 describe('helpers', () => {
   it('parses the lunch field', () => {
     expect(parseLunchMinutes('')).toEqual({ value: null });
     expect(parseLunchMinutes(' 30 ')).toEqual({ value: 30 });
-    expect(parseLunchMinutes('0')).toEqual({ value: null });
+    expect(parseLunchMinutes('0')).toEqual({ value: 0 });
     expect(parseLunchMinutes('abc')).toEqual({ error: 'Unpaid lunch must be a whole number of minutes.' });
     expect(parseLunchMinutes('481')).toEqual({ error: 'Unpaid lunch cannot exceed 480 minutes.' });
   });

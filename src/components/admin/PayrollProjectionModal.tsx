@@ -37,6 +37,7 @@ const STATUS_LABEL: Record<ProjectionStatus, string> = {
   not_set: 'No pay rate',
   not_classified: 'Overtime not classified',
   salary: 'Salary — not calculated',
+  lunch_timing_needed: 'Lunch timing needed',
   incomplete: 'Incomplete',
 };
 
@@ -107,10 +108,17 @@ const PayrollProjectionModal: React.FC<Props> = ({ scope, onClose }) => {
     if (cov.not_set > 0) problems.push(`${cov.not_set} employee${cov.not_set === 1 ? ' has' : 's have'} no pay rate — their wages are not included.`);
     if (cov.not_classified > 0) problems.push(`${cov.not_classified} employee${cov.not_classified === 1 ? '' : 's'} with scheduled overtime ${cov.not_classified === 1 ? 'has' : 'have'} no overtime pay rule yet — that overtime is not priced.`);
     if (cov.salary > 0) problems.push(`${cov.salary} salaried employee${cov.salary === 1 ? '' : 's'} — scheduled hours shown, salary cost not calculated.`);
+    if (cov.lunch_timing_needed > 0) {
+      problems.push(
+        `${cov.lunch_timing_needed} employee${cov.lunch_timing_needed === 1 ? '' : 's'} with a shift whose unpaid lunch could fall on either side of a pay-rate change or a workweek start — those workweeks are withheld, not guessed. Set when the lunch starts on the shifts listed below.`,
+      );
+    }
     if (cov.incomplete > 0) problems.push(`${cov.incomplete} employee${cov.incomplete === 1 ? '' : 's'} partly priced.`);
   }
   const incomplete = s ? s.status !== 'calculated' : false;
   const weeks = data?.workweeks ?? [];
+  // Shift-level notices are listed with the shifts; the rest are general.
+  const generalNotices = (data?.notices ?? []).filter((n) => n.code !== 'lunch_timing');
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
@@ -172,19 +180,38 @@ const PayrollProjectionModal: React.FC<Props> = ({ scope, onClose }) => {
                         <StatusBadge status={s.status === 'calculated' ? 'incomplete' : s.status} label={s.status === 'incomplete' ? 'Incomplete — not all wages included' : s.status_label} />
                       </div>
                     )}
+                    {s.unresolved_seconds > 0 && (
+                      <p className="mt-1 text-xs text-amber-800" data-testid="projection-unresolved">
+                        {formatProjectedHours(s.unresolved_seconds)} scheduled hours await a lunch start time and are not priced.
+                      </p>
+                    )}
                   </Tile>
                 </div>
               </div>
 
-              {(problems.length > 0 || data.notices.length > 0) && (
+              {(problems.length > 0 || generalNotices.length > 0) && (
                 <ul className="mb-4 list-disc pl-5 space-y-0.5 text-sm text-amber-800" data-testid="projection-problems">
                   {problems.map((p) => (
                     <li key={p}>{p}</li>
                   ))}
-                  {data.notices.map((n) => (
-                    <li key={n.code}>{n.message}</li>
+                  {generalNotices.map((n, i) => (
+                    <li key={`${n.code}-${i}`}>{n.message}</li>
                   ))}
                 </ul>
+              )}
+
+              {data.unresolved_shifts.length > 0 && (
+                <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2" data-testid="projection-unresolved-shifts">
+                  <p className="text-xs font-semibold text-amber-900">Shifts that need a lunch start time</p>
+                  <ul className="mt-1 list-disc pl-5 space-y-0.5 text-xs text-amber-900">
+                    {data.unresolved_shifts.map((u, i) => (
+                      <li key={`${u.employee}-${u.date}-${i}`}>
+                        <span className="font-medium">{u.employee}</span> — {u.store_name}, {u.message.replace(`${u.employee} — `, '')}
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="mt-1 text-xs text-amber-800">Open the shift on the schedule and set when its unpaid lunch starts; recalculate afterwards.</p>
+                </div>
               )}
 
               <p className="mb-4 text-xs text-gray-500">

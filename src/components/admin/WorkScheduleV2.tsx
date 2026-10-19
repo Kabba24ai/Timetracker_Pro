@@ -191,6 +191,10 @@ const WorkScheduleV2: React.FC = () => {
       start24: seg?.start ?? ds,
       end24: seg?.end ?? de,
       unpaidLunchMinutes: seg?.unpaid_lunch_minutes ?? null,
+      unpaidLunchStart: seg?.unpaid_lunch_start ?? null,
+      // A chip without a segment id is the recurring weekday rule projected onto this date.
+      recurring: !!seg && seg.segment_id === null,
+      dayOfWeek: dow,
     });
   };
 

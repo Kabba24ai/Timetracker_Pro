@@ -10,8 +10,10 @@ import {
   createSegment,
   dayStatusLabel,
   deleteSegment,
+  fetchEmployeeRules,
   isFullDayStatus,
   parseLunchMinutes,
+  saveEmployeeRules,
   setDayStatus,
   updateSegment,
 } from '../../lib/schedule';
@@ -34,7 +36,13 @@ export interface CellDraft {
   segmentId: number | null; // existing dated segment → edit/remove; null → create
   start24: string; // seeded 'HH:MM'
   end24: string;
-  unpaidLunchMinutes?: number | null; // configured unpaid lunch; null/absent = none
+  unpaidLunchMinutes?: number | null; // configured unpaid lunch; null/absent = none, 0 = confirmed none
+  unpaidLunchStart?: string | null; // 'HH:MM' when the lunch's placement is stated
+  // The clicked chip was projected from the employee's recurring weekday rule
+  // (no dated entry exists). Saving creates a dated entry for this date only;
+  // the rule's own unpaid lunch is maintained from the recurring section.
+  recurring?: boolean;
+  dayOfWeek?: number; // 0=Sun … 6=Sat
 }
 
 interface Props {
@@ -50,12 +58,40 @@ interface Props {
   onSaved: () => void;
 }
 
+const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+const LUNCH_HELP = 'Optional. Only payroll projections use it, deducting it from the scheduled hours. Leave blank for no deduction; enter 0 to confirm there is no lunch.';
+const LUNCH_START_HELP = 'Needed only when a shift runs past midnight into a different pay rate or a new workweek; otherwise the duration is enough.';
+
+/** An optional "lunch starts at" control: a link until a time is set, then a TimeField with a clear action. */
+const LunchStart: React.FC<{ value: Clock | null; onChange: (c: Clock | null) => void; seed: string; label: string }> = ({ value, onChange, seed, label }) =>
+  value === null ? (
+    <button type="button" onClick={() => onChange(parse24(seed))} className="text-xs text-blue-600 hover:underline">
+      Set when the lunch starts (optional)
+    </button>
+  ) : (
+    <div className="flex flex-wrap items-end gap-2">
+      <div>
+        <span className="block text-xs font-medium text-gray-600 mb-1">{label}</span>
+        <TimeField value={value} onChange={onChange} label={label} />
+      </div>
+      <button type="button" onClick={() => onChange(null)} className="text-xs text-gray-500 hover:text-red-600 mb-2">
+        Clear
+      </button>
+    </div>
+  );
+
 const ScheduleCellModal: React.FC<Props> = ({ draft, stores, dayStatus, onClose, onSaved }) => {
   const [start, setStart] = useState<Clock>(() => parse24(draft.start24));
   const [end, setEnd] = useState<Clock>(() => parse24(draft.end24));
   const [storeId, setStoreId] = useState<number>(draft.storeId);
   const [lunch, setLunch] = useState<string>(draft.unpaidLunchMinutes != null ? String(draft.unpaidLunchMinutes) : '');
+  const [lunchStart, setLunchStart] = useState<Clock | null>(() => (draft.unpaidLunchStart ? parse24(draft.unpaidLunchStart) : null));
   const draftLunch = draft.unpaidLunchMinutes ?? null;
+  // The recurring rule's own lunch, maintained separately from this date.
+  const [ruleLunch, setRuleLunch] = useState<string>(draft.unpaidLunchMinutes != null ? String(draft.unpaidLunchMinutes) : '');
+  const [ruleLunchStart, setRuleLunchStart] = useState<Clock | null>(() => (draft.unpaidLunchStart ? parse24(draft.unpaidLunchStart) : null));
+  const [updatingRule, setUpdatingRule] = useState(false);
   // 'working' = no status row; the normal dated segment speaks for itself. Admin
   // payloads carry a real editable code; anything else (e.g. the employee-facing
   // privacy projection) is not an admin choice, so it falls back to Working.
@@ -73,12 +109,15 @@ const ScheduleCellModal: React.FC<Props> = ({ draft, stores, dayStatus, onClose,
 
   const fullDay = isFullDayStatus(status);
   const statusLabel = dayStatusLabel(status);
+  const lunchParsed = parseLunchMinutes(lunch);
+  const lunchMinutes = 'value' in lunchParsed ? lunchParsed.value : null;
+  const lunchChanged = 'value' in lunchParsed && lunchParsed.value !== draftLunch;
   // Adding a Holiday marker on a blank cell: only send hours if the admin is
   // actually scheduling work alongside it (the segment already exists, or they
   // changed the seeded default). Keeps "just mark the holiday" a single write.
-  const lunchParsed = parseLunchMinutes(lunch);
-  const lunchChanged = 'value' in lunchParsed && lunchParsed.value !== draftLunch;
   const hasHolidayHours = to24(start) !== draft.start24 || to24(end) !== draft.end24 || lunchChanged;
+  const weekday = draft.dayOfWeek !== undefined ? WEEKDAYS[draft.dayOfWeek] : null;
+  const recurring = !!draft.recurring && weekday !== null;
 
   const run = async (fn: () => Promise<void>, setBusy: (b: boolean) => void) => {
     setBusy(true);
@@ -101,12 +140,13 @@ const ScheduleCellModal: React.FC<Props> = ({ draft, stores, dayStatus, onClose,
       return;
     }
     const unpaid_lunch_minutes = lunchParsed.value;
-    // An update always carries the key (null clears a configured lunch); a
-    // create sends it only when one was entered, so the payload is unchanged
-    // for the common no-lunch case.
+    // A stated lunch start only means something with a positive lunch.
+    const unpaid_lunch_start = unpaid_lunch_minutes && lunchStart ? to24(lunchStart) : null;
+    // An update always carries the keys (null clears); a create sends them only
+    // when entered, so the payload is unchanged for the common no-lunch case.
     const segment = () =>
       draft.segmentId
-        ? updateSegment(draft.segmentId, { start_time, end_time, store_id: storeId, unpaid_lunch_minutes })
+        ? updateSegment(draft.segmentId, { start_time, end_time, store_id: storeId, unpaid_lunch_minutes, unpaid_lunch_start })
         : createSegment({
             user_id: draft.userId,
             store_id: storeId,
@@ -114,6 +154,7 @@ const ScheduleCellModal: React.FC<Props> = ({ draft, stores, dayStatus, onClose,
             start_time,
             end_time,
             ...(unpaid_lunch_minutes !== null ? { unpaid_lunch_minutes } : {}),
+            ...(unpaid_lunch_start !== null ? { unpaid_lunch_start } : {}),
           });
 
     run(async () => {
@@ -138,6 +179,28 @@ const ScheduleCellModal: React.FC<Props> = ({ draft, stores, dayStatus, onClose,
     }, setSaving);
   };
 
+  // Maintain the unpaid lunch on the recurring weekday rule itself: read the
+  // rule as stored, change only its lunch fields, and write it back — nothing
+  // else about the rule, and no dated entry, is touched.
+  const updateRule = () => {
+    if (draft.dayOfWeek === undefined) return;
+    const parsed = parseLunchMinutes(ruleLunch);
+    if ('error' in parsed) {
+      setError(parsed.error);
+      return;
+    }
+    const dow = draft.dayOfWeek;
+    run(async () => {
+      const rule = (await fetchEmployeeRules(draft.userId)).find((r) => r.day_of_week === dow);
+      if (!rule || !rule.is_working_day) {
+        throw new ApiError(`${draft.employeeName} has no recurring ${WEEKDAYS[dow]} rule to update.`, 404);
+      }
+      await saveEmployeeRules(draft.userId, [
+        { ...rule, unpaid_lunch_minutes: parsed.value, unpaid_lunch_start: parsed.value && ruleLunchStart ? to24(ruleLunchStart) : null },
+      ]);
+    }, setUpdatingRule);
+  };
+
   const remove = () => {
     // With a status selected, the destructive action is "remove the status" —
     // the date simply returns to blank/unscheduled, never to invented hours.
@@ -151,10 +214,11 @@ const ScheduleCellModal: React.FC<Props> = ({ draft, stores, dayStatus, onClose,
   };
 
   const ro = 'text-sm font-medium text-gray-900';
+  const input = 'w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-sm font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <form className="bg-white rounded-xl shadow-xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()} onSubmit={save}>
+      <form className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 max-h-[90vh] overflow-auto" onClick={(e) => e.stopPropagation()} onSubmit={save}>
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold text-gray-900">{draft.segmentId ? 'Edit schedule' : 'Add schedule'}</h3>
           <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600" aria-label="Close">
@@ -211,7 +275,7 @@ const ScheduleCellModal: React.FC<Props> = ({ draft, stores, dayStatus, onClose,
             aria-label="Day Status"
             value={status}
             onChange={(e) => setStatus(e.target.value as DayStatusSelection)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-sm font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className={input}
           >
             {DAY_STATUS_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>
@@ -256,12 +320,58 @@ const ScheduleCellModal: React.FC<Props> = ({ draft, stores, dayStatus, onClose,
                 onChange={(e) => setLunch(e.target.value)}
                 placeholder="None"
                 aria-label="Unpaid Lunch (minutes)"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-sm font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className={input}
               />
-              <p className="mt-1 text-xs text-gray-500">
-                Optional. Only payroll projections use it, deducting it from the scheduled hours. Leave blank for no deduction.
-              </p>
+              <p className="mt-1 text-xs text-gray-500">{LUNCH_HELP}</p>
+              {!!lunchMinutes && (
+                <div className="mt-2">
+                  <LunchStart value={lunchStart} onChange={setLunchStart} seed={draft.start24} label="Lunch starts at" />
+                  <p className="mt-1 text-xs text-gray-500">{LUNCH_START_HELP}</p>
+                </div>
+              )}
             </div>
+
+            {/* The recurring rule behind a projected cell: lunch maintenance only,
+                through the rule's own endpoint, so precedence stays as it is
+                (a dated entry always wins over the rule). */}
+            {recurring && status === 'working' && (
+              <div className="mb-5 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2" data-testid="recurring-lunch">
+                <p className="text-xs font-semibold text-gray-700">Recurring {weekday} rule</p>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  These hours come from {draft.employeeName}&rsquo;s recurring {weekday} schedule. Save above to change {formatShortCalendarDate(draft.date)} only; update
+                  the rule to change the unpaid lunch for every {weekday}.
+                </p>
+                <div className="mt-2 flex flex-wrap items-end gap-2">
+                  <div className="w-28">
+                    <label htmlFor="rule-lunch" className="block text-xs font-medium text-gray-600 mb-1">
+                      Rule lunch (min)
+                    </label>
+                    <input
+                      id="rule-lunch"
+                      type="number"
+                      inputMode="numeric"
+                      min={0}
+                      value={ruleLunch}
+                      onChange={(e) => setRuleLunch(e.target.value)}
+                      placeholder="None"
+                      aria-label={`Unpaid lunch on the recurring ${weekday} rule (minutes)`}
+                      className={input}
+                    />
+                  </div>
+                  {!!(parseLunchMinutes(ruleLunch) as { value?: number | null }).value && (
+                    <LunchStart value={ruleLunchStart} onChange={setRuleLunchStart} seed={draft.start24} label="Rule lunch starts at" />
+                  )}
+                  <button
+                    type="button"
+                    onClick={updateRule}
+                    disabled={updatingRule || saving || removing}
+                    className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    {updatingRule ? 'Updating…' : 'Update rule'}
+                  </button>
+                </div>
+              </div>
+            )}
           </>
         )}
 
@@ -294,7 +404,7 @@ const ScheduleCellModal: React.FC<Props> = ({ draft, stores, dayStatus, onClose,
             <button type="button" onClick={onClose} className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
               Cancel
             </button>
-            <button type="submit" disabled={saving || removing} className="px-4 py-2 rounded-lg text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 transition-colors">
+            <button type="submit" disabled={saving || removing || updatingRule} className="px-4 py-2 rounded-lg text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 transition-colors">
               {saving ? 'Saving…' : 'Save'}
             </button>
           </div>

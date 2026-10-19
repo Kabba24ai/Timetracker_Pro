@@ -46,16 +46,22 @@ export interface ScheduleSegmentCell {
   editable: boolean;
   // Explicit unpaid lunch configured on this schedule entry, in minutes. Absent
   // or null = none configured, and payroll PROJECTIONS deduct nothing — a lunch
-  // is never invented. (Actual paid time still comes from recorded breaks.)
+  // is never invented; 0 = confirmed no lunch. (Actual paid time still comes
+  // from recorded breaks.)
   unpaid_lunch_minutes?: number | null;
+  // Optional wall-clock start ('HH:MM') of that lunch. Only needed when the
+  // entry crosses a midnight that changes the pay rate or starts a workweek;
+  // without it such an entry's workweek is projected as "lunch timing needed".
+  unpaid_lunch_start?: string | null;
 }
 
 /** Minutes of unpaid lunch an entry may carry: whole minutes, none up to 8 hours (the server enforces the same). */
 export const MAX_LUNCH_MINUTES = 480;
 
 /**
- * Parse the editor's lunch field: blank (or 0) = none configured (null);
- * otherwise a whole number of minutes within range, or an error message.
+ * Parse the editor's lunch field: blank = none configured (null); 0 = an
+ * explicit, confirmed no-lunch; otherwise a whole number of minutes within
+ * range, or an error message.
  */
 export function parseLunchMinutes(raw: string): { value: number | null } | { error: string } {
   const text = raw.trim();
@@ -63,7 +69,36 @@ export function parseLunchMinutes(raw: string): { value: number | null } | { err
   if (!/^\d+$/.test(text)) return { error: 'Unpaid lunch must be a whole number of minutes.' };
   const minutes = Number(text);
   if (minutes > MAX_LUNCH_MINUTES) return { error: `Unpaid lunch cannot exceed ${MAX_LUNCH_MINUTES} minutes.` };
-  return { value: minutes === 0 ? null : minutes };
+  return { value: minutes };
+}
+
+// ── Recurring weekly baseline (lunch maintenance only) ──────────────────────
+//
+// The dated calendar is the operational schedule; a recurring rule is the
+// baseline the grid projects when a date has no dated entry. There is no
+// recurring editor in this app — the rules endpoints are used here only to
+// read a weekday's rule and write back its unpaid lunch, leaving every other
+// field exactly as stored, so precedence (dated entries win) is untouched.
+
+export interface ScheduleRuleRow {
+  day_of_week: number; // 0=Sun … 6=Sat
+  is_working_day: boolean;
+  start_time: string | null; // 'HH:MM'
+  end_time: string | null;
+  crosses_midnight: boolean;
+  unpaid_lunch_minutes: number | null;
+  unpaid_lunch_start: string | null;
+  store_id: number | null;
+}
+
+export async function fetchEmployeeRules(userId: number): Promise<ScheduleRuleRow[]> {
+  const res = (await api.get(`/admin/employees/${userId}/schedule`)) as ApiEnvelope & { rules?: ScheduleRuleRow[] };
+  return res.rules ?? [];
+}
+
+/** Save one or more weekday rules (upsert per day; other weekdays are untouched). */
+export async function saveEmployeeRules(userId: number, rules: ScheduleRuleRow[]): Promise<void> {
+  await api.put(`/admin/employees/${userId}/schedule`, { rules });
 }
 
 /** Compact label for a configured unpaid lunch, or null when none is configured. */
@@ -276,6 +311,7 @@ export interface SegmentInput {
   start_time?: string; // 'HH:MM'; omitted → store hours default
   end_time?: string;
   unpaid_lunch_minutes?: number | null; // null clears; omitted leaves the server default (none)
+  unpaid_lunch_start?: string | null; // 'HH:MM'; only meaningful with a positive lunch
 }
 
 export interface SegmentTimes {
@@ -283,6 +319,7 @@ export interface SegmentTimes {
   end_time: string;
   store_id?: number;
   unpaid_lunch_minutes?: number | null; // null clears a configured lunch
+  unpaid_lunch_start?: string | null; // null clears a stated lunch start
 }
 
 export async function createSegment(input: SegmentInput): Promise<void> {
