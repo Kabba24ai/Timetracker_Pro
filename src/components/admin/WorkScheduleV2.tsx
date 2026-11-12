@@ -54,7 +54,10 @@ type ActionResult = { title: string; result: AssignmentResult };
 
 // ── Scheduled Hours cells (figures come from the server; nothing is summed here) ──
 
-const HOURS_TH = 'px-3 py-2 font-medium text-right border-l border-gray-200 min-w-[6.5rem] whitespace-nowrap';
+// The Hours column is pinned to the right edge (as the name column is pinned
+// left), so period totals stay in view while a week or month scrolls sideways.
+const PIN_RIGHT = 'sticky right-0 z-10 border-l border-gray-200 shadow-[-6px_0_6px_-6px_rgba(0,0,0,0.15)]';
+const HOURS_TH = `${PIN_RIGHT} bg-gray-50 px-3 py-2 font-medium text-right min-w-[6.5rem] whitespace-nowrap`;
 const NUM = 'font-mono tabular-nums text-right whitespace-nowrap';
 
 /** One employee row's period total, with an overlap marker when the server counted overlapping time once. */
@@ -62,7 +65,7 @@ const HoursCell: React.FC<{ figure?: ScheduledHoursFigure }> = ({ figure }) => {
   const seconds = figure?.total_seconds ?? 0;
   const overlap = figure?.overlap_seconds ?? 0;
   return (
-    <td className={`px-3 py-2 align-top border-l border-gray-200 text-gray-900 ${NUM}`} title={`Scheduled labor: ${formatScheduledDuration(seconds)}`}>
+    <td className={`${PIN_RIGHT} bg-white px-3 py-2 align-top text-gray-900 ${NUM}`} title={`Scheduled labor: ${formatScheduledDuration(seconds)}`}>
       {overlap > 0 && (
         <span className="mr-1 inline-flex align-middle text-amber-600" title={`Overlapping schedule entries — ${formatScheduledDuration(overlap)} counted once`}>
           <AlertTriangle className="h-3.5 w-3.5" aria-label="Overlapping schedule entries counted once" />
@@ -83,7 +86,7 @@ const TotalsRow: React.FC<{ label: string; figure: ScheduledHoursFigure; dates: 
       </td>
     ))}
     <td
-      className={`px-3 py-2 border-l border-gray-200 font-bold ${NUM} ${prominent ? 'bg-blue-50 text-blue-800 text-base' : 'text-gray-900'}`}
+      className={`${PIN_RIGHT} px-3 py-2 font-bold ${NUM} ${prominent ? 'bg-blue-50 text-blue-800 text-base' : 'bg-gray-50 text-gray-900'}`}
       title={`${label}: ${formatScheduledDuration(figure.total_seconds)}`}
     >
       {formatScheduledHoursLabel(figure.total_seconds)}
