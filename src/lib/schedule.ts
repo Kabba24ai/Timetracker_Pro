@@ -193,6 +193,42 @@ export interface Holiday {
   store_ids: number[];
 }
 
+// ── Scheduled Hours (server-owned; never clocked time, payroll or store hours) ──
+//
+// The server measures committed scheduled labor once (dated segments + the
+// recurring baseline, real tenant-tz instants, explicit unpaid lunch only,
+// overlaps counted once) and returns integer SECONDS on every row, store
+// section and view. A store figure is the sum of its rows and the view figure
+// the sum of the stores shown, so this layer never adds anything up — it only
+// formats. Absent on an API that predates the figures: callers then show none.
+
+export interface ScheduledHoursFigure {
+  total_seconds: number;
+  daily_seconds: Record<string, number>; // every displayed date, zeros included
+  // Time removed because this employee's entries overlapped (counted once).
+  overlap_seconds?: number;
+}
+
+/** Scheduled seconds as decimal hours with two places, e.g. 99000 → '27.50'. Exact: whole hundredths from integers. */
+export function formatScheduledHours(seconds: number): string {
+  const hundredths = Math.round(Math.max(0, seconds) / 36);
+  const whole = Math.floor(hundredths / 100);
+  return `${whole.toLocaleString('en-US')}.${String(hundredths % 100).padStart(2, '0')}`;
+}
+
+/** The labelled form, e.g. '40.00 hrs'. */
+export function formatScheduledHoursLabel(seconds: number): string {
+  return `${formatScheduledHours(seconds)} hrs`;
+}
+
+/** Exact hours and minutes for a tooltip, e.g. 34800 → '9 h 40 min'. */
+export function formatScheduledDuration(seconds: number): string {
+  const minutes = Math.round(Math.max(0, seconds) / 60);
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m === 0 ? `${h} h` : `${h} h ${m} min`;
+}
+
 export interface StoreViewSection {
   store_id: number;
   // Holidays ride each ROW, not the section: one employee can be excluded from a
@@ -204,7 +240,9 @@ export interface StoreViewSection {
     time_off?: TimeOffOverlay;
     day_status?: DayStatusOverlay;
     holidays?: HolidayOverlay;
+    scheduled_hours?: ScheduledHoursFigure; // this employee at this store
   }[];
+  scheduled_hours?: ScheduledHoursFigure; // Store Scheduled Hours
 }
 
 export interface StoreView {
@@ -213,6 +251,7 @@ export interface StoreView {
   stores: StoreMeta[];
   employees: { id: number; full_name: string }[];
   store_view: StoreViewSection[];
+  scheduled_hours?: ScheduledHoursFigure; // Total Scheduled Hours (all stores shown)
 }
 
 export interface EmployeeView {
@@ -220,10 +259,11 @@ export interface EmployeeView {
   employee: { id: number; full_name: string };
   dates: ScheduleDate[];
   stores: StoreMeta[];
-  employee_view: { store_id: number; cells: Cells; holidays?: HolidayOverlay }[];
+  employee_view: { store_id: number; cells: Cells; holidays?: HolidayOverlay; scheduled_hours?: ScheduledHoursFigure }[];
   day_offs: string[];
   time_off?: TimeOffOverlay;
   day_status?: DayStatusOverlay;
+  scheduled_hours?: ScheduledHoursFigure; // the employee's total across the stores shown
 }
 
 interface ViewParams {
@@ -254,6 +294,7 @@ export async function fetchStoreView(params: ViewParams): Promise<StoreView> {
     stores: res.stores ?? [],
     employees: res.employees ?? [],
     store_view: res.store_view ?? [],
+    scheduled_hours: res.scheduled_hours,
   };
 }
 
@@ -268,6 +309,7 @@ export async function fetchEmployeeView(userId: number, params: ViewParams): Pro
     day_offs: res.day_offs ?? [],
     time_off: res.time_off ?? {},
     day_status: res.day_status ?? {},
+    scheduled_hours: res.scheduled_hours,
   };
 }
 
@@ -289,6 +331,7 @@ export async function fetchMyEmployeeSchedule(params: ViewParams): Promise<Emplo
     day_offs: res.day_offs ?? [],
     time_off: res.time_off ?? {},
     day_status: res.day_status ?? {},
+    scheduled_hours: res.scheduled_hours,
   };
 }
 

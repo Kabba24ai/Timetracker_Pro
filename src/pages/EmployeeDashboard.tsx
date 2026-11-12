@@ -4,6 +4,7 @@ import TimeClockCard from '../components/TimeClockCard';
 import TodayTimeEntries from '../components/TodayTimeEntries';
 import VacationSummary from '../components/VacationSummary';
 import WorkHistorySynopsis from '../components/history/WorkHistorySynopsis';
+import WeeklyScheduleCard from '../components/schedule/WeeklyScheduleCard';
 import Header from '../components/Header';
 
 const EmployeeDashboard: React.FC = () => {
@@ -57,8 +58,9 @@ const EmployeeDashboard: React.FC = () => {
             <TodayTimeEntries />
           </div>
           <div className="space-y-6">
-            <VacationSummary />
+            <WeeklyScheduleCard />
             <WorkHistorySynopsis />
+            <VacationSummary />
           </div>
         </div>
       </div>
