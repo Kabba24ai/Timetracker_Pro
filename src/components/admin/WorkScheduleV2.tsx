@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { AlertCircle, CalendarPlus, Calculator, Plus, RefreshCw, Trash2, Users } from 'lucide-react';
+import { AlertCircle, AlertTriangle, CalendarPlus, Calculator, Plus, RefreshCw, Trash2, Users } from 'lucide-react';
 import { ApiError } from '../../lib/api';
 import { AdminEmployee, fetchEmployees } from '../../lib/admin';
 import { useAuth } from '../../contexts/AuthContext';
@@ -10,7 +10,9 @@ import {
   EmployeeView,
   Holiday,
   HolidayMarker,
+  ScheduleDate,
   ScheduleGroup,
+  ScheduledHoursFigure,
   ScheduleSegmentCell,
   ScheduleView,
   StoreMeta,
@@ -23,6 +25,9 @@ import {
   fetchHolidays,
   fetchStoreView,
   formatRange,
+  formatScheduledDuration,
+  formatScheduledHours,
+  formatScheduledHoursLabel,
   formatUnpaidLunch,
   removeFromStore,
 } from '../../lib/schedule';
@@ -46,6 +51,48 @@ const chip = (hex: string): React.CSSProperties => ({ backgroundColor: `${hex}1f
 
 // The result of an assign / apply-group action, tagged with a human label.
 type ActionResult = { title: string; result: AssignmentResult };
+
+// ── Scheduled Hours cells (figures come from the server; nothing is summed here) ──
+
+// The Hours column is pinned to the right edge (as the name column is pinned
+// left), so period totals stay in view while a week or month scrolls sideways.
+const PIN_RIGHT = 'sticky right-0 z-10 border-l border-gray-200 shadow-[-6px_0_6px_-6px_rgba(0,0,0,0.15)]';
+const HOURS_TH = `${PIN_RIGHT} bg-gray-50 px-3 py-2 font-medium text-right min-w-[6.5rem] whitespace-nowrap`;
+const NUM = 'font-mono tabular-nums text-right whitespace-nowrap';
+
+/** One employee row's period total, with an overlap marker when the server counted overlapping time once. */
+const HoursCell: React.FC<{ figure?: ScheduledHoursFigure }> = ({ figure }) => {
+  const seconds = figure?.total_seconds ?? 0;
+  const overlap = figure?.overlap_seconds ?? 0;
+  return (
+    <td className={`${PIN_RIGHT} bg-white px-3 py-2 align-top text-gray-900 ${NUM}`} title={`Scheduled labor: ${formatScheduledDuration(seconds)}`}>
+      {overlap > 0 && (
+        <span className="mr-1 inline-flex align-middle text-amber-600" title={`Overlapping schedule entries — ${formatScheduledDuration(overlap)} counted once`}>
+          <AlertTriangle className="h-3.5 w-3.5" aria-label="Overlapping schedule entries counted once" />
+        </span>
+      )}
+      {formatScheduledHoursLabel(seconds)}
+    </td>
+  );
+};
+
+/** A totals row: one figure per displayed date, then the period total on the far right. */
+const TotalsRow: React.FC<{ label: string; figure: ScheduledHoursFigure; dates: ScheduleDate[]; prominent?: boolean }> = ({ label, figure, dates, prominent }) => (
+  <tr className={prominent ? 'bg-gray-100 text-gray-900' : 'bg-gray-50 text-gray-700'}>
+    <th scope="row" className={`sticky left-0 z-10 px-3 py-2 text-left font-semibold whitespace-nowrap ${prominent ? 'bg-gray-100' : 'bg-gray-50'}`}>{label}</th>
+    {dates.map((d) => (
+      <td key={d.date} className={`px-2 py-2 border-l border-gray-100 font-semibold ${NUM}`} title={`${d.day_label}: ${formatScheduledDuration(figure.daily_seconds[d.date] ?? 0)}`}>
+        {formatScheduledHours(figure.daily_seconds[d.date] ?? 0)}
+      </td>
+    ))}
+    <td
+      className={`${PIN_RIGHT} px-3 py-2 font-bold ${NUM} ${prominent ? 'bg-blue-50 text-blue-800 text-base' : 'bg-gray-50 text-gray-900'}`}
+      title={`${label}: ${formatScheduledDuration(figure.total_seconds)}`}
+    >
+      {formatScheduledHoursLabel(figure.total_seconds)}
+    </td>
+  </tr>
+);
 
 const WorkScheduleV2: React.FC = () => {
   const [mode, setMode] = useState<Mode>('store');
@@ -155,6 +202,8 @@ const WorkScheduleV2: React.FC = () => {
   };
 
   const dates = (mode === 'store' ? store?.dates : emp?.dates) ?? [];
+  // Scheduled Hours render only when the API provides them (an older API simply shows none).
+  const showHours = mode === 'store' ? !!store?.scheduled_hours : !!emp?.scheduled_hours;
 
   // The range the grid is showing right now — the projection prices exactly
   // that (plus the hours just outside it that its workweeks need). Every edit
@@ -305,17 +354,19 @@ const WorkScheduleV2: React.FC = () => {
     </td>
   );
 
-  const HeaderRow = (
+  const headerRow = (first: string) => (
     <tr className="text-gray-500">
-      <th className="sticky left-0 z-10 bg-gray-50 text-left px-3 py-2 font-medium min-w-[13rem]">Employee</th>
+      <th className="sticky left-0 z-10 bg-gray-50 text-left px-3 py-2 font-medium min-w-[13rem]">{first}</th>
       {dates.map((d) => (
         <th key={d.date} className="px-2 py-2 font-medium border-l border-gray-100 min-w-[7.5rem] whitespace-nowrap">
           {d.weekday_label}
           <span className="block text-[10px] font-normal text-gray-400">{d.date.slice(5)}</span>
         </th>
       ))}
+      {showHours && <th className={HOURS_TH}>Hours</th>}
     </tr>
   );
+  const HeaderRow = headerRow('Employee');
 
   const removedCount = (r: AssignmentResult) => (r as AssignmentResult & { removed?: number }).removed;
 
@@ -393,6 +444,11 @@ const WorkScheduleV2: React.FC = () => {
       <p className="text-xs text-gray-400 mb-4">
         Adding an employee or group schedules them for the store’s hours across this range (a default you can then edit). All times in {(mode === 'store' ? store?.range.timezone : emp?.range.timezone) ?? 'tenant tz'} (tenant timezone). Weeks begin Monday.
       </p>
+      {showHours && (
+        <p className="text-xs text-gray-400 -mt-3 mb-4">
+          Hours are scheduled labor hours: each shift’s time less any unpaid lunch set on it. Days off, full-day statuses and approved full-day time off are not counted; holidays are. Not clocked time or payroll.
+        </p>
+      )}
 
       {error && (
         <div className="mb-4 flex items-center gap-2 text-red-600 bg-red-50 p-3 rounded-lg">
@@ -505,19 +561,42 @@ const WorkScheduleV2: React.FC = () => {
                           {dates.map((d) => (
                             <Cell key={d.date} s={s} uid={r.employee.id} name={r.employee.full_name} date={d.date} dow={d.day_of_week} segs={r.cells[d.date] ?? []} timeOff={r.time_off?.[d.date]} dayStatus={r.day_status?.[d.date]} holidays={r.holidays?.[d.date]} />
                           ))}
+                          {showHours && <HoursCell figure={r.scheduled_hours} />}
                         </tr>
                       ))}
                       {rows.length === 0 && (
                         <tr>
-                          <td colSpan={dates.length + 1} className="px-4 py-6 text-center text-gray-400 text-sm">No one scheduled at {s.name} this range. Use “Add employee” or “Add group”.</td>
+                          <td colSpan={dates.length + 1 + (showHours ? 1 : 0)} className="px-4 py-6 text-center text-gray-400 text-sm">No one scheduled at {s.name} this range. Use “Add employee” or “Add group”.</td>
                         </tr>
                       )}
                     </tbody>
+                    {showHours && section?.scheduled_hours && (
+                      <tfoot className="border-t-2 border-gray-200">
+                        <TotalsRow label="Store Scheduled Hours" figure={section.scheduled_hours} dates={dates} />
+                      </tfoot>
+                    )}
                   </table>
                 </div>
               </div>
             );
           })}
+
+          {/* Company: every store above, combined. */}
+          {showHours && store.scheduled_hours && (
+            <section className="border-2 border-gray-300 rounded-lg overflow-hidden" aria-label="Total Scheduled Hours, all stores">
+              <div className="px-4 py-2 bg-gray-100 border-b border-gray-200">
+                <h3 className="text-base font-semibold text-gray-900">Total Scheduled Hours — All Stores</h3>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm border-collapse">
+                  <thead className="bg-gray-50">{headerRow('All Stores')}</thead>
+                  <tbody>
+                    <TotalsRow label="Total Scheduled Hours" figure={store.scheduled_hours} dates={dates} prominent />
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
         </div>
       )}
 
@@ -538,6 +617,7 @@ const WorkScheduleV2: React.FC = () => {
                         <span className="block text-[10px] font-normal text-gray-400">{d.date.slice(5)}</span>
                       </th>
                     ))}
+                    {showHours && <th className={HOURS_TH}>Hours</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -552,10 +632,16 @@ const WorkScheduleV2: React.FC = () => {
                         {dates.map((d) => (
                           <Cell key={d.date} s={s} uid={emp.employee.id} name={emp.employee.full_name} date={d.date} dow={d.day_of_week} segs={row?.cells[d.date] ?? []} timeOff={emp.time_off?.[d.date]} dayStatus={emp.day_status?.[d.date]} holidays={row?.holidays?.[d.date]} />
                         ))}
+                        {showHours && <HoursCell figure={row?.scheduled_hours} />}
                       </tr>
                     );
                   })}
                 </tbody>
+                {showHours && emp.scheduled_hours && emp.stores.length > 1 && (
+                  <tfoot className="border-t-2 border-gray-200">
+                    <TotalsRow label="Total Scheduled Hours" figure={emp.scheduled_hours} dates={dates} prominent />
+                  </tfoot>
+                )}
               </table>
             </div>
           </div>
