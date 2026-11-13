@@ -7,6 +7,7 @@ import EmployeeDashboard from './pages/EmployeeDashboard';
 import AdminDashboard from './pages/AdminDashboard';
 import SchedulePage from './pages/SchedulePage';
 import WorkHistoryPage from './pages/WorkHistoryPage';
+import TimeOffPage from './pages/TimeOffPage';
 import ProtectedRoute from './components/ProtectedRoute';
 
 function App() {
@@ -38,6 +39,14 @@ function App() {
                 element={
                   <ProtectedRoute>
                     <WorkHistoryPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/time-off"
+                element={
+                  <ProtectedRoute>
+                    <TimeOffPage />
                   </ProtectedRoute>
                 }
               />

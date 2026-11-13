@@ -90,11 +90,16 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
+  // The Work Schedule grid (Employee, Mon–Sun, Hours) needs more than the 1280px
+  // every other tab uses, so its workspace takes the full window width with a
+  // 24px margin. The title and tab bar stay put, so switching tabs never moves them.
+  const workspace = activeTab === 'work-schedule' ? 'max-w-none px-4 sm:px-6' : 'max-w-7xl px-4 sm:px-6 lg:px-8';
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Header />
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">Admin Dashboard</h1>
           <p className="text-gray-600 mt-2">Manage employees, time tracking, and system settings</p>
@@ -121,7 +126,9 @@ const AdminDashboard: React.FC = () => {
             })}
           </nav>
         </div>
+      </div>
 
+      <div className={`${workspace} mx-auto pb-8`} data-testid="admin-workspace">
         <div className="bg-white rounded-xl shadow-sm border">{renderContent()}</div>
       </div>
     </div>

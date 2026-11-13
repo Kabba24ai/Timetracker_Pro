@@ -3,7 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import TimeClockCard from '../components/TimeClockCard';
 import TodayTimeEntries from '../components/TodayTimeEntries';
 import VacationSummary from '../components/VacationSummary';
-import WorkHistorySynopsis from '../components/history/WorkHistorySynopsis';
+import WorkNavigation from '../components/WorkNavigation';
 import WeeklyScheduleCard from '../components/schedule/WeeklyScheduleCard';
 import Header from '../components/Header';
 
@@ -59,7 +59,7 @@ const EmployeeDashboard: React.FC = () => {
           </div>
           <div className="space-y-6">
             <WeeklyScheduleCard />
-            <WorkHistorySynopsis />
+            <WorkNavigation />
             <VacationSummary />
           </div>
         </div>
