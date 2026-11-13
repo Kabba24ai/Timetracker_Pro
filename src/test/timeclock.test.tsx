@@ -315,7 +315,7 @@ describe('TimeClock — login seeds the authoritative state', () => {
 
   it('no longer renders the Work Schedule link inside the Time Clock card', async () => {
     // The Work Schedule / Work History navigation moved to the dashboard sidebar
-    // (see WorkHistorySynopsis); the Time Clock card no longer owns it.
+    // (see WorkNavigation); the Time Clock card no longer owns it.
     seedLoggedIn('off');
     render(<Harness />);
 

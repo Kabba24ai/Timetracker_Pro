@@ -298,6 +298,26 @@ describe('Store View — Hours column and totals', () => {
     expect(within(totals).getByRole('rowheader').className).toContain('sticky');
   });
 
+  it('fits a desktop week: long names wrap, Remove is icon-only below 2xl, shift labels keep their size', async () => {
+    render(<WorkScheduleV2 />);
+    await screen.findByRole('heading', { name: 'Bon Aqua' });
+    const bon = sectionOf('Bon Aqua');
+    expect(within(bon).getByRole('columnheader', { name: 'Employee' }).className).toContain('min-w-[11rem]');
+
+    const row = employeeRow(bon, 'Ada Ant');
+    const nameCell = row.querySelector('td') as HTMLElement;
+    expect(nameCell.className).toContain('sticky');
+    expect(nameCell.className).not.toContain('whitespace-nowrap');
+    // Remove keeps its accessible name and tooltip; only the visible word is 2xl-only.
+    const remove = within(row).getByRole('button', { name: 'Remove Ada Ant from Bon Aqua' });
+    expect(remove).toHaveAttribute('title', 'Remove Ada Ant from Bon Aqua for this range');
+    expect(within(remove).getByText('Remove').className.split(/\s+/)).toEqual(['hidden', '2xl:inline']);
+
+    const chip = within(row).getAllByRole('button', { name: /AM|PM/ })[0];
+    expect(chip.className).toContain('text-xs');
+    expect(chip.className).toContain('whitespace-nowrap');
+  });
+
   it('an API without Scheduled Hours shows the grid exactly as before (no Hours column, no totals)', async () => {
     server.legacy = true;
     render(<WorkScheduleV2 />);

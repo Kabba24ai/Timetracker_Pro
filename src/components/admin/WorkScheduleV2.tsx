@@ -340,7 +340,7 @@ const WorkScheduleV2: React.FC = () => {
               key={seg.segment_id ?? `p${i}`}
               onClick={() => openCell(s, uid, name, date, dow, seg)}
               style={chip(s.color)}
-              className="w-full px-2 py-1 rounded border text-xs font-medium whitespace-nowrap hover:brightness-95 transition"
+              className="w-full px-1.5 py-1 rounded border text-xs font-medium whitespace-nowrap hover:brightness-95 transition"
               title={formatUnpaidLunch(seg.unpaid_lunch_minutes) ? `Edit schedule — ${formatUnpaidLunch(seg.unpaid_lunch_minutes)} unpaid` : 'Edit schedule'}
             >
               {formatRange(seg)}
@@ -354,9 +354,11 @@ const WorkScheduleV2: React.FC = () => {
     </td>
   );
 
+  // Width budget: Employee + Mon–Sun + Hours fit a 1440px window. Long names wrap
+  // and the Remove label shows only on 2xl screens; shift labels never shrink.
   const headerRow = (first: string) => (
     <tr className="text-gray-500">
-      <th className="sticky left-0 z-10 bg-gray-50 text-left px-3 py-2 font-medium min-w-[13rem]">{first}</th>
+      <th className="sticky left-0 z-10 bg-gray-50 text-left px-3 py-2 font-medium min-w-[11rem]">{first}</th>
       {dates.map((d) => (
         <th key={d.date} className="px-2 py-2 font-medium border-l border-gray-100 min-w-[7.5rem] whitespace-nowrap">
           {d.weekday_label}
@@ -542,7 +544,7 @@ const WorkScheduleV2: React.FC = () => {
                     <tbody className="divide-y divide-gray-100">
                       {rows.map((r) => (
                         <tr key={r.employee.id} className="hover:bg-gray-50/40">
-                          <td className="sticky left-0 z-10 bg-white px-3 py-2 font-medium text-gray-900 whitespace-nowrap">
+                          <td className="sticky left-0 z-10 bg-white px-3 py-2 font-medium text-gray-900">
                             <div className="flex items-center justify-between gap-2">
                               <span>{r.employee.full_name}</span>
                               <button
@@ -554,7 +556,7 @@ const WorkScheduleV2: React.FC = () => {
                                 title={`Remove ${r.employee.full_name} from ${s.name} for this range`}
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
-                                <span className="hidden sm:inline">Remove</span>
+                                <span className="hidden 2xl:inline">Remove</span>
                               </button>
                             </div>
                           </td>

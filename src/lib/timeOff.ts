@@ -252,3 +252,20 @@ export const TIME_OFF_STATUS_STYLE: Record<TimeOffStatus, string> = {
   denied: 'bg-red-100 text-red-700',
   cancelled: 'bg-gray-100 text-gray-500',
 };
+
+// ── Employee display helpers ────────────────────────────────────────────────
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** 'Sep 14' this year, 'Sep 14, 2027' otherwise. */
+export function formatTimeOffDay(iso: string): string {
+  const [y, m, d] = iso.split('-').map(Number);
+  return `${MONTHS[m - 1]} ${d}${new Date().getFullYear() === y ? '' : `, ${y}`}`;
+}
+
+/** 'Sep 14', 'Sep 14–18' or 'Sep 28 – Oct 2'. */
+export function formatTimeOffRange(start: string, end: string): string {
+  if (start === end) return formatTimeOffDay(start);
+  const sameMonth = start.slice(0, 7) === end.slice(0, 7);
+  return sameMonth ? `${formatTimeOffDay(start)}–${Number(end.slice(8, 10))}` : `${formatTimeOffDay(start)} – ${formatTimeOffDay(end)}`;
+}

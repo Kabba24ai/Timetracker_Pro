@@ -97,7 +97,6 @@ vi.mock('../lib/api', () => {
         if (server.failSchedule) throw new ApiError('Could not load your schedule.', 500);
         return server.me;
       }
-      if (path.startsWith('/history/synopsis')) return { success: true, period: { from: '2026-11-09', to: '2026-11-22', timezone: 'America/Chicago', label: '' }, days: [] };
       return { success: true, data: [] };
     },
     post: async () => ({ success: true }),
@@ -269,7 +268,7 @@ describe('Dashboard schedule card — loading', () => {
 });
 
 describe('Employee Dashboard placement', () => {
-  it('puts the schedule card first, then Work History / Work Schedule, then Vacation', async () => {
+  it('puts the schedule card first, then the Work History / Work Schedule buttons, then Vacation', async () => {
     renderApp();
     const heading = await screen.findByText('Work Schedule: Nov 9 – Nov 15, 2026');
     const nav = screen.getByRole('link', { name: /Work Schedule/ });

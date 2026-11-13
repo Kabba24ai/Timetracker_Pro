@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 
 const server = vi.hoisted(() => ({
   calls: [] as string[],
@@ -86,6 +87,7 @@ vi.mock('../lib/api', () => {
 
 import { adminApprove, fetchMyVacationStatus, submitTimeOffRequest } from '../lib/timeOff';
 import VacationSummary from '../components/VacationSummary';
+import TimeOffManager from '../components/TimeOffManager';
 import VacationManagement from '../components/admin/VacationManagement';
 
 beforeEach(() => {
@@ -112,20 +114,28 @@ describe('time-off API layer', () => {
   });
 });
 
-describe('employee Vacation screen', () => {
-  it('shows the accrued balance from the API, not empty-state noise', async () => {
-    render(<VacationSummary />);
+describe('employee dashboard Vacation card', () => {
+  it('shows the accrued balance and one Request Time Off link to the Time Off page — no history', async () => {
+    render(
+      <MemoryRouter>
+        <VacationSummary />
+      </MemoryRouter>,
+    );
     expect(await screen.findByText('24.50')).toBeInTheDocument();
     expect(screen.getByText('Vacation')).toBeInTheDocument();
-    // The old empty-state copy is gone.
-    expect(screen.queryByText(/No balance-tracked time off/i)).toBeNull();
+    expect(screen.getByRole('link', { name: /Request Time Off/ })).toHaveAttribute('href', '/time-off');
+    // No request history, statuses, or empty-state copy — and the requests are not even fetched.
+    expect(screen.queryByText('pending')).toBeNull();
+    expect(screen.queryByRole('listitem')).toBeNull();
     expect(screen.queryByText('My Requests')).toBeNull();
-    expect(screen.queryByText('No requests yet.')).toBeNull();
+    expect(screen.queryByText(/No balance-tracked time off/i)).toBeNull();
+    expect(server.calls).toEqual(['GET /time-off/vacation-status']);
   });
+});
 
+describe('employee Time Off page', () => {
   it('offers exactly Vacation and Unpaid Time Off, using a calendar Date Picker', async () => {
-    render(<VacationSummary />);
-    fireEvent.click(await screen.findByRole('button', { name: /Request Time Off/ }));
+    render(<TimeOffManager />);
 
     const type = await screen.findByLabelText('Type');
     const options = Array.from((type as HTMLSelectElement).options).map((o) => o.textContent);
@@ -139,16 +149,15 @@ describe('employee Vacation screen', () => {
   });
 
   it('submits an Unpaid Time Off request', async () => {
-    render(<VacationSummary />);
-    fireEvent.click(await screen.findByRole('button', { name: /Request Time Off/ }));
-    fireEvent.change(screen.getByLabelText('Type'), { target: { value: 'unpaid' } });
+    render(<TimeOffManager />);
+    fireEvent.change(await screen.findByLabelText('Type'), { target: { value: 'unpaid' } });
     fireEvent.change(screen.getByLabelText('Start Date'), { target: { value: '2099-09-14' } });
     fireEvent.click(screen.getByRole('button', { name: /Submit Request/ }));
     await vi.waitFor(() => expect(server.calls).toContain('POST /time-off/requests'));
   });
 
-  it('renders a concise request history when requests exist', async () => {
-    render(<VacationSummary />);
+  it('renders a concise request history with statuses', async () => {
+    render(<TimeOffManager />);
     const items = await screen.findAllByRole('listitem');
     // "Vacation · Sep 14…" concise row + status chip.
     expect(items[0].textContent).toMatch(/Vacation/);
@@ -156,11 +165,16 @@ describe('employee Vacation screen', () => {
     expect(screen.getByText('pending')).toBeInTheDocument();
   });
 
-  it('hides request history entirely when there are none', async () => {
+  it('cancels a pending request', async () => {
+    render(<TimeOffManager />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Cancel request' }));
+    await vi.waitFor(() => expect(server.calls).toContain('POST /time-off/requests/1/cancel'));
+  });
+
+  it('says so when there are no requests', async () => {
     server.emptyRequests = true;
-    render(<VacationSummary />);
-    await screen.findByText('24.50');
-    expect(screen.queryByText('pending')).toBeNull();
+    render(<TimeOffManager />);
+    expect(await screen.findByText('You have no time off requests.')).toBeInTheDocument();
     expect(screen.queryByRole('listitem')).toBeNull();
   });
 });

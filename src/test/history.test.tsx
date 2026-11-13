@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
-// Fake employee history API. Records calls and serves the compact synopsis + the
-// full per-day Work History (current / previous / custom), so the tests prove the
-// read-only wiring end-to-end.
+// Fake employee history API. Records calls and serves the full per-day Work
+// History (current / previous / custom), so the tests prove the read-only wiring
+// end-to-end.
 const server = vi.hoisted(() => ({ calls: [] as string[] }));
 
 const ZERO = {
@@ -13,29 +13,6 @@ const ZERO = {
 };
 
 const NO_POS = { clock_in: null, lunch_start: null, lunch_end: null, other_start: null, other_end: null, clock_out: null };
-
-// Sidebar synopsis: two worked days + one Missing-Clock-Out Pending day, in the
-// canonical server order — start of the pay period FIRST, latest date LAST.
-const SYNOPSIS = {
-  period: { from: '2026-09-14', to: '2026-09-27', timezone: 'UTC', label: 'Sep 14 – Sep 27, 2026' },
-  days: [
-    {
-      date: '2026-09-14', day_label: 'Mon, Sep 14', weekday_label: 'Mon',
-      clock_in: '2026-09-14T13:00:00+00:00', clock_out: '2026-09-14T22:00:00+00:00', lunch_seconds: 1800,
-      paid_seconds: 34200, paid_hours: 9.5, pending: false, pending_reasons: [], clock_out_unverified: false,
-    },
-    {
-      date: '2026-09-15', day_label: 'Tue, Sep 15', weekday_label: 'Tue',
-      clock_in: '2026-09-15T13:55:00+00:00', clock_out: '2026-09-15T22:40:00+00:00', lunch_seconds: 2700,
-      paid_seconds: 32400, paid_hours: 9.0, pending: false, pending_reasons: [], clock_out_unverified: false,
-    },
-    {
-      date: '2026-09-16', day_label: 'Wed, Sep 16', weekday_label: 'Wed',
-      clock_in: '2026-09-16T13:02:00+00:00', clock_out: null, lunch_seconds: 0,
-      paid_seconds: 0, paid_hours: 0, pending: true, pending_reasons: ['Missing Clock Out'], clock_out_unverified: true,
-    },
-  ],
-};
 
 // Full Work History (current period): one worked day + one Pending day.
 const HISTORY_CUR = {
@@ -93,7 +70,6 @@ vi.mock('../lib/api', () => {
     getToken: () => 'tok',
     get: async (path: string) => {
       server.calls.push(`GET ${path}`);
-      if (path.startsWith('/history/synopsis')) return { success: true, ...SYNOPSIS };
       if (path.startsWith('/history')) {
         if (path.includes('period=previous')) return { success: true, ...HISTORY_PREV };
         return { success: true, ...HISTORY_CUR };
@@ -105,7 +81,7 @@ vi.mock('../lib/api', () => {
   return { api, ApiError, AUTH_ERROR_EVENT: 'tt:unauthorized' };
 });
 
-import WorkHistorySynopsis from '../components/history/WorkHistorySynopsis';
+import WorkNavigation from '../components/WorkNavigation';
 import EmployeeWorkHistory from '../components/history/EmployeeWorkHistory';
 import TimeClockCard from '../components/TimeClockCard';
 
@@ -132,44 +108,16 @@ describe('Dashboard cleanup', () => {
   });
 });
 
-describe('Sidebar Work History synopsis', () => {
-  it('shows Work History and Work Schedule buttons that navigate correctly', async () => {
-    renderRouted(<WorkHistorySynopsis />);
-    const history = await screen.findByRole('link', { name: /Work History/ });
-    const schedule = screen.getByRole('link', { name: /Work Schedule/ });
-    expect(history).toHaveAttribute('href', '/history');
-    expect(schedule).toHaveAttribute('href', '/schedule');
-  });
-
-  it('renders the compact Date / Clock In / Lunch / Clock Out / Hours table', async () => {
-    renderRouted(<WorkHistorySynopsis />);
-    for (const h of ['Date', 'Clock In', 'Lunch', 'Clock Out', 'Hours']) {
-      expect(await screen.findByText(h)).toBeInTheDocument();
-    }
-    // Standard chronological order: start of the pay period first, latest last.
-    const rows = screen.getAllByRole('row');
-    // rows[0] is the header; rows[1] is the OLDEST day (Mon).
-    expect(within(rows[1]).getByText('Mon, Sep 14')).toBeInTheDocument();
-    expect(within(rows[3]).getByText('Wed, Sep 16')).toBeInTheDocument();
-  });
-
-  it('shows Lunch as a duration and Hours as the canonical paid value', async () => {
-    renderRouted(<WorkHistorySynopsis />);
-    expect(await screen.findByText('30 min')).toBeInTheDocument(); // 1800s
-    expect(screen.getByText('45 min')).toBeInTheDocument(); // 2700s
-    expect(screen.getByText('9.5')).toBeInTheDocument(); // paid_hours 9.5
-    expect(screen.getByText('9')).toBeInTheDocument(); // paid_hours 9.0
-  });
-
-  it('shows a Pending day as Pending / Missing rather than a zero-hour day', async () => {
-    renderRouted(<WorkHistorySynopsis />);
-    const rows = await screen.findAllByRole('row');
-    const pendingRow = rows[3]; // Wed, Sep 16 (Missing Clock Out) — latest, last
-    expect(within(pendingRow).getByText('Missing')).toBeInTheDocument();
-    expect(within(pendingRow).getByText('Pending')).toBeInTheDocument();
-    // It is NOT rendered as 0 / 0.0.
-    expect(within(pendingRow).queryByText('0')).not.toBeInTheDocument();
-    expect(within(pendingRow).queryByText('0.0')).not.toBeInTheDocument();
+describe('Dashboard Work History / Work Schedule buttons', () => {
+  it('shows only the two buttons, which navigate correctly, and fetches nothing', () => {
+    renderRouted(<WorkNavigation />);
+    expect(screen.getAllByRole('link').map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
+      ['Work History', '/history'],
+      ['Work Schedule', '/schedule'],
+    ]);
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    expect(screen.queryByText(/No recent time activity/)).not.toBeInTheDocument();
+    expect(server.calls).toEqual([]);
   });
 });
 
