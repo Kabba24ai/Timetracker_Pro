@@ -27,12 +27,14 @@ const parse = (iso: string): { y: number; m: number; d: number } | null => {
 
 const DatePicker: React.FC<Props> = ({ value, onChange, min, label, id }) => {
   const [open, setOpen] = useState(false);
-  // Which month the calendar is showing.
+  // Which month the calendar is showing: the value's, else the earliest
+  // allowed date's (a caller's tenant "today"), else the device's month.
   const parsed = parse(value);
-  const today = new Date();
-  const [view, setView] = useState<{ y: number; m: number }>(() =>
-    parsed ? { y: parsed.y, m: parsed.m } : { y: today.getFullYear(), m: today.getMonth() },
-  );
+  const [view, setView] = useState<{ y: number; m: number }>(() => {
+    const start = parsed ?? (min ? parse(min) : null);
+    const today = new Date();
+    return start ? { y: start.y, m: start.m } : { y: today.getFullYear(), m: today.getMonth() };
+  });
   const rootRef = useRef<HTMLDivElement>(null);
 
   // Keep the visible month in sync when an external/typed value lands on a valid date.

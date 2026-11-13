@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 import { ApiError } from '../lib/api';
 import {
   EMPLOYEE_REQUEST_TYPES,
@@ -13,6 +14,7 @@ import {
   formatTimeOffRange,
   submitTimeOffRequest,
 } from '../lib/timeOff';
+import { tenantToday } from '../lib/tz';
 import DatePicker from './DatePicker';
 import { VacationBalance } from './VacationSummary';
 
@@ -24,6 +26,8 @@ import { VacationBalance } from './VacationSummary';
  * Time Off.
  */
 const TimeOffManager: React.FC = () => {
+  const { timezone } = useAuth();
+  const tz = timezone ?? 'UTC';
   const [status, setStatus] = useState<VacationStatus | null>(null);
   const [requests, setRequests] = useState<TimeOffRequest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -84,7 +88,9 @@ const TimeOffManager: React.FC = () => {
     }
   };
 
-  const today = new Date().toISOString().slice(0, 10);
+  // The tenant's calendar date — the same "today" the server uses to decide
+  // whether approved time off has started (never the UTC or device date).
+  const today = tenantToday(tz);
   const canCancel = (r: TimeOffRequest) => r.status === 'pending' || (r.status === 'approved' && r.start_date > today);
 
   if (loading) {
