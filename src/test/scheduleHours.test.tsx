@@ -290,6 +290,25 @@ describe('Store View — Hours column and totals', () => {
     expect(lastCell(totalsRow(sectionOf('Waverly/Gorman'), 'Store Scheduled Hours'))).toBe('0.00 hrs');
   });
 
+  it('centers each day’s total under its day header; the period total stays right-aligned under Hours', async () => {
+    render(<WorkScheduleV2 />);
+    await screen.findByRole('heading', { name: 'Bon Aqua' });
+    for (const row of [
+      totalsRow(sectionOf('Bon Aqua'), 'Store Scheduled Hours'),
+      totalsRow(sectionOf('Waverly/Gorman'), 'Store Scheduled Hours'),
+      totalsRow(companyBlock(), 'Total Scheduled Hours'),
+    ]) {
+      const cells = Array.from(row.querySelectorAll('td'));
+      const days = cells.slice(0, -1);
+      expect(days).toHaveLength(7);
+      for (const td of days) {
+        expect(td.className).toContain('text-center');
+        expect(td.className).not.toContain('text-right');
+      }
+      expect(cells[cells.length - 1].className).toContain('text-right');
+    }
+  });
+
   it('keeps horizontal scrolling and a sticky label column for wide ranges', async () => {
     render(<WorkScheduleV2 />);
     await screen.findByRole('heading', { name: 'Bon Aqua' });
@@ -341,5 +360,8 @@ describe('Employee View — scheduled hours', () => {
 
     const total = screen.getByRole('rowheader', { name: 'Total Scheduled Hours' }).closest('tr') as HTMLElement;
     expect(Array.from(total.querySelectorAll('td')).map((c) => c.textContent)).toEqual(['8.00', '8.00', '8.00', '8.00', '8.00', '5.00', '0.00', '45.00 hrs']);
+    expect(Array.from(total.querySelectorAll('td')).map((c) => (c.className.includes('text-center') ? 'center' : 'right'))).toEqual([
+      'center', 'center', 'center', 'center', 'center', 'center', 'center', 'right',
+    ]);
   });
 });
