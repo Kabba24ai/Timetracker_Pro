@@ -85,6 +85,8 @@ vi.mock('../lib/api', () => {
   return { api, ApiError, AUTH_ERROR_EVENT: 'tt:unauthorized' };
 });
 
+vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ timezone: 'America/Chicago' }) }));
+
 import { adminApprove, fetchMyVacationStatus, submitTimeOffRequest } from '../lib/timeOff';
 import VacationSummary from '../components/VacationSummary';
 import TimeOffManager from '../components/TimeOffManager';
