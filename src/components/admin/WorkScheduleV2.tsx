@@ -59,6 +59,8 @@ type ActionResult = { title: string; result: AssignmentResult };
 const PIN_RIGHT = 'sticky right-0 z-10 border-l border-gray-200 shadow-[-6px_0_6px_-6px_rgba(0,0,0,0.15)]';
 const HOURS_TH = `${PIN_RIGHT} bg-gray-50 px-3 py-2 font-medium text-right min-w-[6.5rem] whitespace-nowrap`;
 const NUM = 'font-mono tabular-nums text-right whitespace-nowrap';
+// A day's total sits centered under its day header, like the shifts above it.
+const DAY_NUM = 'font-mono tabular-nums text-center whitespace-nowrap';
 
 /** One employee row's period total, with an overlap marker when the server counted overlapping time once. */
 const HoursCell: React.FC<{ figure?: ScheduledHoursFigure }> = ({ figure }) => {
@@ -81,7 +83,7 @@ const TotalsRow: React.FC<{ label: string; figure: ScheduledHoursFigure; dates: 
   <tr className={prominent ? 'bg-gray-100 text-gray-900' : 'bg-gray-50 text-gray-700'}>
     <th scope="row" className={`sticky left-0 z-10 px-3 py-2 text-left font-semibold whitespace-nowrap ${prominent ? 'bg-gray-100' : 'bg-gray-50'}`}>{label}</th>
     {dates.map((d) => (
-      <td key={d.date} className={`px-2 py-2 border-l border-gray-100 font-semibold ${NUM}`} title={`${d.day_label}: ${formatScheduledDuration(figure.daily_seconds[d.date] ?? 0)}`}>
+      <td key={d.date} className={`px-2 py-2 border-l border-gray-100 font-semibold ${DAY_NUM}`} title={`${d.day_label}: ${formatScheduledDuration(figure.daily_seconds[d.date] ?? 0)}`}>
         {formatScheduledHours(figure.daily_seconds[d.date] ?? 0)}
       </td>
     ))}
